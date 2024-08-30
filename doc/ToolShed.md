@@ -60,6 +60,7 @@ ToolShed v2.2
   * [COPY](#copy_cecb) - Copy one or more files to a casette container
 * [ar2](#ar2)
 * [dis68](#dis68)
+* [lst2cmt](#lst2cmt) - Create MAME comment file
 
 ---
 
@@ -98,6 +99,10 @@ If you are comfortable with using the asm assembler that was part of OS-9/6809, 
 ### ar2
 
 Carl Kreider is a long time OS-9/6809 user and programmer, and has graciously given us permission to include his archiver utility, ar2, in ToolShed.
+
+### lst2cmt
+
+This is a tool used to convert lwasm listing files into MAME comment files.
 
 ---
 <h2 id="tutorial">A Tutorial On Disk Images</h2>
@@ -1439,3 +1444,36 @@ The parameter file does not have to be specified on the command line if it's nam
     c 5f
 
 Since it is an OS-9/68K module and dis68 is not told otherwise, it will first take apart the module header. Next, it will assume long (32 bit) data up to and including address 0x47, text up to and including address 0x4d, and code up to and including address 0x5f.
+
+---
+
+<h2 id="lst2cmt">lst2cmt</h2>
+
+This is a tool used to convert lwasm listing files into MAME comment files. It was originally written by Eric Canales in PowerBASIC. It was rewritten in C by tim lindner.
+
+#### Syntax and Scope
+
+    lst2cmt {[<opts>]} <srcfile> <destfile> {[<opts>]}
+
+#### Options
+<table>
+<tr><td>-nocrc</td><td>Writes comment lines with no CRC field</td></tr>
+<tr><td>-s&lt;system&gt;</td><td>Sets the system MAME should apply the comments file to. Default is blank, but this is required be specified.</td></tr>
+<tr><td>-c&lt;cpu&gt;</td><td>Sets the CPU MAME should apply the comments file to. Default is ":maincpu".</td></tr>
+<tr><td>-nolinenumbers</td><td>Remove line numbers. Useful if your debugger has limited space.</td></tr>
+<tr><td>-o&lt;offset&gt;</td><td>Offset the memory locations to place the comments.</td></tr>
+</table>
+
+#### Description
+
+The lwasm assembler can produce a listing file. An assembler listing file will include line number, object code, source code, and comments all in one text file.
+The MAME emulator has the ability to display comments next to it's dissasembly view.
+This tool allows you to process lwasm's listing files to produce a file MAME can use to display comments next to the dissasembly.
+
+#### Notes
+
+1. Comments in between code lines will not be visible in MAME. Only comments placed after the menemonomic and operand.
+2. Comments will only be displayed in MAME if the CRC of the object codes matches what is in the comment file.
+3. MAME comments are automatically loaded. By default, the comment file location is next to the MAME executable in a folder called 'comments'. The name of the comment file must be the MAME driver short name and dot 'cmt'. Inside the comment file, the name of the driver must match the driver you are running. Inside the comment file, the name of the cpu must also match the running driver.
+4. MAME does not have comments turned on by default. There is a menu item to turn them off.
+5. MAME display comments very far to the right in the disasembly. You may have to make the window very large to see them.
