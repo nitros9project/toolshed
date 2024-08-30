@@ -15,7 +15,7 @@ endif
 DIRS		= libtoolshed libnative libcecb librbf libcoco libdecb libmisc libsys \
 		decb cecb os9 makewav tocgen cocofuse \
 		dis68 mamou ar2 \
-		doc unittest
+		doc lst2cmt unittest
 
 all:
 	$(foreach dir, $(DIRS), (cd $(dir); $(MAKE));)
@@ -23,7 +23,7 @@ all:
 install: all
 	$(INSTALL) -d $(INSTALLDIR) $(DOCDIR)
 	$(INSTALL) ar2/ar2 os9/os9 mamou/mamou cecb/cecb decb/decb \
-	    tocgen/tocgen makewav/makewav dis68/dis68 $(INSTALLDIR)
+	    tocgen/tocgen makewav/makewav dis68/dis68 lst2cmt/lst2cmt $(INSTALLDIR)
 	-$(INSTALL) cocofuse/cocofuse $(INSTALLDIR)
 	$(INSTALL) -m 0644 doc/ToolShed.html $(DOCDIR)
 

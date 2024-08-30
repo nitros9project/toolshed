@@ -3,6 +3,7 @@
 *.cas
 *.c10
 *.wav
+filldisk.dsk
 
 # Prerequisites
 *.d
