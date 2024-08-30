@@ -40,6 +40,13 @@ static char const *const helpMessage[] = {
 	NULL
 };
 
+// The string manipulation functions use temporary memory allocation.
+// The mc array gives you the chance to collect and free these allocations at
+// the appropraite time.
+#define max_mc 256
+char *mc[max_mc];
+int mc_count = 0;
+
 int main(int argc, char *argv[])
 {
 	error_code ec = 0;
@@ -68,12 +75,12 @@ int main(int argc, char *argv[])
 					while (*(p + 1) != '\0') p++;
 					break;
 				case 'n':
-                    if (strcmp(p, "nocrc"))
+                    if (strcmp(p, "nocrc")==0)
                     {
                         nocrc_flag = 1;
                         while (*(p + 1) != '\0') p++;
                     }
-                    else if (strcmp(p, "nolinenumbers"))
+                    else if (strcmp(p, "nolinenumbers")==0)
                     {
                         nolinenumbers = 1;
                         while (*(p + 1) != '\0') p++;
@@ -248,6 +255,14 @@ error_code do_command(int nocrc_flag, char *system_name, char *cpu_name, char *s
     
         fprintf(output_file, "                %s\n", EscapeXML(listing_line));
         fprintf(output_file, "            </comment>\n");
+        
+        // Flush mallocs
+        for( int i=0; i<mc_count; i++ )
+        {
+            free(mc[i]);
+        }
+        
+        mc_count = 0;
     }
  
     fprintf(output_file, "        </cpu>\n");
@@ -255,6 +270,8 @@ error_code do_command(int nocrc_flag, char *system_name, char *cpu_name, char *s
     fprintf(output_file, "</mamecommentfile>\n");
     fprintf(output_file, "\n");
 
+    free(input_line_array);
+    free(input_string);
     fclose(output_file);
     
     return ec;
@@ -290,6 +307,7 @@ char *Mid(char *s, int start, int length)
 {
     int l = strlen(s);
     char *r = malloc(length+1);
+    mc[mc_count++] = r;
     int i = start-1, j=0;
     
     while (i<l)
@@ -314,6 +332,7 @@ char *RTrim(char *s)
 {
     int l = strlen(s);
     unsigned char *r = malloc(l+1);
+    mc[mc_count++] = (char *)r;
     int i = l-1;
    
     stpcpy((char *)r, s);
@@ -339,6 +358,7 @@ char *LTrim(char *s)
 {
     int l = strlen(s);
     char *r = malloc(l+1);
+    mc[mc_count++] = r;
     int i = 0, j = 0;
     int done_trim = 0;
     
@@ -427,6 +447,7 @@ char *EscapeXML(char *s)
     }
     
     char *r = malloc(size+1);
+    mc[mc_count++] = r;
     t = r;
     r[0] = '\0';
     
