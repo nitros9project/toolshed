@@ -16,7 +16,8 @@
 #define DragonBootSize	16	/* Size of Dragon boot area in sectors */
 
 error_code _os9_format(char *pathname, int os968k, int tracks,
-		       int sectorsPerTrack, int heads, int sectorSize,
+		       int sectorsPerTrack, int sectorsTrack0,
+			   int heads, int sectorSize,
 		       int *clusterSize, char *diskName,
 		       int sectorAllocationSize, int tpi, int density,
 		       int formatEntire, int isDragon, int isHDD,
@@ -45,7 +46,7 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 	/**** Build LSN0 *****/
 	memset(&s0, 0, sizeof(s0));
 
-	*totalSectors = tracks * sectorsPerTrack * heads;
+	*totalSectors = ((tracks * sectorsPerTrack * heads) - sectorsPerTrack) + sectorsTrack0;
 	_int3(*totalSectors, s0.dd_tot);
 
 	*totalBytes = *totalSectors * sectorSize;
@@ -180,7 +181,7 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 	_int1(0, s0.pd_vfy);
 
 	_int2(sectorsPerTrack, s0.pd_sct);
-	_int2(sectorsPerTrack, s0.pd_t0s);
+	_int2(sectorsTrack0, s0.pd_t0s);
 
 	_int1(3, s0.pd_ilv);
 	_int1(sectorAllocationSize, s0.pd_sas);

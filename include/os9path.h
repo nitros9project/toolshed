@@ -142,7 +142,7 @@ error_code _os9_delete_directory(char *pathlist);
 error_code _os9_rename( char *pathlist, char *new_name );
 error_code _os9_rename_ex(char *pathlist, char *new_name, os9_dir_entry *dentry);
 error_code _os9_close(os9_path_id);
-error_code _os9_format(char *pathname, int os968k, int tracks, int sectorsPerTrack, int heads, int sectorSize, int *clusterSize, char *diskName, int sectorAllocationSize, int tpi, int density, int formatEntire, int isDragon, int isHDD, unsigned int *totalSectors, unsigned int *totalBytes);
+error_code _os9_format(char *pathname, int os968k, int tracks, int sectorsPerTrack, int sectorsTrack0, int heads, int sectorSize, int *clusterSize, char *diskName, int sectorAllocationSize, int tpi, int density, int formatEntire, int isDragon, int isHDD, unsigned int *totalSectors, unsigned int *totalBytes);
 
 /* gs.c */
 error_code _os9_gs_attr(os9_path_id, int *);

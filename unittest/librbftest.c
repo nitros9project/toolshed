@@ -16,13 +16,13 @@ void test_os9_format()
 	// test format of a non-existent disk image
 	unsigned int totalSectors, totalBytes;
 	int clusterSize = 0;
-	ec = _os9_format("test.dsk", 0, 35, 18, 1, 256, &clusterSize, "Test Disk", 8, 8,
+	ec = _os9_format("test.dsk", 0, 35, 18, 18, 1, 256, &clusterSize, "Test Disk", 8, 8,
 			 1, 1, 0, 0, &totalSectors, &totalBytes);
 	ASSERT_EQUALS(0, ec);
 	ASSERT_EQUALS(1, clusterSize);
 
 	// test format of a non-existent disk image with a disk name that is way too long
-	ec = _os9_format("test.dsk", 0, 35, 18, 1, 256, &clusterSize,
+	ec = _os9_format("test.dsk", 0, 35, 18, 18, 1, 256, &clusterSize,
 			 "Test Disk with filename that is way too long for the field",
 			 8, 8, 1, 1, 0, 0, &totalSectors, &totalBytes);
 	ASSERT_EQUALS(0, ec);
@@ -247,7 +247,7 @@ void test_os9_file_allocation()
 	/* Create disk */
 	unsigned int totalSectors, totalBytes;
 	int clusterSize = 0;
-	ec = _os9_format("test_alloc.dsk", 0, 80, 18, 2, 256, &clusterSize, "Test Allo", 8, 8,
+	ec = _os9_format("test_alloc.dsk", 0, 80, 18, 18, 2, 256, &clusterSize, "Test Allo", 8, 8,
 			 1, 1, 0, 0, &totalSectors, &totalBytes);
 
 	/* Record free space */

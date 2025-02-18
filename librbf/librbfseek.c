@@ -64,6 +64,12 @@ int _os9_lsn_fseek(os9_path_id path, int lsn)
 {
 	long offset;
 
+	if (lsn >= path->t0s)
+	{
+		/* Skip past missing sectors */
+		lsn += path->spt - path->t0s;
+	}
+
 	offset = lsn * path->bps;
 
 	return fseek(path->fd, offset, SEEK_SET);
