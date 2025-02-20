@@ -504,7 +504,7 @@ static error_code CopyCECBFile(char *srcfile, char *dstfile, int eolTranslate,
 
 	if (tokTranslate != 0)
 	{
-		u_char *xx_tokenize_buffer;
+		u_char *xx_tokenize_buffer = NULL;
 		u_int xx_tokenize_size;
 
 		if (tokTranslate == 1) /* entokenize */
@@ -557,7 +557,11 @@ static error_code CopyCECBFile(char *srcfile, char *dstfile, int eolTranslate,
 			buffer_size = xx_tokenize_size;
 		}
 		else
+		{
+			if (xx_tokenize_buffer)
+				free(xx_tokenize_buffer);
 			return ec;
+		}
 	}
 
 	if (eolTranslate == 1)
