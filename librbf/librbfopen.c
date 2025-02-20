@@ -94,12 +94,15 @@ error_code _os9_create(os9_path_id * path, char *pathlist, int mode,
 		term_pd(*path);
 
 	      aa:
+		filename = NULL;
 		ec = _os9_open_parent_directory(&parent_path, pathlist,
 						FAM_DIR | FAM_WRITE,
 						&filename);
 
 		if (ec != 0)
 		{
+			if (filename != NULL)
+				free(filename);
 			return ec;
 		}
 
@@ -133,6 +136,7 @@ error_code _os9_create(os9_path_id * path, char *pathlist, int mode,
 
 			if (ec == 0)
 			{
+				free(filename);
 				goto aa;
 			}
 		}

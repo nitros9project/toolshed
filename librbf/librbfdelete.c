@@ -142,7 +142,7 @@ error_code _os9_delete(char *pathlist)
 {
 	error_code ec = 0;
 	os9_path_id parent_path;
-	char *filename;
+	char *filename = NULL;
 	int deleted = 0;
 
 
@@ -170,6 +170,8 @@ error_code _os9_delete(char *pathlist)
 
 	if (ec != 0)
 	{
+		if (filename != NULL)
+			free(filename);
 		return (ec);
 	}
 
