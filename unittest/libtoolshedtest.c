@@ -129,14 +129,14 @@ void test_native2coco()
 	u_int newSize;
 
 	NativeToCoCo(TEST_LF_DATA, strlen(TEST_LF_DATA), &newBuffer, &newSize);
-	ASSERT_STRING_EQUALS(TEST_COCO_DATA, newBuffer);
 	ASSERT_EQUALS(strlen(TEST_COCO_DATA), newSize);
+	ASSERT_MEM_EQUALS(TEST_COCO_DATA, newBuffer, newSize);
 
 	free(newBuffer);
 
 	NativeToCoCo(TEST_CRLF_DATA, strlen(TEST_CRLF_DATA), &newBuffer, &newSize);
-	ASSERT_STRING_EQUALS(TEST_COCO_DATA, newBuffer);
 	ASSERT_EQUALS(strlen(TEST_COCO_DATA), newSize);
+	ASSERT_MEM_EQUALS(TEST_COCO_DATA, newBuffer, newSize);
 
 	free(newBuffer);
 }
@@ -149,11 +149,11 @@ void test_coco2native()
 
 	CoCoToNative(TEST_COCO_DATA, strlen(TEST_COCO_DATA), &newBuffer, &newSize);
 #ifdef WIN32
-	ASSERT_STRING_EQUALS(TEST_CRLF_DATA, newBuffer);
 	ASSERT_EQUALS(strlen(TEST_CRLF_DATA), newSize);
+	ASSERT_MEM_EQUALS(TEST_CRLF_DATA, newBuffer, newSize);
 #else
-	ASSERT_STRING_EQUALS(TEST_LF_DATA, newBuffer);
 	ASSERT_EQUALS(strlen(TEST_LF_DATA), newSize);
+	ASSERT_MEM_EQUALS(TEST_LF_DATA, newBuffer, newSize);
 #endif
 	free(newBuffer);
 }

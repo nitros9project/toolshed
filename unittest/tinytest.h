@@ -55,6 +55,7 @@
 #define ASSERT_EQUALS(expected, actual) ASSERTV((#actual), actual, (expected) == (actual))
 #define ASSERT_NEQUALS(expected, actual) ASSERTV((#actual), actual, (expected) != (actual))
 #define ASSERT_STRING_EQUALS(expected, actual) ASSERT((#actual), strcmp((expected),(actual)) == 0)
+#define ASSERT_MEM_EQUALS(expected, actual, size) ASSERT((#actual), memcmp((expected),(actual),(size)) == 0)
 
 /* Run a test() function */
 #define RUN(test_function) tt_execute((#test_function), (test_function))
