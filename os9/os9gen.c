@@ -205,6 +205,7 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 				fprintf(stderr,
 					"Error: minimum sectors per track of 18 required for DragonDOS, found %d\n",
 					int2(LSN0.pd_sct));
+				_os9_close(opath);
 				return (1);
 			}
 		}
@@ -234,6 +235,7 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 						fprintf(stderr,
 							"Error: minimum sectors per track of 18 required for Disk Basic, found %d\n",
 							int2(LSN0.pd_sct));
+						_os9_close(opath);
 						return (1);
 					}
 					/* Check to make sure the disk image has minimum of 35 tracks */
@@ -243,6 +245,7 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 						fprintf(stderr,
 							"Error: minimum number of tracks required for Disk Basic is 35, found %d\n",
 							int2(LSN0.pd_cyl));
+						_os9_close(opath);
 						return (1);
 					}
 					/* Use real floppy disk geometry to figure out real startLSN for boottrack */
@@ -257,6 +260,7 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 			printf("\n");
 			fprintf(stderr,
 				"Error: start LSN puts boottrack outside of OS-9 volume boundery\n");
+			_os9_close(opath);
 			return (1);
 		}
 
@@ -268,6 +272,7 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 		{
 			fprintf(stderr, "%s: error %d opening '%s'\n",
 				argv[0], ec, trackfile);
+			_os9_close(opath);
 			return (1);
 		}
 
