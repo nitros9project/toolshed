@@ -27,7 +27,7 @@ const char *tokens[128] = {
 	"POS", "STRMEM", "ATN", "PPOINT", "STRING$", "INSTR", "MINVAL", "MAXVAL", "TIMER",
 	"ERRL", "ERRN", NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
-int tok_strcmp(const char *str1, char *str2);
+int tok_strncmp(const char *str1, const char *str2, size_t n);
 int ahex2int(char a, char b);
 
 error_code _cecb_detoken(unsigned char *in_buffer, int in_size,
@@ -240,7 +240,7 @@ error_code _cecb_entoken(unsigned char *in_buffer, int in_size,
 			int i;
 
 			/* look for a backslash */
-			if (in_buffer[in_pos] == '\\')
+			if (in_buffer[in_pos] == '\\' && (in_pos + 1) < in_size)
 			{
 				/* look for literal */
 				if (in_buffer[in_pos+1] == '\\')
@@ -251,7 +251,7 @@ error_code _cecb_entoken(unsigned char *in_buffer, int in_size,
 					continue;
 				}
 				/* look for hex escape */
-				else if (in_buffer[in_pos+1] == 'x')
+				else if (in_buffer[in_pos+1] == 'x' && (in_pos + 3) < in_size)
 				{
 					if (isxdigit(in_buffer[in_pos+2]))
 					{
@@ -284,10 +284,10 @@ error_code _cecb_entoken(unsigned char *in_buffer, int in_size,
 					/* Tokenize a command */
 					for (i = 0; i < 0x80; i++)
 					{
-						if (tok_strcmp
+						if (tok_strncmp
 						    (tokens[i],
 						     (char *)
-						     &(in_buffer[in_pos])) ==
+						     &(in_buffer[in_pos]), in_size - in_pos) ==
 						    0)
 						{
 							if (i == 93)	/* Preface ' with a colon */
@@ -321,7 +321,7 @@ error_code _cecb_entoken(unsigned char *in_buffer, int in_size,
 				}
 			}
 
-			if (i == 0x80)
+			if (i == 0x80 && in_pos < in_size)
 			{
 				/* Detect any 'end of literal' tranisitions */
 				if (in_buffer[in_pos] == '"')
@@ -347,12 +347,12 @@ error_code _cecb_entoken(unsigned char *in_buffer, int in_size,
 				(*out_buffer)[out_pos++] =
 					in_buffer[in_pos++];
 
-				if (!isalnum(in_buffer[in_pos]))
+				if (in_pos >= in_size || !isalnum(in_buffer[in_pos]))
 					var_literal = 0;
 			}
 		}
 
-		if (in_buffer[in_pos] == 0x0a)
+		if (in_pos < in_size && in_buffer[in_pos] == 0x0a)
 			in_pos++;	/* skip past DOS line feeds (0d 0a) */
 
 		/* Go back and fix up BASIC's 'next line' pointer */

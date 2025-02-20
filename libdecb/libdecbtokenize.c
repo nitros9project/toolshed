@@ -86,7 +86,7 @@ const char *d_commands[128] =
 };
 
 //size_t malloc_size(void *ptr);
-int tok_strcmp(const char *str1, char *str2);
+int tok_strncmp(const char *str1, const char *str2, size_t n);
 
 /* _decb_detoken()
 
@@ -356,10 +356,10 @@ error_code _decb_entoken(unsigned char *in_buffer, int in_size,
 					/* Tokenize a command */
 					for (i = 0; i < 0x80; i++)
 					{
-						if (tok_strcmp
+						if (tok_strncmp
 						    (commands[i],
 						     (char *)
-						     &(in_buffer[in_pos])) ==
+						     &(in_buffer[in_pos]), in_size - in_pos) ==
 						    0)
 						{
 							if (i == 3)	/* Preface ' with a colon */
@@ -396,11 +396,11 @@ error_code _decb_entoken(unsigned char *in_buffer, int in_size,
 						/* Tokenize a function */
 						for (i = 0; i < 0x80; i++)
 						{
-							if (tok_strcmp
+							if (tok_strncmp
 							    (functions[i],
 							     (char *)
 							     &(in_buffer
-							       [in_pos])) ==
+							       [in_pos]), in_size - in_pos) ==
 							    0)
 							{
 								(*out_buffer)[out_pos++] = 0xff;	/* Function marker */
@@ -420,7 +420,7 @@ error_code _decb_entoken(unsigned char *in_buffer, int in_size,
 				}
 			}
 
-			if (i == 0x80)
+			if (i == 0x80 && in_pos < in_size)
 			{
 				/* Detect any 'end of literal' tranisitions */
 				if (in_buffer[in_pos] == '"')
@@ -446,12 +446,12 @@ error_code _decb_entoken(unsigned char *in_buffer, int in_size,
 				(*out_buffer)[out_pos++] =
 					in_buffer[in_pos++];
 
-				if (!isalnum(in_buffer[in_pos]))
+				if (in_pos >= in_size || !isalnum(in_buffer[in_pos]))
 					var_literal = 0;
 			}
 		}
 
-		if (in_buffer[in_pos] == 0x0a)
+		if (in_pos < in_size && in_buffer[in_pos] == 0x0a)
 			in_pos++;	/* skip past DOS line feeds (0d 0a) */
 
 		/* Go back and fix up BASIC's 'next line' pointer */
@@ -546,18 +546,15 @@ error_code _decb_buffer_sprintf(u_int * position, char **str,
 	return 0;
 }
 
-int tok_strcmp(const char *str1, char *str2)
-{
-	/* Compares a NULL terminated string in str1 to a buffer in str2
-	   Returns 0 if str1 is at the start of str2
-	   Returnes -1 is str1 is not at the start of str2 */
-
+/* Returns 0 if the buffer in str2 of size n begins with the NULL-terminated
+   string in str1, else returns -1. */
+int tok_strncmp(const char *str1, const char *str2, size_t n) {
 	int i = 0;
 
-	if (str1 == NULL)
+	if (str1 == NULL || strlen(str1) > n)
 		return -1;
 
-	if (str1[i] == 0x00)
+	if (str1[0] == 0x00)
 		return -1;
 
 	while (str1[i] != '\0')
