@@ -359,8 +359,8 @@ error_code _os9_open(os9_path_id * path, char *pathlist, int mode)
 
 	if (ec != 0)
 	{
-		term_pd(*path);
 		fclose((*path)->fd);
+		term_pd(*path);
 
 		return ec;
 	}
@@ -375,8 +375,8 @@ error_code _os9_open(os9_path_id * path, char *pathlist, int mode)
 		if ((*path)->bitmap)
 			free((*path)->bitmap);
 		term_lsn0(*path);
-		term_pd(*path);
 		fclose((*path)->fd);
+		term_pd(*path);
 
 		return ec;
 	}
