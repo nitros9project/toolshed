@@ -539,6 +539,11 @@ static int term_pd(cecb_path_id path)
 	if (path->extra_chunks_buffer_size > 0)
 		free(path->extra_chunks_buffer);
 
+	if (path->buffer_1200 != NULL)
+		free(path->buffer_1200);
+	if (path->buffer_2400 != NULL)
+		free(path->buffer_2400);
+
 	/* 1. Deallocate path structure. */
 	if (path->imgfile)
 		free(path->imgfile);
