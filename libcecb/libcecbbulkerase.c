@@ -41,10 +41,16 @@ error_code _cecb_bulkerase(char *path, int sample_rate, int bits_per_sample,
 	_native_seek(nativepath, 0, SEEK_SET);
 
 	if (strendcasecmp(path, CAS_FILE_EXTENSION) == 0)
+	{
+		_native_close(nativepath);
 		return 0;
+	}
 
 	if (strendcasecmp(path, C10_FILE_EXTENSION) == 0)
+	{
+		_native_close(nativepath);
 		return 0;
+	}
 
 	bytes_per_sample = bits_per_sample / 8;
 	silent_samples_count = sample_rate * silence_length;
