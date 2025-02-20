@@ -285,7 +285,7 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 	coco_path_id path;
 	coco_path_id destpath;
 	int mode = FAM_NOCREATE | FAM_WRITE;
-	unsigned char *buffer;
+	unsigned char *buffer = NULL;
 	char *translation_buffer;
 	u_int new_translation_size;
 	u_int buffer_size;
@@ -518,6 +518,10 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 			}
 		}
 	}
+
+	// free whatever buffer ended up being
+	if (buffer)
+		free(buffer);
 
 	_coco_close(path);
 	_coco_close(destpath);
