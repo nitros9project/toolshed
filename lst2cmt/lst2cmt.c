@@ -335,7 +335,7 @@ char *RTrim(char *s)
     mc[mc_count++] = (char *)r;
     int i = l-1;
    
-    stpcpy((char *)r, s);
+    strcpy((char *)r, s);
     
     while (i >= 0)
     {
