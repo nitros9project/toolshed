@@ -271,7 +271,7 @@ void test_os9_file_allocation()
 	for(i=1; i<end_file; i++)
 	{
 		char *buffer = malloc(bytes_per_file);
-		ASSERT_NEQUALS(0, (long)buffer);
+		ASSERT_EQUALS(1, buffer != NULL);
 		memset(buffer, i, bytes_per_file);
 		sprintf(filename, "test_alloc.dsk,test%d.txt", i);
 		ec = _os9_create(&p, filename, FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE);
@@ -299,7 +299,7 @@ void test_os9_file_allocation()
 	{
 		/* read back data and check bytes */
 		char *buffer = malloc(bytes_per_file);
-		ASSERT_NEQUALS(0, (long)buffer);
+		ASSERT_EQUALS(1, buffer != NULL);
 		memset(buffer, i, bytes_per_file);
 		char *buffer2 = malloc(bytes_per_file);
 		ASSERT_NEQUALS(buffer2, 0);

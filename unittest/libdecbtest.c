@@ -176,7 +176,7 @@ void test_decb_write()
 	size_t buffer_alloc = 68*2304;
 	unsigned int buffer_size = buffer_alloc;
 	unsigned char *buffer = calloc(1, buffer_size);
-	ASSERT_NEQUALS(0, (long)buffer);
+	ASSERT_EQUALS(1, buffer != NULL);
 	
 	for( int i=0; i<buffer_alloc; i++)
 	{
@@ -205,7 +205,7 @@ void test_decb_write()
 	buffer_alloc = 67*2304;
 	buffer_size = buffer_alloc;
 	buffer = calloc(1, buffer_size);
-	ASSERT_NEQUALS(0, (long)buffer);
+	ASSERT_EQUALS(1, buffer != NULL);
 	
 	for( int i=0; i<buffer_alloc; i++)
 	{
