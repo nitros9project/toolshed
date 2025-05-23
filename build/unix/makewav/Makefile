@@ -9,7 +9,7 @@ BINARY	= makewav
 OBJS	= makewav.o
 LIBS	= -lm
 
-$(BINARY):	$(OBJS)
+$(BINARY)$(SUFEXE):	$(OBJS)
 	$(CC) $(OBJS) $(LIBS) -o $@
 
 clean:

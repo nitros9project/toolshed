@@ -1,0 +1,37 @@
+name: Make Release
+on:
+  workflow_dispatch:
+
+env:
+  # Path to the solution file relative to the root of the project.
+  SOLUTION_FILE_PATH: .
+
+permissions:
+  contents: write
+
+defaults:
+    run:
+        shell: bash {0}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Build
+      run: |
+        sudo apt-get install mingw-w64 markdown libfuse-dev
+        sudo make -C build/unix package
+        sudo make -C build/unix cleandirs
+        sudo make -C build/unix CC=x86_64-w64-mingw32-gcc WIN=1 package
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        files: "build/unix/toolshed-*.tgz"
+

@@ -9,7 +9,7 @@ BINARY	= tocgen
 OBJS	= tocgen_main.o
 
 
-$(BINARY):	$(OBJS)
+$(BINARY)$(SUFEXE):	$(OBJS)
 	$(CC) $(OBJS) -o $@ $(LDFLAGS) $(DEBUG)
 
 $(OBJS):	Makefile

@@ -12,19 +12,26 @@ else
 INSTALLDIR	= /usr/local/bin
 DOCDIR		= /usr/local/share/toolshed
 endif
+APPS 		= ar2 os9 mamou cecb decb tocgen makewav dis68
+APPS		:= $(foreach item,$(APPS),$(item)/$(item)$(SUFEXE))
+
 DIRS		= libtoolshed libnative libcecb librbf libcoco libdecb libmisc libsys \
-		decb cecb os9 makewav tocgen cocofuse \
+		decb cecb os9 makewav tocgen \
 		dis68 mamou ar2 \
-		doc lst2cmt unittest
+		doc
+
+ifneq ($(WIN),)
+PACKAGENAME	= toolshed-win64-$(VERSION).tgz
+else
+DIRS		:= $(DIRS) cocofuse lst2cmt unittest
+endif
 
 all:
 	$(foreach dir, $(DIRS), (cd $(dir); $(MAKE));)
 
 install: all
 	$(INSTALL) -d $(INSTALLDIR) $(DOCDIR)
-	$(INSTALL) ar2/ar2 os9/os9 mamou/mamou cecb/cecb decb/decb \
-	    tocgen/tocgen makewav/makewav dis68/dis68 lst2cmt/lst2cmt $(INSTALLDIR)
-	-$(INSTALL) cocofuse/cocofuse $(INSTALLDIR)
+	$(INSTALL) $(APPS) $(INSTALLDIR)
 	$(INSTALL) -m 0644 doc/ToolShed.html $(DOCDIR)
 
 package: INSTALLDIR=toolshed-$(VERSION)
@@ -33,6 +40,8 @@ package: install
 	tar czvf $(PACKAGENAME) toolshed-$(VERSION)
 	rm -rf toolshed-$(VERSION)
 
-clean:
+cleandirs:
 	$(foreach dir, $(DIRS), (cd $(dir); $(MAKE) clean);)
+	
+clean: cleandirs
 	$(RM) $(PACKAGENAME)
