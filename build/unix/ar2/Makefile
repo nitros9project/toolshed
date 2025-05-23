@@ -8,7 +8,7 @@ CFLAGS	+= -DSYSV
 BINARY	= ar2
 OBJS	= ar.o arsup.o lz1.o o2u.o
 
-$(BINARY):	$(OBJS)
+$(BINARY)$(SUFEXE):	$(OBJS)
 	$(CC) $(OBJS) -o $@ $(DEBUG)
 
 $(OBJS):

@@ -13,6 +13,10 @@ AR		= $(CROSS)ar
 RANLIB		= $(CROSS)ranlib
 CC		= $(CROSS)cc
 
+ifneq ($(WIN),)
+SUFEXE		= .exe
+endif
+
 %.l: %.r
 	$(MERGE) $< > $@
 

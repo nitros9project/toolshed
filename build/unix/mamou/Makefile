@@ -7,7 +7,7 @@ DEBUG	= -g
 CFLAGS	+= -DLINUX -I../../../include $(DEBUG) -Wall
 LDFLAGS	+= -L../libcoco -L../libnative -L../libcecb -L../libdecb -L../librbf -L../libmisc -L../libsys -lcoco -lnative -ldecb -lcecb -lrbf -lmisc -lsys -lm $(DEBUG)
 
-mamou:		mamou_main.o evaluator.o pseudo.o h6309.o ffwd.o \
+mamou$(SUFEXE):		mamou_main.o evaluator.o pseudo.o h6309.o ffwd.o \
 		print.o util.o symbol_bucket.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
