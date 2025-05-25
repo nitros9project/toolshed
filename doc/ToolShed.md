@@ -1,4 +1,4 @@
-ToolShed v2.2
+ToolShed v2.4
 -------------
 
 ## A Color Computer Cross-Development Toolset
@@ -15,7 +15,6 @@ ToolShed v2.2
   * [Disk Extraction Under Linux](#de_linux)
   * [Pathname Elements](#path_elements)
   * [Support for HDB-DOS](#de_hdb_dos)
-* [rma, rlink and rdump](#rma)
 * [os9](#os9) - Manipulate OS-9 formatted disk images
   * [ATTR](#attr_os9) - Display or modify file attributes
   * [CMP](#cmp) - Compare the contents of two files
@@ -88,13 +87,19 @@ Managing a sizable assembly language source file for a complex program can be da
 
 The relocatable macro assembler and linker give you the ability to write complex assembly language programs in different source files, then link them together to form a single OS-9 or Disk BASIC object file that can be loaded and executed.
 
+These two command are no longer included in the ToolShed project.
+
 ### rdump
 
 The output of the rma macro assembler is a ROF (relocatable object file). rdump allows the inspection of this intermediate file, and can also act as a disassembler.
 
+This command is no longer included in the ToolShed project. It's functionality has been included into the os9 command.
+
 ### mamou
 
 If you are comfortable with using the asm assembler that was part of OS-9/6809, then you will feel at home with mamou. This tool is more suited for assembly language programs that contain their entire source code in one file.
+
+This assembler is included for historical purposes and should not be used for new development. For example, the NitrOS-9 project has switch to the LWASM assembler.
 
 ### ar2
 
@@ -200,23 +205,6 @@ Another feature of HDB-DOS is an offset to be used for the first disk image. Thi
     DECB list -t hd.img,NEW.BAS:3+1348276
 
 The number after the plus is the offset. It can be expressed in decimal or hexadecimal form. Prepend the number with '0x' to use hexadecimal.
-
----
-
-<h2 id="rma">rma, rlink and rdump</h2>
-
-If you have used the software tools from the OS-9 Development System sold by Radio Shack for the Color Computer, then you will be right at home with rma, rlink and rdump. These tools behave exactly the same and have identical function to their Color Computer counterparts.
-
-### Roles and Responsibilities
-
-The function of each of these tools can be summed as follows: rma assembles source code into intermediate object code files called ROFs, and rlink assembles one or more ROFs into a binary executable file.
-
-Let's look at a hypothetical program called doesitall. This program is a whiz-bang text processor written in 6809 assembly language and is composed of three files: main.a, sub.a and io.a. On top of that, the program uses routines from the alib assembly routine library (available from the NitrOS-9 Project). Here's how you would assemble a working executable from these files:
-
-    rma main.a -o=main.r
-    rma sub.a -o=sub.r
-    rma io.a -o=io.r
-    rlink main.r sub.r io.r -l=alib.l
 
 ---
 
