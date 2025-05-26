@@ -274,6 +274,8 @@ int os9format(int argc, char **argv)
 				i = 0;
 			}
 		}
+
+		sectorsTrack0 = sectorsPerTrack;
 	}
 
 	/* walk command line for pathnames */
