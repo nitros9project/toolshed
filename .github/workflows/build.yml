@@ -1,0 +1,50 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+      - '*'
+  pull_request:
+    branches:
+      - main
+      - '*'
+
+env:
+  # Path to the solution file relative to the root of the project.
+  SOLUTION_FILE_PATH: .
+
+permissions:
+  contents: read
+
+defaults:
+    run:
+        shell: bash {0}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Setup Requirements
+      run: |
+        sudo apt-get install mingw-w64 markdown libfuse-dev
+
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Build Linux
+      run: |
+        sudo make -C build/unix package
+
+      
+    - name: Build Windows
+      run: |
+        sudo make -C build/unix cleandirs 
+        sudo make -C build/unix CC=x86_64-w64-mingw32-gcc WIN=1 package || exit 1
+
+    - name: Results
+      run: |
+        md5sum build/unix/toolshed-*.tgz
+        ls build/unix/toolshed-*.tgz | xargs -I {} bash -c 'ls -al --color=auto {}; tar tzvf {}'
+
