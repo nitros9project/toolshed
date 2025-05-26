@@ -13,7 +13,6 @@ INSTALLDIR	= /usr/local/bin
 DOCDIR		= /usr/local/share/toolshed
 endif
 APPS 		= ar2 os9 mamou cecb decb tocgen makewav dis68
-APPS		:= $(foreach item,$(APPS),$(item)/$(item)$(SUFEXE))
 
 DIRS		= libtoolshed libnative libcecb librbf libcoco libdecb libmisc libsys \
 		decb cecb os9 makewav tocgen \
@@ -24,7 +23,10 @@ ifneq ($(WIN),)
 PACKAGENAME	= toolshed-win64-$(VERSION).tgz
 else
 DIRS		:= $(DIRS) cocofuse lst2cmt unittest
+APPS		:= $(APPS) cocofuse
 endif
+
+APPS		:= $(foreach item,$(APPS),$(item)/$(item)$(SUFEXE))
 
 all:
 	$(foreach dir, $(DIRS), (cd $(dir); $(MAKE));)
