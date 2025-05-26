@@ -37,7 +37,7 @@ static char const *const helpMessage[] = {
 	"     -szX = sectors for track 0 (default = 18)\n",
 	"     -dr  = format a Dragon disk\n",
 	" Hard Drive Options:\n",
-	"     -lX  = number of logical sectors\n",
+	"     -lX  = number of logical sectors (floppy options ignored)\n",
 	NULL
 };
 
@@ -51,7 +51,7 @@ int os9format(int argc, char **argv)
 	int tracks = 35;
 	int heads = 1;
 	int sectorsPerTrack = DEF_SECTORS_TRACK;
-	int sectorsTrack0 = DEF_SECTORS_TRACK;
+	int sectorsTrack0 = 0;   /* mark as unset */
 	int bytesPerSector = 256;
 	int tpi = 48;		/* 48 tpi */
 	int density = 1;	/* double density */
@@ -185,11 +185,6 @@ int os9format(int argc, char **argv)
 
 					case 't':
 						sectorsPerTrack = atoi(p + 2);
-						// Change sectors on track 0 only if it's not already been changed.
-						if (DEF_SECTORS_TRACK == sectorsTrack0)
-						{
-							sectorsTrack0 = sectorsPerTrack;
-						}
 						break;
 					
 					case 'z':
@@ -245,6 +240,12 @@ int os9format(int argc, char **argv)
 		}
 	}
 
+	/* match sectors on track 0 only if it's unset. */
+	if (sectorsTrack0 == 0)
+	{
+		sectorsTrack0 = sectorsPerTrack;
+	}
+
 	/* if logicalSectors != 0, then format as a hard drive image */
 	if (logicalSectors != 0)
 	{
@@ -270,6 +271,7 @@ int os9format(int argc, char **argv)
 			if (logicalSectors % i == 0)
 			{
 				sectorsPerTrack = logicalSectors / i;
+				sectorsTrack0 = sectorsPerTrack;
 				heads = i;
 				i = 0;
 			}
@@ -289,7 +291,7 @@ int os9format(int argc, char **argv)
 
 			error_code ec =
 				_os9_format(argv[i], os968k, tracks,
-					    sectorsPerTrack,sectorsTrack0,
+					    sectorsPerTrack, sectorsTrack0,
 					    heads, bytesPerSector, &clusterSize,
 					    diskName, sectorAllocationSize,
 					    tpi, density, formatEntire,
