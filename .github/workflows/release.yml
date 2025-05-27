@@ -18,20 +18,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Setup Requirements
+      run: |
+        sudo apt-get install mingw-w64 markdown libfuse-dev
+
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Build
+    - name: Build Linux
       run: |
-        sudo apt-get install mingw-w64 markdown libfuse-dev
-        sudo make -C build/unix package
-        sudo make -C build/unix cleandirs
-        sudo make -C build/unix CC=x86_64-w64-mingw32-gcc WIN=1 package
+        sudo make -C build/unix unixpackage
+      
+    - name: Build Windows
+      run: |
+        sudo make -C build/unix winpackage
+
+    - name: Results
+      run: |
+        [ -f build/unix/toolshed-*.tgz ] && ls build/unix/toolshed-*.tgz | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; tar tzvf {}'
+        [ -f build/unix/toolshed-*.zip ] && ls build/unix/toolshed-*.zip | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; unzip -l -v {}'
 
     - name: Release
       uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        files: "build/unix/toolshed-*.tgz"
+        files: |
+          "build/unix/toolshed-*.tgz"
+          "build/unix/toolshed-*.zip"
 
