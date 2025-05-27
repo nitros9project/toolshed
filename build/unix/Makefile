@@ -4,7 +4,7 @@ include rules.mak
 
 vpath %.c ../../mamou:../../os9
 
-PACKAGENAME	= toolshed-$(VERSION).tgz
+PACKAGENAME	= toolshed-unix64-$(VERSION).tgz
 ifneq ($(DESTDIR),)
 INSTALLDIR	= $(DESTDIR)/usr/bin
 DOCDIR		= $(DESTDIR)/usr/share/doc/toolshed
