@@ -35,9 +35,9 @@ void test_os9_format()
 	//   (gdb) b _os9_format
 	//   (gdb) run format test.dsk -l65000
 	// Breakpoint 1, _os9_format (pathname=0x7fffffffe0ad "test.dsk", os968k=0,
-	// tracks=125, sectorsPerTrack=4, sectorsTrack0=4, heads=130, sectorSize=256, 
+	// tracks=125, sectorsPerTrack=4, sectorsTrack0=4, heads=130, sectorSize=256,
 	// clusterSize=0x7fffffffdae8, diskName=0x5555555761df "CoCo Disk",
-	// sectorAllocationSize=8, tpi=0, density=0, formatEntire=0, isDragon=0, isHDD=1, 
+	// sectorAllocationSize=8, tpi=0, density=0, formatEntire=0, isDragon=0, isHDD=1,
 	// totalSectors=0x7fffffffdaec, totalBytes=0x7fffffffdaf0) at ../../../librbf/librbfformat.c:25
 	//   (gdb) cont
 	// Continuing.
@@ -54,6 +54,9 @@ void test_os9_format()
 	//   Size in bytes: 16640000
 	//    Cluster size: 1
 
+    // See test_os9_command_format for a test of the command line
+    // that generates this scenario.
+
 	ec = _os9_format("test.dsk", /*68k=*/0,
 			/*tracks=*/125, /*sPT=*/4, /*sT0=*/4, /*heads=*/130, /*sSize=*/256, &clusterSize,
 			 "HD-Test",
@@ -62,30 +65,6 @@ void test_os9_format()
 	ASSERT_EQUALS(0, ec);
 	ASSERT_EQUALS(65000, totalSectors);
 	ASSERT_EQUALS(65000 * 256, totalBytes);
-
-#ifdef unix
-	// In order to demonstrate the bug described in
-	//     https://github.com/nitros9project/toolshed/issues/28
-	// we have to execute the `os9 format` command.
-	// The bug is not in _os9_format, but in preparing its parameters.
-	ec = system("rm -f test.dsk; ../os9/os9 format test.dsk -l65000");
-	ASSERT_EQUALS(0, ec);
-	// When `os9 format` was broken, it would succeed, but later
-	// operations would fail, like `os9 makdir`:
-	ec = _os9_makdir("test.dsk,/CMDS");
-	ASSERT_EQUALS(0, ec);
-	/*
-		// ... But if `os9format` were in the tinytest linkage, this could work,
-		// instead of using system():
-		char* argv[] = {
-			"os9", "format", "test.dsk", "-l65000", NULL
-		};
-		ec = os9format(4, argv);
-		ASSERT_EQUALS(0, ec);
-		ec = _os9_makdir("test.dsk,/CMDS");
-		ASSERT_EQUALS(0, ec);
-	*/
-#endif
 
 	// TODO: test format with oddball parameters to make sure it can survive
 }
