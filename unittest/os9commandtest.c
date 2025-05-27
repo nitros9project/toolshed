@@ -25,12 +25,11 @@ void test_os9_command_format()
 	ASSERT_EQUALS(0, ec);
 	ASSERT_EQUALS(65000*256, size);
 
-	ec = _os9_makdir("test.dsk,/CMDS");
-	ASSERT_EQUALS(0, ec);
-		
 	ec = _native_close(nativepath);
 	ASSERT_EQUALS(0, ec);
 	
+	ec = _os9_makdir("test.dsk,/CMDS");
+	ASSERT_EQUALS(0, ec);
 }
 
 int main()
