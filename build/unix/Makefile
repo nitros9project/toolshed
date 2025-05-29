@@ -14,10 +14,10 @@ else
 INSTALLDIR	= /usr/local/bin
 DOCDIR		= /usr/local/share/toolshed
 endif
-APPS 		= ar2 os9 mamou cecb decb tocgen makewav dis68
+APPS 		= ar2 os9 mamou cecb decb tocgen makewav dis68 lst2cmt
 
 DIRS		= libtoolshed libnative libcecb librbf libcoco libdecb libmisc libsys \
-		decb cecb os9 makewav tocgen \
+		decb cecb os9 makewav tocgen lst2cmt \
 		dis68 mamou ar2 \
 		doc
 
@@ -27,7 +27,7 @@ MAKEPACKAGE = zip -9
 else
 PACKAGENAME	= $(PACKAGENAME_UNIX)
 MAKEPACKAGE = tar czvf
-DIRS		:= $(DIRS) cocofuse lst2cmt unittest
+DIRS		:= $(DIRS) cocofuse unittest
 APPS		:= $(APPS) cocofuse
 endif
 

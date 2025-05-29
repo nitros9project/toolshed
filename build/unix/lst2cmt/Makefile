@@ -6,7 +6,7 @@ vpath %.c ../../../lst2cmt
 CFLAGS	+= -I../../../include -Wall
 #LDFLAGS	+=
 
-lst2cmt:	lst2cmt.o
+lst2cmt$(SUFEXE):	lst2cmt.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 clean:

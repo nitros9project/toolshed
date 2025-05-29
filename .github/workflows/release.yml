@@ -39,11 +39,11 @@ jobs:
         [ -f build/unix/toolshed-*.zip ] && ls build/unix/toolshed-*.zip | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; unzip -l -v {}'
 
     - name: Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         files: |
-          "build/unix/toolshed-*.tgz"
-          "build/unix/toolshed-*.zip"
+          build/unix/toolshed-*.tgz
+          build/unix/toolshed-*.zip
 
