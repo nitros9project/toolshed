@@ -1,16 +1,16 @@
 
 /* top nibble classifications */
-void	(*topnib[])() = {imm, moveb, movel, movew, misc, addq, bsr,
+void	(*topnib[])(void) = {imm, moveb, movel, movew, misc, addq, bsr,
 					    moveq, or, sub, huh, cmp, and, add, shift, huh};
 
-void	(*modetbl[])() = {drd, ard, ri, piri, pdri, rio, irio, spadd};
-void	(*spaddtbl[])() = {as, al, relo, relio, aimm, as, as, as};
+void	(*modetbl[])(int) = {drd, ard, ri, piri, pdri, rio, irio, spadd};
+void	(*spaddtbl[])(void) = {as, al, relo, relio, aimm, as, as, as};
 
 char	*imm_mne[] = {"ori", "andi", "subi", "addi",
 					"huh", "eori", "cmpi", "huh"};
 char	*bittyp[] = {"btst ", "bchg ", "bclr ", "bset "};
 
-void	(*misctbl[])() = {negx, clr, neg, not, nbcd, tst, movem, trap};
+void	(*misctbl[])(void) = {negx, clr, neg, not, nbcd, tst, movem, trap};
 char	*msc_mne[] = {"reset", "nop", "stop", "rte",
 						"rtd", "rts", "trapv", "rtr"};
 
