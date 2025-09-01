@@ -128,6 +128,7 @@ error_code _cecb_bulkerase(char *path, int sample_rate, int bits_per_sample, dou
 error_code _cecb_create(cecb_path_id *path, char *pathlist, int mode, int file_type, int data_type, int gap, int ml_load_address, int ml_exec_address);
 error_code _cecb_open(cecb_path_id *path, char *pathlist, int mode );
 error_code _cecb_close(cecb_path_id path);
+error_code _cecb_seek(cecb_path_id path, int pos, int mode);
 error_code _cecb_parse_cas( cecb_path_id path );
 error_code _cecb_parse_riff( cecb_path_id path );
 error_code _cecb_read( cecb_path_id path, void *buffer, u_int *size );

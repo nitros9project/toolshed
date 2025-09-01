@@ -10,7 +10,8 @@ CFLAGS	+= -I../../../include -Wall
 	$(RANLIB) $@
 
 libcecb.a:	libcecbbulkerase.o libcebcopen.o libcecbgs.o libcecbwav.o \
-                libcecbcas.o libcecbread.o libcecbwrite.o libcecbtokenize.o
+                libcecbcas.o libcecbread.o libcecbwrite.o libcecbtokenize.o \
+                libcecbseek.o
 
 clean:
 	$(RM) *.o *.a
