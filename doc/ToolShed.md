@@ -980,8 +980,10 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 <tr><td>-a</td><td>dump output in assembler format (hex)</td></tr>
 <tr><td>-b</td><td>dump output in assembler format (binary)</td></tr>
 <tr><td>-c</td><td>don't display ASCII character data</td></tr>
-<tr><td>-h</td><td>don't display header</td></tr>
+<tr><td>-e</td><td>dump output in C format</td></tr>
+<tr><td>-t</td><td>don't display header</td></tr>
 <tr><td>-l</td><td>don't display line label/count</td></tr>
+<tr><td>-z</td><td>decode DECB binary</td></tr>
 </table>
 #### Description
 

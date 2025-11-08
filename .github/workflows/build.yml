@@ -35,16 +35,14 @@ jobs:
 
     - name: Build Linux
       run: |
-        sudo make -C build/unix package
-
+        sudo make -C build/unix unixpackage
       
     - name: Build Windows
       run: |
-        sudo make -C build/unix cleandirs 
-        sudo make -C build/unix CC=x86_64-w64-mingw32-gcc WIN=1 package || exit 1
+        sudo make -C build/unix winpackage
 
     - name: Results
       run: |
-        md5sum build/unix/toolshed-*.tgz
-        ls build/unix/toolshed-*.tgz | xargs -I {} bash -c 'ls -al --color=auto {}; tar tzvf {}'
+        [ -f build/unix/toolshed-*.tgz ] && ls build/unix/toolshed-*.tgz | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; tar tzvf {}'
+        [ -f build/unix/toolshed-*.zip ] && ls build/unix/toolshed-*.zip | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; unzip -l -v {}'
 

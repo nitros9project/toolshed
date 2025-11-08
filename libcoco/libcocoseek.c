@@ -33,9 +33,7 @@ error_code _coco_seek(coco_path_id path, int pos, int mode)
 		break;
 
 	case CECB:
-		fprintf(stderr,
-			"_coco_seek not implemented in libcecb yet.\n");
-		ec = -1;
+		ec = _cecb_seek(path->path.cecb, pos, mode);
 		break;
 	}
 
