@@ -3,7 +3,7 @@ ToolShed is a package of utilities to perform cross-development from Windows,
 Linux or Mac OS X computers to the Tandy Color Computer and Dragon
 microcomputers.
 
-https://sourceforge.net/projects/toolshed/
+https://github.com/nitros9project/toolshed
 
 
 == HOW TO BUILD ON WINDOWS ==

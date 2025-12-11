@@ -13,7 +13,7 @@
 #include <cecbpath.h>
 
 int sample_rate = 22050;
-int bits_per_sample = 8;
+int bits_per_sample = 16;
 double silence_length = 0.5;
 
 /* Help message */
@@ -22,7 +22,7 @@ static char const *const helpMessage[] = {
 	"Usage:  Create cassette image files, WAV for CAS.\n",
 	"Options:\n",
 	"     -s<num>  = Sample rate of WAV file (11025, 22050, 44100, etc. Default: 22050).\n",
-	"     -b<num>  = Bits per sample of WAV file (8 or 16, default: 8).\n",
+	"     -b<num>  = Bits per sample of WAV file (8, 16, 24, 32, default: 16).\n",
 	"     -l<num>  = Length of silence to record in WAV file. (default: 0.5 seconds).\n",
 	NULL
 };
@@ -61,11 +61,6 @@ int cecbbulkerase(int argc, char *argv[])
 					bits_per_sample = atoi(p + 1);
 					while (*(p + 1) != '\0')
 						p++;
-
-					if ((bits_per_sample != 8)
-					    && (bits_per_sample != 16))
-						bits_per_sample = 8;
-
 					break;
 
 				case 'h':

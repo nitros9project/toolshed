@@ -5,6 +5,10 @@
 *.wav
 filldisk.dsk
 
+# Language file for BBEdit
+compile_commands.json
+.cache/*
+
 # Prerequisites
 *.d
 

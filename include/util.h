@@ -71,6 +71,7 @@ int cecbdir(int, char **);
 int cecbfstat(int, char **);
 int cecbbulkerase(int, char **);
 int cecbcopy(int, char **);
+int cecbleader(int, char **);
 
 #ifdef __cplusplus
 }

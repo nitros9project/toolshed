@@ -57,6 +57,7 @@ ToolShed v2.4
   * [DUMP](#dump_cecb) - Display the contents of a binary file
   * [LIST](#list_cecb) - Display the contents of a file
   * [COPY](#copy_cecb) - Copy one or more files to a casette container
+  * [LEADER](#leader_cecb) - Analyse leader in a WAV file
 * [ar2](#ar2)
 * [dis68](#dis68)
 * [lst2cmt](#lst2cmt) - Create MAME comment file
@@ -1151,9 +1152,9 @@ This command is intended for BASIC cassette and disk image files only.
 
 #### Options
 <table>
-<tr><td>-t [%]</td><td>Set threshold to remove background noise (for WAV files).</td></tr>
-<tr><td>-f [n]</td><td>Set FSK delineation frequency (for WAV files).</td></tr>
-<tr><td>-p [e|o]</td><td>Set even or odd WAV file parity (for WAV files).</td></tr>
+<tr><td>-r[real]</td><td>Set WAV file FSK aspect ratio for autodetection. Default: 1.85</td></tr>
+<tr><td>-t[%]</td><td>Set WAV file FSK aspect ratio threshold. Default: 0.3 (30%)</td></tr>
+<tr><td>-n[%]</td><td>Treat near zero as zero (for WAV files). Default: 0.01 (1%)</td></tr>
 <tr><td>-s [n]</td><td>Start at sample/bit n in WAV/CAS/C10 file.</td></tr>
 <tr><td>-z</td><td>suggest MC10 mode.</td></tr>
 </table>
@@ -1162,6 +1163,8 @@ This command is intended for BASIC cassette and disk image files only.
 The MC10 mode give the command hints on when to use MC10 characteristics. It uses different audio wave forms in WAV files. It also uses MC10 (and MCX128) BASIC tokens.
 
 The C10 format defaults to MC10 formats. The WAV and CAS default to CoCo formats.
+
+The aspect ratio mention above is low frequency divided by the high frequency. People normally think the two FSK Color Computer tape format frequencies are 2400 Hz and 1200 Hz. This is an aspect ratio of 2.0. But the actual ratio coming from the Color Computer's circuitry is 1.85. The value is adjustable because aging tapes, and badly configured tape players, can cause the ratio to drift over time.
 
 ---
 <h3 id="bulkerase">BULKERASE - Create a cassette image of a given characteristics.</h3>
@@ -1175,7 +1178,7 @@ This command is intended to work on the host file system only.
 #### Options
 <table>
 <tr><td>-s[num]</td><td>Sample rate of WAV file (11025, 22050, 44100, etc. Default: 22050).</td></tr>
-<tr><td>-b[num]</td><td>Bits per sample of WAV files (8 or 16, default: 8).</td></tr>
+<tr><td>-b[num]</td><td>Bits per sample of WAV files (8, 16, 24, 32, default: 16).</td></tr>
 <tr><td>-l[num]</td><td>Length of silence to record in WAV file. (default: 0.5 seconds).</td></tr>
 </table>
 #### Description
@@ -1189,7 +1192,7 @@ To create an empty image, type:
     cecb bulkerase test.wav
     Creating WAV file: test.wav
           Sample Rate: 22050
-      Bits Per Sample: 8
+      Bits Per Sample: 16
        Silence Length: 0.500000
 
 ---
@@ -1204,13 +1207,14 @@ This command is intended for Cassette BASIC images only.
 
 #### Description
 
-The dir command displays the directory of a Disk BASIC disk image or the host file system.
+The dir command displays the directory of a BASIC cassette image.
 
 #### Examples
 
 Displaying an extended directory
 
     cecb dir test.wav,
+    Directory of test.wav:
       HELLO    0 B
 
 ---
@@ -1289,7 +1293,7 @@ Additional command line options are provided to omit certain parts of the dump o
 
     list {[<opts>]} {<file> [<...>]} {[<opts>]}
 
-This command is intended for Disk BASIC disk image files.
+This command is intended for BASIC image files.
 
 #### Options
 <table>
@@ -1342,6 +1346,37 @@ Copying a file from a Disk BASIC disk image to the host:
     cecb copy myprog.bas -t cecb.wav,MYPROG
     Copying a text file from the host to a cassette BASIC image:
     cecb copy -l -3 -a file.txt cecb.wav,FILE
+
+---
+
+<h3 id="leader_cecb">LEADER - Analyse leader in a WAV file.</h3>
+
+#### Syntax and Scope
+
+    leader <wavfile>
+
+This command looks for alternating frequencies with the aspect ratio specified in the cecb executavie options. Staticts are provided for each block found.
+
+#### Options
+
+#### Description
+
+During preservation of CoCo cassette tapes, recovering data is essential. There are two known frequencies that are written. But due to a variety of factors the wave formas captured can be shifted in frequency. With this command, you can try different aspect ratios (and threasholds) to see if any leaders are found. You can then use the results to tune further data extraction attempts.
+
+#### Examples
+
+    cecb -r1.5 -t0.25 leader file.wav
+
+    Leader analysis. Find alternating frequencies.
+	Target ratio: 1.500000 (1.125000 - 1.875000)
+
+	Block length 0.714172 seconds (71685-103180)
+	Zero crossing count: 515
+	Average ratio: 1.904762
+	High frequency average: 2100.0 Hz, max: 2100.0 Hz, min 2100.0 Hz
+	Low frequency average: 1102.5 Hz, max: 1102.5 Hz, min 1102.5 Hz
+
+The numbers after block length are the start and end samples.
 
 ---
 

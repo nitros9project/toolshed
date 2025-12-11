@@ -96,10 +96,12 @@ static int do_dir(char **argv, char *p)
 	char asciiflag;
 	cecb_dir_entry dir_entry;
 
-	ec = _cecb_open(&path, p, FAM_READ);
+	ec = _cecb_open(&path, p, FAM_READ | FAM_RAW);
 
 	if (ec == 0)
 	{
+		printf("Directory of: %s\n\n", p);
+
 		while (ec == 0)
 		{
 			ec = _cecb_read_next_dir_entry(path, &dir_entry);
@@ -134,8 +136,8 @@ static int do_dir(char **argv, char *p)
 				break;
 			}
 
-			printf(" %8.8s %d %c\n", dir_entry.filename,
-			       dir_entry.file_type, asciiflag);
+			printf(" %8.8s %d ($%02x) %c ($%02x)\n", dir_entry.filename,
+			       dir_entry.file_type, dir_entry.file_type, asciiflag, asciiflag);
 		}
 
 		ec = _cecb_close(path);

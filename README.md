@@ -47,17 +47,18 @@ To build cocofuse for the Mac, you will need to have FUSE libraries and header f
 
 The best way to do this is to first [visit the Homebrew page](https://brew.sh) and use the simple one-line ruby command to install Homebrew on your Mac.
 
-Once that's done, you can use the brew command to install macfuse (`osxfuse` has been succeeded by `macfuse` as of version 4.0.0.):
+Currently the makefile for cocofuse requires fuse-t on macos. Historically we used to use macfuse, and osxfuse.
 
 ```
-brew install macfuse
+brew install fuse-t
 ```
 
-If you have previously install osxfuse, you can use brew command to uninstall `oxsfuse` and install `macfuse`
+If you have previously install osxfuse, you can use brew command to uninstall `oxsfuse` and install `fuse-t`
 
 ```
 brew uninstall osxfuse
-brew install macfuse
+brew uninstall macfuse
+brew install fuse-t
 ```
 
 Then, enter the unpackaged toolshed directory and run:

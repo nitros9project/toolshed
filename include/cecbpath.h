@@ -7,6 +7,7 @@
 #ifndef	_CECBPATH_H
 #define	_CECBPATH_H
 
+#include <math.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -78,9 +79,15 @@ typedef struct
 } cecb_file_stat, *Cecb_file_stat;
 
 typedef enum { NONE=0, CAS, C10, WAV } _tape_type;
-typedef enum { AUTO=0, ODD, EVEN } _wave_parity;
+// typedef enum { AUTO=0, ODD, EVEN } _wave_parity;
 
-#define WAV_SAMPLE_MUL (path->wav_bits_per_sample == 8 ? 1 : 2)
+typedef union
+{
+	unsigned char uc_value;
+	short s_value;
+	int i_value;
+	double d_value;
+} value_union;
 
 typedef struct _cecb_path_id
 {
@@ -103,21 +110,28 @@ typedef struct _cecb_path_id
 	unsigned char   cas_current_bit;		/* bit position in byte of CAS file */
 	unsigned char	cas_byte;				/* current byte read from file */
 	unsigned int	wav_riff_size;
+	unsigned short	wav_audioFormat;		/* Format from WAV file */
 	long			wav_data_start;			/* File position of start of data chunk */
 	int				wav_data_length;		/* Length of data chunk */
 	long			wav_total_samples;		/* Tot number of samples in data */
 	unsigned int	wav_sample_rate;		/* Sample rate of WAV file */
-	unsigned short	wav_bits_per_sample;	/* Bits per sample of WAV file */
-	double			wav_threshold;			/* Remove noise below this threshold */
-	int				wav_zero_value;
-	double			wav_frequency_limit;	/* Bit Deliniation frequency limit */
+	unsigned short  wav_bits_per_sample;	/* bits per sample of WAV file */
+	int				wav_mode;				/* 0 - unaligned */
+											/* 1 - found leader */
 	long			wav_start_sample;		/* Sample where file starts. Fist bit of block type. */
 	long			wav_current_sample;		/* Current sample position in WAV file */
-	_wave_parity	wav_parity;				/* Even or Odd wav type */
-	signed int		wav_ss1, wav_ss2;		/* Wave Phase timing */
+	double			wav_ratio_high;			/* Calculated high ratio */
+	double			wav_ratio_low;			/* Calculated low ratio */
+	value_union		wav_zero_high;
+	value_union		wav_zero_low;
+	long			wav_crossings[5];		/* Sample position of last five zero crossings. */
+	int				wav_low_sample_count,
+					wav_high_sample_count;
+	int				wav_average_sample_count;	/* Bit Deliniation */
+	value_union		wav_ss1, wav_ss2;		/* Previous and current samples */
 	unsigned char	*buffer_1200,			/* WAV data used for writing */
 					*buffer_2400;
-	int             buffer_1200_length,
+	size_t          buffer_1200_length,
 					buffer_2400_length;
 	long			extra_chunks_buffer_size;
 	char			*extra_chunks_buffer;
@@ -128,7 +142,7 @@ error_code _cecb_bulkerase(char *path, int sample_rate, int bits_per_sample, dou
 error_code _cecb_create(cecb_path_id *path, char *pathlist, int mode, int file_type, int data_type, int gap, int ml_load_address, int ml_exec_address);
 error_code _cecb_open(cecb_path_id *path, char *pathlist, int mode );
 error_code _cecb_close(cecb_path_id path);
-error_code _cecb_seek(cecb_path_id path, int pos, int mode);
+error_code _cecb_seek(cecb_path_id path, long pos, int mode);
 error_code _cecb_parse_cas( cecb_path_id path );
 error_code _cecb_parse_riff( cecb_path_id path );
 error_code _cecb_read( cecb_path_id path, void *buffer, u_int *size );
@@ -155,11 +169,16 @@ int _cecb_write_wav_repeat_byte(cecb_path_id path, int length, char byte);
 int _cecb_write_wav_repeat_short(cecb_path_id path, int length, short bytes);
 error_code _cecb_detoken(unsigned char *in_buffer, int in_size, char **out_buffer, u_int * out_size);
 error_code _cecb_entoken(unsigned char *in_buffer, int in_size, unsigned char **out_buffer, u_int * out_size, int path_type);
+long next_zero_crossing(cecb_path_id path);
+error_code position_tape(cecb_path_id path, long sample_position);
+void advance_to_next_leader(cecb_path_id path, double timeout, double min_length);
+error_code create_sinusoidal_write_buffers(cecb_path_id path);
 
 /* WAV and CAS global settings copied by _cecb_open and _cecb_create */
+extern double cecb_ratio;
 extern double cecb_threshold;
-extern double cecb_frequency;
-extern _wave_parity cecb_wave_parity;
+extern double cecb_zero_adjust;
+// extern _wave_parity cecb_wave_parity;
 extern long cecb_start_sample;
 extern int cecb_suggest_mc10;
 

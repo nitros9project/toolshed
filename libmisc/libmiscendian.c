@@ -129,6 +129,37 @@ size_t fread_le_int(unsigned int *ptr, FILE * stream)
 	return count;
 }
 
+size_t fread_le_sint(int *ptr, FILE * stream)
+{
+	size_t count;
+
+	count = fread(ptr, 1, 4, stream);
+
+#if defined(__BIG_ENDIAN__)
+	*ptr = swap_int(*ptr);
+#endif
+
+	return count;
+}
+
+size_t fread_le_24bit(signed int *ptr, FILE *stream)
+{
+	uint8_t b[3];
+	
+    if (fread(b, 1, 3, stream) != 3) {
+        return 0;
+    }
+    
+    (*ptr) = (int)(b[0]) | (int)(b[1] << 8) | (int)(b[2] << 16);
+
+    // Sign extend
+    if ((*ptr) & 0x800000) {
+        (*ptr) |= 0xFF000000;
+    }
+        
+    return 3;
+}
+
 size_t fwrite_le_int(unsigned int data, FILE * stream)
 {
 #if defined(__BIG_ENDIAN__)

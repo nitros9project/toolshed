@@ -120,23 +120,23 @@ static int do_fstat(char **argv, char *p)
 		switch (cecb_path->dir_entry.file_type)
 		{
 		case 0:
-			printf("BASIC Program\n");
+			printf("BASIC Program ($00)\n");
 			break;
 
 		case 1:
-			printf("Data\n");
+			printf("Data ($01)\n");
 			break;
 
 		case 2:
-			printf("M/L Program\n");
+			printf("M/L Program ($02)\n");
 			break;
 
 		case 3:
-			printf("Text Editor Source\n");
+			printf("Text Editor Source ($03)\n");
 			break;
 
 		default:
-			printf("0x%x\n", cecb_path->dir_entry.file_type);
+			printf("$%x\n", cecb_path->dir_entry.file_type);
 			break;
 		}
 
@@ -145,15 +145,15 @@ static int do_fstat(char **argv, char *p)
 		switch (cecb_path->dir_entry.ascii_flag)
 		{
 		case 0:
-			printf("Binary\n");
+			printf("Binary ($00)\n");
 			break;
 
 		case 255:
-			printf("ASCII\n");
+			printf("ASCII ($ff)\n");
 			break;
 
 		default:
-			printf("0x%x\n", cecb_path->dir_entry.ascii_flag);
+			printf("$%x\n", cecb_path->dir_entry.ascii_flag);
 			break;
 		}
 
@@ -162,19 +162,19 @@ static int do_fstat(char **argv, char *p)
 		switch (cecb_path->dir_entry.gap_flag)
 		{
 		case 0:
-			printf("No\n");
+			printf("No ($00)\n");
 			break;
 
 		case 255:
-			printf("Yes\n");
+			printf("Yes ($ff)\n");
 			break;
 
 		default:
-			printf("0x%x\n", cecb_path->dir_entry.gap_flag);
+			printf("$%x\n", cecb_path->dir_entry.gap_flag);
 			break;
 		}
 
-		printf("  ML Load Address      : %d (0x%4.4x)\n",
+		printf("  ML Load Address      : %d ($%4.4x)\n",
 		       cecb_path->dir_entry.
 		       ml_load_address1 << 8 | cecb_path->dir_entry.
 		       ml_load_address2,
@@ -182,7 +182,7 @@ static int do_fstat(char **argv, char *p)
 		       ml_load_address1 << 8 | cecb_path->dir_entry.
 		       ml_load_address2);
 
-		printf("  ML Execution Address : %d (0x%4.4x)\n",
+		printf("  ML Execution Address : %d ($%4.4x)\n",
 		       cecb_path->dir_entry.
 		       ml_exec_address1 << 8 | cecb_path->dir_entry.
 		       ml_exec_address2,
@@ -190,7 +190,7 @@ static int do_fstat(char **argv, char *p)
 		       ml_exec_address1 << 8 | cecb_path->dir_entry.
 		       ml_exec_address2);
 
-		printf("             File Size : %d bytes (0x%4.4x)\n", size,
+		printf("             File Size : %d bytes ($%4.4x)\n", size,
 		       size);
 	}
 
