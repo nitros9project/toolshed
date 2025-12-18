@@ -483,7 +483,7 @@ static error_code validate_pathlist(cecb_path_id path, char *pathlist)
 			return -1;
 		}
 		
-		stpcpy(path->imgfile, pathlist);
+		strcpy(path->imgfile, pathlist);
 		
 		for (j = 0; j < 8; j++)
 		{
