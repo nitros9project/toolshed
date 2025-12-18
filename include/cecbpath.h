@@ -79,7 +79,6 @@ typedef struct
 } cecb_file_stat, *Cecb_file_stat;
 
 typedef enum { NONE=0, CAS, C10, WAV } _tape_type;
-// typedef enum { AUTO=0, ODD, EVEN } _wave_parity;
 
 typedef union
 {
