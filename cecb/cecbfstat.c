@@ -3,6 +3,7 @@
  *
  * $Id$
  ********************************************************************/
+#include "cocopath.h"
 #include <util.h>
 #include <string.h>
 #include <sys/types.h>
@@ -85,8 +86,7 @@ int cecbfstat(int argc, char *argv[])
 		return (0);
 	}
 
-
-	return (0);
+	return (ec);
 }
 
 
@@ -95,12 +95,10 @@ static int do_fstat(char **argv, char *p)
 	error_code ec = 0;
 	_path_type path_type;
 	coco_path_id path;
-	u_char *buffer = NULL;
-	u_int size;
 
 	/* 1. Open a path to the device. */
 
-	ec = _coco_open_read_whole_file(&path, p, FAM_READ, &buffer, &size);
+	ec = _coco_open(&path, p, FAM_READ);
 
 	if (ec != 0)
 		return ec;
@@ -189,13 +187,11 @@ static int do_fstat(char **argv, char *p)
 		       cecb_path->dir_entry.
 		       ml_exec_address1 << 8 | cecb_path->dir_entry.
 		       ml_exec_address2);
-
-		printf("             File Size : %d bytes ($%4.4x)\n", size,
-		       size);
 	}
-
-	if (buffer != NULL)
-		free(buffer);
+	else
+	{
+		printf("Not cassette type file.\n");
+	}
 
 	_coco_close(path);
 

@@ -213,7 +213,7 @@ error_code _cecb_read_bits_wav(cecb_path_id path, int count,
 			
 			int wave = path->wav_crossings[0] - path->wav_crossings[2];
 			
-			if (wave > (0.002 * path->wav_sample_rate))
+			if (wave > (0.004 * path->wav_sample_rate))
 			{
 				path->wav_mode = 0;
 				return 0;

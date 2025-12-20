@@ -185,7 +185,7 @@ error_code _cecb_read_next_block(cecb_path_id path, unsigned char *block_type,
 
 	checksum = *block_type + *block_length;
 
-// 	printf( "\nLength: %d\n", *block_length );
+// 	printf( "\nblock type: %d, Length: %d\n", *block_type, *block_length );
 
 	for (i = 0; i < *block_length; i++)
 	{
