@@ -548,6 +548,7 @@ This command is intended to work on the host file system only.
 <tr><td>-ds</td><td>double sided</td></tr>
 <tr><td>-tX</td><td>tracks (default = 35)</td></tr>
 <tr><td>-stX</td><td>sectors per track (default = 18)</td></tr>
+<tr><td>-iX</td><td>interleave (default = 3)</td></tr>
 <tr><td>-dr</td><td>format a Dragon disk</td></tr>
 </table>
 

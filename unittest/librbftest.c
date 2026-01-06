@@ -18,14 +18,14 @@ void test_os9_format()
 	int clusterSize = 0;
 
 	ec = _os9_format("test.dsk", 0, 35, 18, 18, 1, 256, &clusterSize, "Test Disk", 8, 8,
-			 1, 1, 0, 0, &totalSectors, &totalBytes);
+			 1, 1, 0, 0, 3, &totalSectors, &totalBytes);
 	ASSERT_EQUALS(0, ec);
 	ASSERT_EQUALS(1, clusterSize);
 
 	// test format of a non-existent disk image with a disk name that is way too long
 	ec = _os9_format("test.dsk", 0, 35, 18, 18, 1, 256, &clusterSize,
 			 "Test Disk with filename that is way too long for the field",
-			 8, 8, 1, 1, 0, 0, &totalSectors, &totalBytes);
+			 8, 8, 1, 1, 0, 0, 3, &totalSectors, &totalBytes);
 	ASSERT_EQUALS(0, ec);
 
 
@@ -60,7 +60,7 @@ void test_os9_format()
 	ec = _os9_format("test.dsk", /*68k=*/0,
 			/*tracks=*/125, /*sPT=*/4, /*sT0=*/4, /*heads=*/130, /*sSize=*/256, &clusterSize,
 			 "HD-Test",
-			 /*sas=*/8, /*tpi=*/0, /*density=*/0, /*fE=*/1, /*isD=*/0, /*isHDD=*/1,
+			 /*sas=*/8, /*tpi=*/0, /*density=*/0, /*fE=*/1, /*isD=*/0, /*isHDD=*/1, /*interleave-*/3,
 			 &totalSectors, &totalBytes);
 	ASSERT_EQUALS(0, ec);
 	ASSERT_EQUALS(65000, totalSectors);
@@ -287,7 +287,7 @@ void test_os9_file_allocation()
 	unsigned int totalSectors, totalBytes;
 	int clusterSize = 0;
 	ec = _os9_format("test_alloc.dsk", 0, 80, 18, 18, 2, 256, &clusterSize, "Test Allo", 8, 8,
-			 1, 1, 0, 0, &totalSectors, &totalBytes);
+			 1, 1, 0, 0, 3, &totalSectors, &totalBytes);
 
 	/* Record free space */
 	char dname[64];

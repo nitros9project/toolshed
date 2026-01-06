@@ -35,6 +35,7 @@ static char const *const helpMessage[] = {
 	"     -tX  = tracks (default = 35)\n",
 	"     -stX = sectors per track (default = 18)\n",
 	"     -szX = sectors for track 0 (default = 18)\n",
+	"     -iX  = interleave (default = 3)\n",
 	"     -dr  = format a Dragon disk\n",
 	" Hard Drive Options:\n",
 	"     -lX  = number of logical sectors (floppy options ignored)\n",
@@ -42,6 +43,7 @@ static char const *const helpMessage[] = {
 };
 
 #define DEF_SECTORS_TRACK	18
+#define DEF_INTERLEAVE		 3
 
 int os9format(int argc, char **argv)
 {
@@ -60,6 +62,7 @@ int os9format(int argc, char **argv)
 	int quiet = 0;		/* assume chatter */
 	int clusterSize = 0;	/* assume no cluster size */
 	int sectorAllocationSize = 8;	/* default */
+	int interleave = DEF_INTERLEAVE;
 	int os968k = 0;		/* assume OS-9/6809 LSN0 */
 	int formatEntire = 0;	/* format entire disk image */
 	int isDragon = 0;	/* format disk as Dragon, with reserved boot sectors at begining */
@@ -201,6 +204,12 @@ int os9format(int argc, char **argv)
 						p++;
 					break;
 
+				case 'i':	/* interleave */
+					interleave = atoi(p + 1);
+					while (*(p + 1) != '\0')
+						p++;
+					break;
+
 				case 't':	/* tracks */
 					tracks = atoi(p + 1);
 					while (*(p + 1) != '\0')
@@ -295,8 +304,8 @@ int os9format(int argc, char **argv)
 					    heads, bytesPerSector, &clusterSize,
 					    diskName, sectorAllocationSize,
 					    tpi, density, formatEntire,
-					    isDragon, isHDD, &totalSectors,
-					    &totalBytes);
+					    isDragon, isHDD, interleave,
+					    &totalSectors, &totalBytes);
 
 			if (ec == 0)
 			{

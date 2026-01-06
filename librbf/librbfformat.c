@@ -20,7 +20,7 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 			   int heads, int sectorSize,
 		       int *clusterSize, char *diskName,
 		       int sectorAllocationSize, int tpi, int density,
-		       int formatEntire, int isDragon, int isHDD,
+		       int formatEntire, int isDragon, int isHDD, int interleave,
 		       unsigned int *totalSectors, unsigned int *totalBytes)
 {
 	error_code ec = 0;
@@ -183,7 +183,7 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 	_int2(sectorsPerTrack, s0.pd_sct);
 	_int2(sectorsTrack0, s0.pd_t0s);
 
-	_int1(3, s0.pd_ilv);
+	_int1(interleave, s0.pd_ilv);
 	_int1(sectorAllocationSize, s0.pd_sas);
 
 	if (os968k == 1)

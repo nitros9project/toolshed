@@ -118,7 +118,7 @@ void create_disk(char *name)
 	unsigned int totalSectors, totalBytes;
 	int clusterSize = 0;
 	ec = _os9_format(name, 0, 80, 18, 18, 2, 256, &clusterSize, "Test LTS", 8, 8,
-			 1, 1, 0, 0, &totalSectors, &totalBytes);
+			 1, 1, 0, 0, 3, &totalSectors, &totalBytes);
 	ASSERT_EQUALS(0, ec);
 }
 
