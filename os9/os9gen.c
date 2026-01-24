@@ -399,6 +399,7 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 		if (!is_single_segment(fdbuf) && extended == 0)
 		{
 			printf("Error: %s is fragmented\n", bootfile);
+			_coco_close(cpath);
 			_os9_close(opath);
 			return (1);
 		}
@@ -407,6 +408,7 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 		bootfile_LSN = opath->pl_fd_lsn;
 		bootfile_Data = int3(fdbuf.fd_seg[0].lsn);
 
+		_coco_close(cpath);
 		_os9_close(opath);
 
 		/* Link the passed bootfile to LSN0 */
