@@ -930,6 +930,8 @@ static int term_bitmap(os9_path_id path)
  */
 static int init_lsn0(os9_path_id path)
 {
+	int is_osk;
+
 	/* 1. Allocate 256 bytes for LSN0. */
 
 	path->lsn0 = (lsn0_sect *) malloc(1 * 256);
@@ -948,6 +950,8 @@ static int init_lsn0(os9_path_id path)
 	/* 3. Read 256 byte LSN0. */
 
 	fread(path->lsn0, 1, 256, path->fd);
+
+	is_osk = (memcmp(path->lsn0->dd_sync, "Cruz", 4) == 0);
 
 
 	/* 4. Compute bytes per sector from LSN0's lsnsize field. */
@@ -972,7 +976,8 @@ static int init_lsn0(os9_path_id path)
 	/* 5. Determine proper sectors per track */
 
 	path->spt = int2(path->lsn0->dd_spt);
-	path->t0s = int2(path->lsn0->pd_t0s);
+	path->t0s = int2(is_osk ? path->lsn0->dd_opt.m6809.pd_t0s
+				: path->lsn0->dd_opt.m6809.pd_t0s);
 
 	if (path->t0s == 0)
 	{

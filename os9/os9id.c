@@ -110,6 +110,7 @@ static int do_id(char **argv, char *p)
 		char *p;
 		lsn0_sect buffer;
 		u_int size = sizeof(buffer);
+		int is_osk;
 
 		/* read LSN0 */
 		ec = _os9_read(path, &buffer, &size);
@@ -180,7 +181,8 @@ static int do_id(char **argv, char *p)
 		       OS9StringToCString((u_char *) p));
 
 		/* Attempt to identify an OS-9/68K os9 formatted disk image */
-		if (int4(buffer.dd_sync) == 0x4372757A)
+		is_osk = (int4(buffer.dd_sync) == 0x4372757A);
+		if (is_osk)
 		{
 			printf("  Sync Bytes      :   $4372757A (CRUZ)\n");
 			printf("  Bitmap Sector   :   %d\n",
@@ -190,6 +192,8 @@ static int do_id(char **argv, char *p)
 		}
 		{
 			int bytesPerSector = 256;
+			u_char *pd_t0s = is_osk ? buffer.dd_opt.m68k.pd_t0s
+						: buffer.dd_opt.m6809.pd_t0s;
 
 			if (int1(buffer.dd_lsnsize) > 0)
 			{
@@ -197,7 +201,7 @@ static int do_id(char **argv, char *p)
 					int1(buffer.dd_lsnsize) * 256;
 			}
 			printf("  Bytes/Sector    :   %d\n", bytesPerSector);
-			printf("  Sectors Track 0 :   %d\n", int2(buffer.pd_t0s));
+			printf("  Sectors Track 0 :   %d\n", int2(pd_t0s));
 		}
 	}
 
