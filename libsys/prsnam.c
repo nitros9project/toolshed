@@ -41,10 +41,9 @@ error_code _os9_prsnam(const char *filename)
 error_code _decb_prsnam(const char *filename)
 {
 	error_code ec = 0;
-	char *dot;
 
 	/* 1. Check if filename contains a dot */
-	dot = strchr(filename, '.');
+	const char *dot = strchr(filename, '.');
 
 	if (dot != NULL)
 	{
