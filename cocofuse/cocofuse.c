@@ -343,8 +343,8 @@ static int coco_rename(const char *path, const char *newname)
 	 *    - If so just rename.
 	 *    - If not, rename then delete orginal.
 	 */
-	p1 = strrchr(path, '/');
-	p2 = strrchr(newname, '/');
+	p1 = strrchr((char *)path, '/');
+	p2 = strrchr((char *)newname, '/');
 
 	if (p1 == NULL || p2 == NULL)
 	{
