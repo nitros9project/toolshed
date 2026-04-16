@@ -174,6 +174,8 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 		int startlsn;
 		error_code ec;
 		char boottrack[256 * 18];
+		u_char *pd_sct, *pd_cyl, *pd_sid, *pd_typ;
+		int is_osk;
 
 
 		/* 1. Open the device raw and read LSB0 */
@@ -202,9 +204,26 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 
 		clusterSize = int2(LSN0.dd_bit);
 
+		is_osk = (memcmp(LSN0.dd_sync, "Cruz", 4) == 0);
+
+		if (is_osk != 0)
+		{
+			pd_sct = LSN0.dd_opt.m68k.pd_sct;
+			pd_cyl = LSN0.dd_opt.m68k.pd_cyl;
+			pd_sid = LSN0.dd_opt.m68k.pd_sid;
+			pd_typ = LSN0.dd_opt.m68k.pd_typ;
+		}
+		else
+		{
+			pd_sct = LSN0.dd_opt.m6809.pd_sct;
+			pd_cyl = LSN0.dd_opt.m6809.pd_cyl;
+			pd_sid = LSN0.dd_opt.m6809.pd_sid;
+			pd_typ = LSN0.dd_opt.m6809.pd_typ;
+		}
+
 		/*  Diagnostic output */
 
-		/* printf("Sectors per track: %d, Heads: %d, Disk Type: %d, Total Sectors: %d \n", int2(LSN0.pd_sct), int1(LSN0.pd_sid), int1(LSN0.pd_typ), int3(LSN0.dd_tot)); */
+		/* printf("Sectors per track: %d, Heads: %d, Disk Type: %d, Total Sectors: %d \n", int2(pd_sct), int1(pd_sid), int1(pd_typ), int3(LSN0.dd_tot)); */
 
 		/* 2. Determine startlsn based on single or double-sided device */
 
@@ -216,12 +235,12 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 		{
 			printf("Dragon boottrack selected: ");
 			/* Check to make sure the disk image has minimum of 18 sectors per track */
-			if (int2(LSN0.pd_sct) < 18)
+			if (int2(pd_sct) < 18)
 			{
 				printf("\n");
 				fprintf(stderr,
 					"Error: minimum sectors per track of 18 required for DragonDOS, found %d\n",
-					int2(LSN0.pd_sct));
+					int2(pd_sct));
 				_os9_close(opath);
 				return (1);
 			}
@@ -239,36 +258,36 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 			{
 				/* Check to see if disk image is a HDD image if so set for default  */
 				/* startLSN of 612 for the boottrack for use with CoCoSDC and DriveWire HDD images */
-				if (int1(LSN0.pd_typ) == 0x80)
+				if (int1(pd_typ) == 0x80)
 				{
 					startlsn = 612;
 				}
 				else
 				{
 					/* Check to make sure the disk image has minimum of 18 sectors per track */
-					if (int2(LSN0.pd_sct) < 18)
+					if (int2(pd_sct) < 18)
 					{
 						printf("\n");
 						fprintf(stderr,
 							"Error: minimum sectors per track of 18 required for Disk Basic, found %d\n",
-							int2(LSN0.pd_sct));
+							int2(pd_sct));
 						_os9_close(opath);
 						return (1);
 					}
 					/* Check to make sure the disk image has minimum of 35 tracks */
-					if (int2(LSN0.pd_cyl) < 35)
+					if (int2(pd_cyl) < 35)
 					{
 						printf("\n");
 						fprintf(stderr,
 							"Error: minimum number of tracks required for Disk Basic is 35, found %d\n",
-							int2(LSN0.pd_cyl));
+							int2(pd_cyl));
 						_os9_close(opath);
 						return (1);
 					}
 					/* Use real floppy disk geometry to figure out real startLSN for boottrack */
 					startlsn =
-						34 * int2(LSN0.pd_sct) *
-						int1(LSN0.pd_sid);
+						34 * int2(pd_sct) *
+						int1(pd_sid);
 				}
 			}
 		}

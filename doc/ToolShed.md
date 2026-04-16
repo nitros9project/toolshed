@@ -645,7 +645,7 @@ This command will work on RBF disk images only.
 
 #### Description
 
-The gen command gives a disk image the ability to become a bootable disk for a CoCo or Dragon machine.
+The gen command gives a disk image the ability to become a bootable disk for a CoCo, Dragon or MM/1.
 
 ---
 

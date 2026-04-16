@@ -62,30 +62,58 @@ typedef struct
 		dd_bt[3],
 		dd_bsz[2],
 		dd_dat[5],
-		dd_nam[32],
-		/* These used to be called dd_opt[32] */
-			pd_dtp[1],
-			pd_drv[1],
-			pd_stp[1],
-			pd_typ[1],
-			pd_dns[1],
-			pd_cyl[2],
-			pd_sid[1],
-			pd_vfy[1],
-			pd_sct[2],
-			pd_t0s[2],
-			pd_ilv[1],
-			pd_sas[1],
-			pd_tfm[1],
-			pd_exten[2],
-			pd_stoff[1],
-			pd_att[1],
-			pd_fd[3],
-			pd_dfd[3],
-			pd_dcp[4],
-			pd_dvt[2],
-		/* These are used by OS-9/68K */
-		dd_res1[1],
+		dd_nam[32];
+	/* These used to be called dd_opt[32] */
+	union
+	{
+		struct
+		{
+			u_char	pd_dtp[1],
+				pd_drv[1],
+				pd_stp[1],
+				pd_typ[1],
+				pd_dns[1],
+				pd_cyl[2],
+				pd_sid[1],
+				pd_vfy[1],
+				pd_sct[2],
+				pd_t0s[2],
+				pd_ilv[1],
+				pd_sas[1],
+				pd_tfm[1],
+				pd_exten[2],
+				pd_stoff[1],
+				pd_att[1],
+				pd_fd[3],
+				pd_dfd[3],
+				pd_dcp[4],
+				pd_dvt[2];
+		} m6809;
+		struct {
+			u_char	pd_dtp[1],
+				pd_drv[1],
+				pd_stp[1],
+				pd_typ[1],
+				pd_dns[1],
+				pd_res1[1],
+				pd_cyl[2],
+				pd_sid[1],
+				pd_vfy[1],
+				pd_sct[2],
+				pd_t0s[2],
+				pd_sas[2],
+				pd_ilv[1],
+				pd_tfm[1],
+				pd_toffs[1],
+				pd_soffs[1],
+				pd_ssize[2],
+				pd_cntl[2],
+				pd_trys[1];
+		} m68k;
+	} dd_opt;
+
+	/* These are used by OS-9/68K */
+	u_char	dd_res2[1],
 		dd_sync[4],		/* CRUZ */
 		dd_maplsn[4],
 		dd_lsnsize[2],

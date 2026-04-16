@@ -129,21 +129,25 @@ int _os9_getfreebit(u_char * bitmap, int total_sectors)
 
 error_code _os9_getSASSegment(os9_path_id path, int *cluster, int *size)
 {
-	unsigned int pd_sas = int1(path->lsn0->pd_sas);
+	int is_osk = (memcmp(path->lsn0->dd_sync, "Cruz", 4) == 0);
+
+	unsigned int pd_sas = is_osk ? int2(path->lsn0->dd_opt.m68k.pd_sas)
+				     : int1(path->lsn0->dd_opt.m6809.pd_sas);
+
 	unsigned int pd_tot = int3(path->lsn0->dd_tot);
 	u_int i, count;
 	u_int prev_free;
 
-
 	/* Sanity check pd_sas */
-
 	if (pd_sas < 1 || pd_sas > (pd_tot / 2))
 	{
 		pd_sas = 1;
 
-		_int1(pd_sas, path->lsn0->pd_sas);
+		if (is_osk)
+			_int2(pd_sas, path->lsn0->dd_opt.m68k.pd_sas);
+		else
+			_int1(pd_sas, path->lsn0->dd_opt.m6809.pd_sas);
 	}
-
 
 	/* Adjust pd_sas so that it is at least a multiple of the
 	 * cluster size

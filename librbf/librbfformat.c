@@ -166,40 +166,59 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 		s0.dd_nam[i] = sizedDiskName[i] | 128;
 	}
 
-	_int1(DT_os9, s0.pd_dtp);
-	_int1(1, s0.pd_drv);
-	_int1(0, s0.pd_stp);
-	if (isHDD)
-		_int1(0x80, s0.pd_typ);
-	else
-		_int1(0x20, s0.pd_typ);
-	_int1(1, s0.pd_dns);
-
-	_int2(tracks, s0.pd_cyl);
-
-	_int1(heads, s0.pd_sid);
-	_int1(0, s0.pd_vfy);
-
-	_int2(sectorsPerTrack, s0.pd_sct);
-	_int2(sectorsTrack0, s0.pd_t0s);
-
-	_int1(interleave, s0.pd_ilv);
-	_int1(sectorAllocationSize, s0.pd_sas);
-
 	if (os968k == 1)
 	{
-		/* Build LSN0 for OS-9/68K */
+		/*
+		 * OS-9/68K (OSK) uses a different DD.OPT layout (rbf_opt prefix).
+		 * In particular, there is a pad byte (pd_res1) after pd_dns, and
+		 * some fields are 16-bit (e.g. pd_sas, pd_ssize).
+		 */
 
-		/* put sync bytes */
-		_int4(0x4372757A, s0.dd_sync);
-		/* put bitmap starting sector number */
+		_int1(DT_os9, s0.dd_opt.m68k.pd_dtp);
+		_int1(0, s0.dd_opt.m68k.pd_drv);
+		_int1(3, s0.dd_opt.m68k.pd_stp);
+		_int1(isHDD ? 0x80 : 0x21, s0.dd_opt.m68k.pd_typ);
+		_int1(3, s0.dd_opt.m68k.pd_dns);
+		_int1(0, s0.dd_opt.m68k.pd_res1);
+		_int2(tracks, s0.dd_opt.m68k.pd_cyl);
+		_int1(heads, s0.dd_opt.m68k.pd_sid);
+		_int1(0, s0.dd_opt.m68k.pd_vfy);
+		_int2(sectorsPerTrack, s0.dd_opt.m68k.pd_sct);
+		_int2(sectorsTrack0, s0.dd_opt.m68k.pd_t0s);
+		_int2(sectorAllocationSize, s0.dd_opt.m68k.pd_sas);
+		_int1(interleave, s0.dd_opt.m68k.pd_ilv);
+
+		_int2(sectorSize, s0.dd_opt.m68k.pd_ssize);
+		_int1(7, s0.dd_opt.m68k.pd_trys);
+		_int4(0x4372757A, s0.dd_sync); 	/* "Cruz" to mark as OSK) */
 		_int4(1, s0.dd_maplsn);
-		/* put sector 0 version ID */
 		_int2(1, s0.dd_versid);
+		_int2(sectorSize, s0.dd_lsnsize);
+	}
+	else
+	{
+		/* OS-9/6809-style packed DD.OPT layout (existing behavior) */
+		_int1(DT_os9, s0.dd_opt.m6809.pd_dtp);
+		_int1(1, s0.dd_opt.m6809.pd_drv);
+		_int1(0, s0.dd_opt.m6809.pd_stp);
+		_int1(isHDD ? 0x80 : 0x20, s0.dd_opt.m6809.pd_typ);
+		_int1(1, s0.dd_opt.m6809.pd_dns);
+
+		_int2(tracks, s0.dd_opt.m6809.pd_cyl);
+
+		_int1(heads, s0.dd_opt.m6809.pd_sid);
+		_int1(0, s0.dd_opt.m6809.pd_vfy);
+
+		_int2(sectorsPerTrack, s0.dd_opt.m6809.pd_sct);
+		_int2(sectorsTrack0, s0.dd_opt.m6809.pd_t0s);
+
+		_int1(interleave, s0.dd_opt.m6809.pd_ilv);
+		_int1(sectorAllocationSize, s0.dd_opt.m6809.pd_sas);
+		/* put bytes per sector */
+		_int1(sectorSize / 256, s0.dd_lsnsize);
 	}
 
-	/* put bytes per sector */
-	_int1(sectorSize / 256, s0.dd_lsnsize);
+
 
 	/***** Write LSN0 *****/
 	{
