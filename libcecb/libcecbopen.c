@@ -1,14 +1,14 @@
 /********************************************************************
- * libcebcopen.c - Cassette BASIC open/create routines
+ * libcecbopen.c - Cassette BASIC open/create routines
  *
  * $Id$
  ********************************************************************/
 
 #include "cecbpath.h"
 
-double cecb_threshold = 0.1;
-double cecb_frequency = 0;
-_wave_parity cecb_wave_parity = AUTO;
+double cecb_ratio = 1.85;
+double cecb_threshold = 0.2;
+double cecb_zero_adjust = 0.00001;
 long cecb_start_sample = 0;
 int cecb_suggest_mc10 = 0;
 
@@ -76,9 +76,8 @@ error_code _cecb_create(cecb_path_id * path, char *pathlist, int mode,
 	/* 4. Open and determine CAS or WAV and fill in data structors */
 
 	(*path)->play_at = cecb_start_sample;
-	(*path)->wav_threshold = cecb_threshold;
-	(*path)->wav_frequency_limit = cecb_frequency;
-	(*path)->wav_parity = cecb_wave_parity;
+	(*path)->wav_ratio_high = cecb_ratio + (cecb_ratio * cecb_threshold);
+	(*path)->wav_ratio_low = cecb_ratio - (cecb_ratio * cecb_threshold);
 
 	ec = parse_header(*path);
 
@@ -134,7 +133,7 @@ error_code _cecb_create(cecb_path_id * path, char *pathlist, int mode,
 	}
 	else
 	{
-		fprintf(stderr, "Unknown error\n");
+		fprintf(stderr, "Unknown tape type\n");
 		return -1;
 	}
 
@@ -194,16 +193,13 @@ error_code _cecb_create(cecb_path_id * path, char *pathlist, int mode,
 		return ec;
 	}
 
-	if ((*path)->dir_entry.gap_flag == 0)
+	ec = _cecb_write_leader(*path);
+
+	if (ec != 0)
 	{
-		ec = _cecb_write_leader(*path);
+		term_pd(*path);
 
-		if (ec != 0)
-		{
-			term_pd(*path);
-
-			return ec;
-		}
+		return ec;
 	}
 
 	/* Get ready for data blocks */
@@ -221,7 +217,7 @@ error_code _cecb_create(cecb_path_id * path, char *pathlist, int mode,
  *
  * 1. imagename,      (considered to be a 'raw' open of the image)
  * 2. imagename,file  (considered to be a file open within the image)
- * 3. imagename       (considered to be an error)
+ * 3. imagename       (considered to be an error, without FAM_RAW)
 */
 
 error_code _cecb_open(cecb_path_id * path, char *pathlist, int mode)
@@ -258,7 +254,6 @@ error_code _cecb_open(cecb_path_id * path, char *pathlist, int mode)
 		return ec;
 	}
 
-
 	/* 4. Determine if Cassette is being open in raw mode. (We know it is raw mode if there is no filename). */
 
 	if (strncmp((*path)->filename, "        ", 8) == 0)
@@ -279,6 +274,10 @@ error_code _cecb_open(cecb_path_id * path, char *pathlist, int mode)
 		}
 	}
 
+	if (mode & FAM_RAW)
+	{
+		(*path)->israw = 1;
+	}
 
 	/* 5. Open a path to the image file. */
 
@@ -303,9 +302,8 @@ error_code _cecb_open(cecb_path_id * path, char *pathlist, int mode)
 	/* 6. Open and determine CAS or WAV and fill in data structors */
 
 	(*path)->play_at = cecb_start_sample;
-	(*path)->wav_threshold = cecb_threshold;
-	(*path)->wav_frequency_limit = cecb_frequency;
-	(*path)->wav_parity = cecb_wave_parity;
+	(*path)->wav_ratio_high = cecb_ratio + (cecb_ratio * cecb_threshold);
+	(*path)->wav_ratio_low = cecb_ratio - (cecb_ratio * cecb_threshold);
 
 	ec = parse_header(*path);
 
@@ -475,9 +473,22 @@ static error_code validate_pathlist(cecb_path_id path, char *pathlist)
 
 	if ((p = strchr(pathlist, ',')) == NULL)
 	{
-		/* 1. No native/Cassette delimiter in pathlist, return error. */
+		/* 1. Copy basefile name, and blank out filename */
 
-		ec = EOS_BPNAM;
+		path->imgfile = malloc(strlen(pathlist)+1);
+		
+		if( path->imgfile == NULL )
+		{
+			fprintf(stderr, "NULL imgfile\n");
+			return -1;
+		}
+		
+		strcpy(path->imgfile, pathlist);
+		
+		for (j = 0; j < 8; j++)
+		{
+			path->filename[j] = ' ';
+		}
 	}
 	else
 	{
@@ -485,6 +496,11 @@ static error_code validate_pathlist(cecb_path_id path, char *pathlist)
 
 		/* path->imgfile = strndup(pathlist, p - pathlist); */
 		path->imgfile = malloc(p - pathlist + 1);
+		if( path->imgfile == NULL )
+		{
+			fprintf(stderr, "NULL imgfile\n");
+			return -1;
+		}
 		memcpy(path->imgfile, pathlist, p - pathlist);
 		path->imgfile[p - pathlist] = '\0';
 

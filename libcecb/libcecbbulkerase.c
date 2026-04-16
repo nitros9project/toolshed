@@ -61,7 +61,7 @@ error_code _cecb_bulkerase(char *path, int sample_rate, int bits_per_sample,
 		4 +		/* RIFF type */
 		4 +		/* fmt  chunk id */
 		4 +		/* fmt  chunk size */
-		18 +		/* fmt  chunk data */
+		18 +	/* fmt  chunk data */
 		4 +		/* data chunk id */
 		4 +		/* data chunk size */
 		silent_samples_bytes;
@@ -89,7 +89,12 @@ error_code _cecb_bulkerase(char *path, int sample_rate, int bits_per_sample,
 		if (bits_per_sample == 8)
 			fwrite_le_char(127, nativepath->fd);
 		else
-			fwrite_le_short(0, nativepath->fd);
+		{
+			for(int j=0; j<bytes_per_sample; j++)
+			{
+				fwrite_le_char(0, nativepath->fd);
+			}
+		}
 	}
 
 	_native_close(nativepath);

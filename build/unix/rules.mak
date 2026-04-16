@@ -4,14 +4,15 @@ VERSION = 2.4.2
 
 MERGE		= cat
 SOFTLINK	= ln -s
-RM		= rm -f
+RM			= rm -f
 INSTALL		= install
 MAKE		= make
 CFLAGS		= -Dunix -DUNIX -O3 -I. -I../../../include -Wall -DTOOLSHED_VERSION=\"$(VERSION)\" -D_FILE_OFFSET_BITS=64 -Wno-unused-result -Werror
-ASM		= rma
-AR		= $(CROSS)ar
+#CFLAGS		+= -g -O0
+ASM			= rma
+AR			= $(CROSS)ar
 RANLIB		= $(CROSS)ranlib
-CC		= $(CROSS)cc
+CC			= $(CROSS)cc
 
 ifneq ($(WIN),)
 SUFEXE		= .exe

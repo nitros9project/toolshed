@@ -23,11 +23,11 @@ static char const *const helpMessage[] = {
 	"Usage:  Cassette BASIC File Tools Executive\n",
 	"        Works with WAV, CAS cand C10 files\n",
 	"Options:\n",
-	"     -t <%>    = Set threshold to remove background noise (for WAV files).\n",
-	"     -f <n>    = Set FSK delineation frequency (for WAV files).\n",
-	"     -p <e|o>  = Set even or odd WAV file parity (for WAV files).\n",
-	"     -s <n>    = Start at sample/bit n in WAV/CAS/C10 file.\n",
-	"     -z        = suggest MC10 mode.\n",
+	"     -r<real> = Set WAV file FSK aspect ratio for autodetection. Default: 1.85\n",
+	"     -t<%>    = Set WAV file FSK aspect ratio threshold. Default: 0.3 (30%)\n",
+	"     -n<%>    = Treat near zero as zero (for WAV files). Default: 0.01 (1%)\n",
+	"     -s<n>    = Start at sample/bit n in WAV/CAS/C10 file.\n",
+	"     -z       = suggest MC10 mode.\n",
 	"                 MC10 type WAV files and use Microcolor BASIC tokens.\n",
 	"\n",
 	"     % is a decimal number between 0 and 1.\n",
@@ -50,6 +50,7 @@ static struct cmdtbl table[] = {
 	{decblist, "list"},
 	{cecbbulkerase, "bulkerase"},
 	{cecbcopy, "copy"},
+	{cecbleader, "leader"},
 	{NULL, NULL}
 };
 
@@ -75,6 +76,19 @@ int main(int argc, char *argv[])
 					return (0);
 					break;
 
+				case 'r':
+					if (strlen(argv[i]) == 2)
+					{
+						i++;
+						cecb_ratio =
+							strtod(argv[i], NULL);
+					}
+					else
+						cecb_ratio =
+							strtod(&(argv[i][2]),
+							       NULL);
+					break;
+
 				case 't':
 					if (strlen(argv[i]) == 2)
 					{
@@ -88,15 +102,15 @@ int main(int argc, char *argv[])
 							       NULL);
 					break;
 
-				case 'f':
+				case 'n':
 					if (strlen(argv[i]) == 2)
 					{
 						i++;
-						cecb_frequency =
+						cecb_zero_adjust =
 							strtod(argv[i], NULL);
 					}
 					else
-						cecb_frequency =
+						cecb_zero_adjust =
 							strtod(&(argv[i][2]),
 							       NULL);
 					break;
@@ -113,28 +127,6 @@ int main(int argc, char *argv[])
 						cecb_start_sample =
 							strtol(&(argv[i][2]),
 							       NULL, 0);
-					break;
-
-				case 'p':
-					if (strlen(argv[i]) == 2)
-					{
-						i++;
-						if (argv[i][0] == 'e')
-							cecb_wave_parity =
-								EVEN;
-						else
-							cecb_wave_parity =
-								ODD;
-					}
-					else
-					{
-						if (argv[i][2] == 'e')
-							cecb_wave_parity =
-								EVEN;
-						else
-							cecb_wave_parity =
-								ODD;
-					}
 					break;
 
 				case 'z':
@@ -164,7 +156,7 @@ int main(int argc, char *argv[])
 	if (ec != 0 )
 	{
 		fprintf(stderr, "Error: %d - %s\n", ec, TSReportError(ec));
-	}
+ 	}
 
 	return (ec);
 }

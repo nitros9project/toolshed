@@ -11,10 +11,9 @@
 #include "cecbpath.h"
 
 
-error_code _cecb_seek(cecb_path_id path, int pos, int mode)
+error_code _cecb_seek(cecb_path_id path, long pos, int mode)
 {
 	error_code ec = 0;
-
 
 	if (path->israw == 1)
 	{

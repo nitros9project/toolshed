@@ -44,6 +44,7 @@ typedef enum { NATIVE, OS9, DECB, CECB } _path_type;
 #define EOS_SE		247
 #define EOS_DF		248
 #define EOS_WT		249
+#define EOS_TIMEOUT 1024
 
 /* file access modes */
 #define	FAM_READ	0x0001
@@ -51,6 +52,7 @@ typedef enum { NATIVE, OS9, DECB, CECB } _path_type;
 #define	FAM_EXEC	0x0004
 #define FAM_DIR		0x0080
 #define FAM_NOCREATE	0x0100
+#define FAM_RAW		0x0200
 
 /* file access permissions */
 #define FAP_READ	0x01

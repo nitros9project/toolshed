@@ -5,85 +5,20 @@
  ********************************************************************/
 
 #include "math.h"
+#include <limits.h>
 #include "cecbpath.h"
 
 #define PI 3.1415926
 
-static error_code analyze_wav_leader(cecb_path_id path);
-static double movingavg(int which, double newvalue);
-static int numbers_close_double(double a, double b, double p);
-static int numbers_close_signed(int a, int b, double p);
-static error_code advance_to_next_zero_crossing(cecb_path_id path, int *diff);
-static error_code advance_to_next_lo_to_hi(cecb_path_id path, int *diff);
-static error_code advance_to_next_hi_to_lo(cecb_path_id path, int *diff);
-static void build_sinusoidal_bufer_8(_wave_parity parity,
-				     unsigned char *buffer, int length);
-static void build_sinusoidal_bufer_16(_wave_parity parity, short *buffer,
-				      int length);
-static void build_MC10_bufer_8(_wave_parity parity,
-				     unsigned char *buffer, int length);
-static void build_MC10_bufer_16(_wave_parity parity, short *buffer,
-				      int length);
-
-/*
- * _cecb_read_bits_wav()
- *
- * Read 'count' bits and return the result.
- *
- * Count must be from 1 to 8.
- * Returned bit are left aligned in unsigned char.
- */
-
-error_code _cecb_read_bits_wav(cecb_path_id path, int count,
-			       unsigned char *result)
-{
-	error_code ec = 0;
-	double freq;
-	int diff;
-
-	*result = 0;
-
-	while (count > 0)
-	{
-		if (path->wav_parity == EVEN)
-			ec = advance_to_next_lo_to_hi(path, &diff);
-		else if (path->wav_parity == ODD)
-			ec = advance_to_next_hi_to_lo(path, &diff);
-		else
-		{
-			*result = 0;
-			return EOS_IA;
-		}
-
-		if (ec != 0)
-			return ec;
-
-		if (path->wav_current_sample > path->wav_total_samples)
-		{
-			*result = 0;
-			return EOS_EOF;
-		}
-
-		freq = ((float) path->wav_sample_rate / (float) diff);
-
-		if (freq < path->wav_frequency_limit)	/* 1200 Hz range */
-			(*result) >>= 1;
-		else		/* 2400 HZ range */
-		{
-			(*result) >>= 1;
-			(*result) |= 0x80;
-		}
-
-		count--;
-	}
-
-	return 0;
-}
+static void build_sinusoidal_bufer_8(unsigned char *buffer, int length, int mc10);
+static void build_sinusoidal_bufer_16(short *buffer, int length, int mc10);
+static void build_sinusoidal_buffer_24(uint8_t *buffer, int length, int mc10);
+static void build_sinusoidal_buffer_32(uint8_t *buffer, int length, int mc10);
 
 /*
  * _cecb_parse_riff()
  *
- * Parse RIFF and WAV headers.
+ * Parse RIFF for WAV headers.
  *
  */
 
@@ -117,14 +52,13 @@ error_code _cecb_parse_riff(cecb_path_id path)
 
 		if (strncmp((char *) data, "fmt ", 4) == 0)
 		{
-			unsigned short fmt_compression, fmt_channel_count,
-				fmt_block_align;
+			unsigned short fmt_channel_count, fmt_block_align;
 			unsigned int fmt_bytes_per_second;
 
 			if (chunk_length != 16)
 				return EOS_WT;
 
-			if (fread_le_short(&fmt_compression, path->fd) != 2)
+			if (fread_le_short(&(path->wav_audioFormat), path->fd) != 2)
 				return EOS_WT;
 			if (fread_le_short(&fmt_channel_count, path->fd) != 2)
 				return EOS_WT;
@@ -140,18 +74,44 @@ error_code _cecb_parse_riff(cecb_path_id path)
 			    (&(path->wav_bits_per_sample), path->fd) != 2)
 				return EOS_WT;
 
-			if (fmt_compression != 1)
-				return EOS_WT;
-
 			if (fmt_channel_count != 1)
 				return EOS_WT;
 
-			if (path->wav_bits_per_sample == 8)
-				path->wav_zero_value = 127;
-			else if (path->wav_bits_per_sample == 16)
-				path->wav_zero_value = 0;
+			if (path->wav_bits_per_sample == 8 && path->wav_audioFormat == 1)
+			{
+				path->wav_zero_high.uc_value = 127 + (cecb_zero_adjust * 128.0);
+				path->wav_zero_low.uc_value = 128 - (cecb_zero_adjust * 128.0);
+			}
+			else if (path->wav_bits_per_sample == 16 && path->wav_audioFormat == 1)
+			{	
+				path->wav_zero_high.s_value = (cecb_zero_adjust * 32767.0);
+				path->wav_zero_low.s_value = -(cecb_zero_adjust * 32767.0);
+			}
+			else if (path->wav_bits_per_sample == 24 && path->wav_audioFormat == 1)
+			{
+				path->wav_zero_high.i_value = (cecb_zero_adjust * 8388607.0);
+				path->wav_zero_low.i_value = -(cecb_zero_adjust * 8388607.0);
+			}
+			else if (path->wav_bits_per_sample == 32 && path->wav_audioFormat == 1)
+			{
+				path->wav_zero_high.i_value = (cecb_zero_adjust * INT32_MAX);
+				path->wav_zero_low.i_value = -(cecb_zero_adjust * INT32_MAX);
+			}
+			else if (path->wav_bits_per_sample == 32 && path->wav_audioFormat == 3)
+			{
+				path->wav_zero_high.d_value = cecb_zero_adjust;
+				path->wav_zero_low.d_value = -cecb_zero_adjust;
+			}
+			else if (path->wav_bits_per_sample == 64 && path->wav_audioFormat == 3)
+			{
+				path->wav_zero_high.d_value = cecb_zero_adjust;
+				path->wav_zero_low.d_value = -cecb_zero_adjust;
+			}
 			else
+			{
+				fprintf(stderr, "Unknown WAV format: %d, %d\n", path->wav_bits_per_sample, path->wav_audioFormat);
 				return EOS_WT;
+			}
 
 			found = 1;
 		}
@@ -198,404 +158,313 @@ error_code _cecb_parse_riff(cecb_path_id path)
 	if (found == 0)
 		return EOS_WT;
 
-	path->wav_total_samples = path->wav_data_length / WAV_SAMPLE_MUL;
-	fseek(path->fd, path->play_at * WAV_SAMPLE_MUL, SEEK_CUR);
-	path->wav_current_sample = path->play_at;
+	path->wav_total_samples = path->wav_data_length / (path->wav_bits_per_sample/8);
+	position_tape(path, path->play_at);
 
-	if ((path->wav_frequency_limit == 0) || (path->wav_parity == AUTO))
-		ec = analyze_wav_leader(path);
+	/* Scan rest tape for a leader, this will 
+	 set high and low frequencies and threshold */
+	 
+	advance_to_next_leader(path, 0.0, 0.15);
 
+	position_tape(path, path->play_at);
+	
+	if ((path->mode & FAM_WRITE) == FAM_WRITE)
+		ec = create_sinusoidal_write_buffers(path);
+	
 	return ec;
 }
 
 /*
- * analyze_leader()
+ * _cecb_read_bits_wav()
  *
- * Analyze leader to determine frequency limit and wave parity.
+ * 
  *
  */
 
-static error_code analyze_wav_leader(cecb_path_id path)
+error_code _cecb_read_bits_wav(cecb_path_id path, int count,
+			       unsigned char *result)
 {
-	error_code ec = 0;
-	int i, j, fail = 0;
-	int diff1 = 0, diff2 = 0, diff3 = 0, diff4 = 0, diff5 = 0;
-	double ma1, ma2, ma3, ma4, mah = 1, mal = 1, ratio;
-
-	ratio = movingavg(4, 1.0);	/* Seed ratio with out of range number */
-
-	if (path->wav_frequency_limit == 0)
+	if (path->wav_current_sample >= path->wav_total_samples)
 	{
-		for (i = 0; i < 128; i++)	/* Should be about half the leader */
-		{
-			for (j = 0; j < 4; j++)
-			{
-				diff1 = diff2;
-				diff2 = diff3;
-				diff3 = diff4;
-				diff4 = diff5;
-				ec = advance_to_next_zero_crossing(path,
-								   &diff5);
-			}
-
-			if (ec != 0)
-			{
-				ec = 0;
-				fail = 1;
-				break;
-			}
-
-			ma1 = movingavg(0,
-					(double) path->wav_sample_rate /
-					(diff1 + diff2));
-			ma2 = movingavg(1,
-					(double) path->wav_sample_rate /
-					(diff2 + diff3));
-			ma3 = movingavg(2,
-					(double) path->wav_sample_rate /
-					(diff3 + diff4));
-			ma4 = movingavg(3,
-					(double) path->wav_sample_rate /
-					(diff4 + diff5));
-
-			mal = fmin(fmin(fmin(ma1, ma2), ma3), ma4);
-			mah = fmax(fmax(fmax(ma1, ma2), ma3), ma4);
-
-			ratio = movingavg(4, mal / mah);
-
-			if (numbers_close_double(ratio, 0.5, 0.1) == 1)
-			{
-				if (i > 64)
-					break;
-			}
-		}
-
-		path->wav_frequency_limit = (mal + mah) / 2.0;
+		return EOS_EOF;
 	}
-	else
+	
+	if (count > 8)
 	{
-		if (path->wav_parity == AUTO)
-		{
-			fprintf(stderr,
-				"Error: If you set frequency limit, you need to set parity.\n");
-			return EOS_IA;
-		}
+		return EOS_MF;
 	}
-
-//      printf( "path->wav_frequency_limit = %f, path->wav_threshold = %f\n", path->wav_frequency_limit, path->wav_threshold );
-
-	if (fail == 1)
+	
+	/* pre leader mode */
+	if (path->wav_mode == 0)
 	{
-		/* No leader, image must be blank */
-
-		/* Defined values */
-//              mal = 1200.0;
-//              mah = 2400.0;
-
-		/* Using emperical measurment */
-		mal = 1094.68085106384;
-		mah = 2004.54545454545;
-		path->wav_frequency_limit = (mal + mah) / 2.0;
-
-//              fprintf( stderr, "Frequency limit check failed. Setting parity to even.\n" );
-		if (path->wav_parity == AUTO)
-			path->wav_parity = EVEN;
+		advance_to_next_leader(path, 0, 0.5);
+		path->wav_mode = 1;
 	}
-	else
+	/* post leader mode */
+	else if (path->wav_mode == 1)
 	{
-		if (path->wav_parity == AUTO)
+		while (count--)
 		{
-			if (numbers_close_double(ratio, 0.5, 0.75) == 1)
+			path->wav_crossings[4] = path->wav_crossings[2];
+			path->wav_crossings[3] = path->wav_crossings[1];
+			path->wav_crossings[2] = path->wav_crossings[0];
+			path->wav_crossings[1] = next_zero_crossing(path);
+			path->wav_crossings[0] = next_zero_crossing(path);
+			
+			int wave = path->wav_crossings[0] - path->wav_crossings[2];
+			
+			if (wave > (0.006 * path->wav_sample_rate))
 			{
-				ec = advance_to_next_lo_to_hi(path, &diff1);
-				ec = advance_to_next_zero_crossing(path,
-								   &diff1);
-				ec = advance_to_next_zero_crossing(path,
-								   &diff2);
-
-				if (ec != 0)
-					return ec;
-
-				if (numbers_close_signed
-				    (diff1, diff2,
-				     (path->wav_sample_rate / 11025.0) *
-				     0.2) == 1)
-					path->wav_parity = EVEN;
-				else
-					path->wav_parity = ODD;
+				path->wav_mode = 0;
+				return 0;
+			}
+			
+			if (wave > path->wav_average_sample_count)
+			{	
+				(*result) >>= 1;
 			}
 			else
 			{
-				fprintf(stderr,
-					"Error: Unable to determine wave parity. Set switch manually (%d, %d).\n",
-					diff1, diff2);
-				return EOS_IA;
+				(*result) >>= 1;
+				(*result) |= 0x80;
 			}
 		}
 	}
-
-	/* Create sinusoidal write buffers */
-
-	path->buffer_1200_length =
-		(path->wav_sample_rate / mal) * WAV_SAMPLE_MUL;
-	path->buffer_2400_length =
-		(path->wav_sample_rate / mah) * WAV_SAMPLE_MUL;
-
-	path->buffer_1200 = malloc(path->buffer_1200_length);
-	path->buffer_2400 = malloc(path->buffer_2400_length);
-
-	if ((path->buffer_1200 == NULL) || (path->buffer_2400 == NULL))
-		return -1;
-
-	if (cecb_suggest_mc10)
+	/* error mode */
+	else
 	{
-		if (path->wav_bits_per_sample == 8)
+		fprintf( stderr, "Should never get here\n");
+		exit(-1);
+	}
+	return 0;
+}
+
+/*
+ * next_zero_crossing()
+ *
+ *
+ */
+
+long next_zero_crossing(cecb_path_id path)
+{
+	if (path->wav_bits_per_sample == 8 && path->wav_audioFormat == 1)
+	{
+		while (path->wav_current_sample < path->wav_total_samples)
 		{
-			build_MC10_bufer_8(path->wav_parity, path->buffer_1200,
-						 path->buffer_1200_length);
-			build_MC10_bufer_8(path->wav_parity, path->buffer_2400,
-						 path->buffer_2400_length);
+			path->wav_ss1.uc_value = path->wav_ss2.uc_value;
+			path->wav_ss2.uc_value = fgetc(path->fd);
+			(path->wav_current_sample)++;
+
+			// Crossing from low to high
+			if(path->wav_ss1.uc_value < path->wav_zero_low.uc_value && 
+			   path->wav_ss2.uc_value >= path->wav_zero_low.uc_value)
+			{
+				return path->wav_current_sample;
+			}
+
+			// Crossing from high to low
+			if(path->wav_ss1.uc_value > path->wav_zero_high.uc_value && 
+			   path->wav_ss2.uc_value <= path->wav_zero_high.uc_value)
+			{
+				return path->wav_current_sample;
+			}
 		}
-		else if (path->wav_bits_per_sample == 16)
+	}
+	else if (path->wav_bits_per_sample == 16 && path->wav_audioFormat == 1)
+	{
+		while (path->wav_current_sample < path->wav_total_samples)
 		{
-			build_MC10_bufer_16(path->wav_parity,
-						  (short *) path->buffer_1200,
-						  path->buffer_1200_length / 2);
-			build_MC10_bufer_16(path->wav_parity,
-						  (short *) path->buffer_2400,
-						  path->buffer_2400_length / 2);
+			path->wav_ss1.s_value = path->wav_ss2.s_value;
+			short s;
+			if (fread_le_sshort(&s, path->fd) != 2)
+				return LONG_MAX;
+			path->wav_ss2.s_value = s;
+			(path->wav_current_sample)++;
+			
+			// Crossing from low to high
+			if(path->wav_ss1.s_value < path->wav_zero_low.s_value && 
+			   path->wav_ss2.s_value >= path->wav_zero_low.s_value)
+			{
+				return path->wav_current_sample;
+			}
+
+			// Crossing from high to low
+			if(path->wav_ss1.s_value > path->wav_zero_high.s_value && 
+			   path->wav_ss2.s_value <= path->wav_zero_high.s_value)
+			{
+				return path->wav_current_sample;
+			}
 		}
-		else
-			return -1;
+	}
+	else if (path->wav_bits_per_sample == 24 && path->wav_audioFormat == 1)
+	{
+		while (path->wav_current_sample < path->wav_total_samples)
+		{
+			path->wav_ss1.i_value = path->wav_ss2.i_value;
+			int i;
+			if (fread_le_24bit(&i, path->fd) != 3)
+				return LONG_MAX;
+			path->wav_ss2.i_value = i;
+			(path->wav_current_sample)++;
+
+			// Crossing from low to high
+			if(path->wav_ss1.i_value < path->wav_zero_low.i_value && 
+			   path->wav_ss2.i_value >= path->wav_zero_low.i_value)
+			{
+				return path->wav_current_sample;
+			}
+
+			// Crossing from high to low
+			if(path->wav_ss1.i_value > path->wav_zero_high.i_value && 
+			   path->wav_ss2.i_value <= path->wav_zero_high.i_value)
+			{
+				return path->wav_current_sample;
+			}
+		}
+	}
+	else if (path->wav_bits_per_sample == 32 && path->wav_audioFormat == 1)
+	{
+		while (path->wav_current_sample < path->wav_total_samples)
+		{
+			path->wav_ss1.i_value = path->wav_ss2.i_value;
+			int i;
+			if (fread_le_sint(&i, path->fd) != 4)
+				return LONG_MAX;
+			path->wav_ss2.i_value = i;
+			(path->wav_current_sample)++;
+
+			// Crossing from low to high
+			if(path->wav_ss1.i_value < path->wav_zero_low.i_value && 
+			   path->wav_ss2.i_value >= path->wav_zero_low.i_value)
+			{
+				return path->wav_current_sample;
+			}
+
+			// Crossing from high to low
+			if(path->wav_ss1.i_value > path->wav_zero_high.i_value && 
+			   path->wav_ss2.i_value <= path->wav_zero_high.i_value)
+			{
+				return path->wav_current_sample;
+			}
+		}
 	}
 	else
 	{
-		if (path->wav_bits_per_sample == 8)
-		{
-			build_sinusoidal_bufer_8(path->wav_parity, path->buffer_1200,
-						 path->buffer_1200_length);
-			build_sinusoidal_bufer_8(path->wav_parity, path->buffer_2400,
-						 path->buffer_2400_length);
-		}
-		else if (path->wav_bits_per_sample == 16)
-		{
-			build_sinusoidal_bufer_16(path->wav_parity,
-						  (short *) path->buffer_1200,
-						  path->buffer_1200_length / 2);
-			build_sinusoidal_bufer_16(path->wav_parity,
-						  (short *) path->buffer_2400,
-						  path->buffer_2400_length / 2);
-		}
-		else
-			return -1;
+		fprintf( stderr, "Should never get here: %d, %d\n", path->wav_bits_per_sample, path->wav_audioFormat);
+		exit(-1);
 	}
-
-	return ec;
+	
+	return LONG_MAX;
 }
 
-#define MACOUNT 5
-#define MASIZE 20
+/*
+ * advance_to_next_leader()
+ *
+ *
+ */
 
-static double movingavg(int which, double newvalue)
+void advance_to_next_leader(cecb_path_id path, double timeout, double min_length)
 {
-	static double sum[MACOUNT] = { 0.0, 0.0, 0.0, 0.0, 0.0 };
-	static int index[MACOUNT] = { 0, 0, 0, 0, 0 };
-	static double history[MACOUNT][MASIZE] = { {0.0, 0.0, 0.0, 0.0, 0.0},
-	{0.0, 0.0, 0.0, 0.0, 0.0},
-	{0.0, 0.0, 0.0, 0.0, 0.0},
-	{0.0, 0.0, 0.0, 0.0, 0.0},
-	{0.0, 0.0, 0.0, 0.0, 0.0}
-	};
-	static int full[MACOUNT] = { 0, 0, 0, 0, 0 };
-
-	if (which < MACOUNT)
+	long position_limit;
+	double ratio;
+	long wave1, wave2;
+	long count, high_sum, low_sum;
+	long sample_min_length = min_length * path->wav_sample_rate;
+	long start_block;
+	
+	if(timeout == 0.0 )
 	{
-		sum[which] -= history[which][index[which]];
-		sum[which] += (history[which][index[which]++] = newvalue);
-		if (index[which] >= MASIZE)
+		position_limit = path->wav_total_samples;
+	}
+	else
+	{
+		position_limit = path->wav_current_sample + (timeout * path->wav_sample_rate);
+	}
+	
+	start_block = path->wav_current_sample;
+	path->wav_crossings[4] = next_zero_crossing(path);
+	path->wav_crossings[3] = next_zero_crossing(path);
+	path->wav_crossings[2] = next_zero_crossing(path);
+	path->wav_crossings[1] = next_zero_crossing(path);
+	path->wav_crossings[0] = next_zero_crossing(path);
+	
+	low_sum = 0;
+	high_sum = 0;
+	count = 0;
+	
+	while(path->wav_current_sample < position_limit)
+	{
+		wave1 = path->wav_crossings[2] - path->wav_crossings[4];
+		wave2 = path->wav_crossings[0] - path->wav_crossings[2];
+	
+		ratio = (double)wave1 / wave2;
+		
+		if (ratio>path->wav_ratio_low && ratio<path->wav_ratio_high)
 		{
-			index[which] -= MASIZE;
-			full[which] = 1;
-		}
+			count++;
+			low_sum += wave1;
+			high_sum += wave2;
+			
+			if((path->wav_current_sample - start_block) > sample_min_length )
+			{
+				path->wav_low_sample_count = low_sum / count;
+				path->wav_high_sample_count = high_sum / count;
+				path->wav_average_sample_count = (path->wav_low_sample_count + path->wav_high_sample_count) / 2.0;
+				return;
+			}
 
-		if (full[which])
-			return sum[which] / MASIZE;
-		else
-			return sum[which] / index[which];
-	}
-
-	fprintf(stderr,
-		"Error: Moving average call with 'which' >= than %d\n",
-		MACOUNT);
-	exit(-1);
-}
-
-/* Determine if A is within P percent of B */
-static int numbers_close_signed(int a, int b, double p)
-{
-	/* Determine if A is within P percent of B */
-
-	double x = (double) b - (b * (p / 2.0));
-	double y = (double) b + (b * (p / 2.0));
-
-	if ((a >= x) && (a <= y))
-	{
-		return 1;
-	}
-
-	return 0;
-}
-
-/* Determine if A is within P percent of B */
-static int numbers_close_double(double a, double b, double p)
-{
-	/* Determine if A is within P percent of B */
-
-	double x = (double) b - (b * (p / 2.0));
-	double y = (double) b + (b * (p / 2.0));
-
-	if ((a >= x) && (a <= y))
-	{
-		return 1;
-	}
-
-	return 0;
-}
-
-/* Advance in audio file looking for a low to high or high to low transisition */
-static error_code advance_to_next_zero_crossing(cecb_path_id path, int *diff)
-{
-	int result;
-
-	result = 0;
-
-	while (path->wav_current_sample < path->wav_total_samples)
-	{
-		path->wav_ss1 = path->wav_ss2;
-
-		if (path->wav_bits_per_sample == 8)
-		{
-			path->wav_ss2 = fgetc(path->fd);
-//                      printf( "%d\n", path->wav_ss2 );
+			path->wav_crossings[4] = path->wav_crossings[0];
+			path->wav_crossings[3] = next_zero_crossing(path);
+			path->wav_crossings[2] = next_zero_crossing(path);
+			path->wav_crossings[1] = next_zero_crossing(path);
+			path->wav_crossings[0] = next_zero_crossing(path);
 		}
 		else
 		{
-			short s;
-			if (fread_le_sshort(&s, path->fd) != 2)
-				return EOS_EOF;
-			path->wav_ss2 = s;
+			low_sum = 0;
+			high_sum = 0;
+			count = 0;
+
+			path->wav_crossings[4] = path->wav_crossings[3];
+			path->wav_crossings[3] = path->wav_crossings[2];
+			path->wav_crossings[2] = path->wav_crossings[1];
+			path->wav_crossings[1] = path->wav_crossings[0];
+			path->wav_crossings[0] = next_zero_crossing(path);
+
+			start_block = path->wav_crossings[4];
 		}
-
-		(path->wav_current_sample)++;
-		result++;
-
-		if (numbers_close_signed
-		    (path->wav_zero_value, path->wav_ss2,
-		     path->wav_threshold) == 1)
-			path->wav_ss2 = path->wav_zero_value;
-
-		if ((((path->wav_ss1) <= path->wav_zero_value)
-		     && ((path->wav_ss2) > path->wav_zero_value))
-		    || (((path->wav_ss1) >= path->wav_zero_value)
-			&& ((path->wav_ss2) < path->wav_zero_value)))
-			break;
 	}
 
-	*diff = result;
-
-	if (path->wav_current_sample >= path->wav_total_samples)
-		return EOS_EOF;
-
-	return 0;
+	/* Measured 2025/12/13 */
+	path->wav_low_sample_count = (double)path->wav_sample_rate / 2051.1627907;
+	path->wav_high_sample_count = (double)path->wav_sample_rate / 1102.5;
+	path->wav_average_sample_count = (path->wav_low_sample_count + path->wav_high_sample_count) / 2.0;
+	return;	
 }
 
-static error_code advance_to_next_lo_to_hi(cecb_path_id path, int *diff)
+/*
+ * position_tape()
+ *
+ *
+ */
+
+error_code position_tape(cecb_path_id path, long sample_position)
 {
-	int result;
-
-	result = 0;
-
-	while (path->wav_current_sample < path->wav_total_samples)
+	if(sample_position < path->wav_total_samples)
 	{
-		path->wav_ss1 = path->wav_ss2;
-
-		if (path->wav_bits_per_sample == 8)
-		{
-			path->wav_ss2 = fgetc(path->fd);
-//                      printf( "%d\n", path->wav_ss2 );
-		}
-		else
-		{
-			short s;
-			if (fread_le_sshort(&s, path->fd) != 2)
-				return EOS_EOF;
-			path->wav_ss2 = s;
-		}
-
-		(path->wav_current_sample)++;
-		result++;
-
-		if (numbers_close_signed
-		    (path->wav_zero_value, path->wav_ss2,
-		     path->wav_threshold) == 1)
-			path->wav_ss2 = path->wav_zero_value;
-
-		if ((((path->wav_ss1) <= path->wav_zero_value)
-		     && ((path->wav_ss2) > path->wav_zero_value)))
-			break;
+		fseek(path->fd, path->wav_data_start + sample_position * (path->wav_bits_per_sample/8), SEEK_SET);
+		path->wav_current_sample = sample_position;
+		return 0;
 	}
-
-	*diff = result;
-
-	if (path->wav_current_sample >= path->wav_total_samples)
-		return EOS_EOF;
-
-	return 0;
+	
+	return EOS_EOF;
 }
 
-static error_code advance_to_next_hi_to_lo(cecb_path_id path, int *diff)
-{
-	int result;
-
-	result = 0;
-
-	while (path->wav_current_sample < path->wav_total_samples)
-	{
-		path->wav_ss1 = path->wav_ss2;
-
-		if (path->wav_bits_per_sample == 8)
-		{
-			path->wav_ss2 = fgetc(path->fd);
-//                      printf( "%d\n", path->wav_ss2 );
-		}
-		else
-		{
-			short s;
-			if (fread_le_sshort(&s, path->fd) != 2)
-				return EOS_EOF;
-			path->wav_ss2 = s;
-		}
-
-		(path->wav_current_sample)++;
-		result++;
-
-		if (numbers_close_signed
-		    (path->wav_zero_value, path->wav_ss2,
-		     path->wav_threshold) == 1)
-			path->wav_ss2 = path->wav_zero_value;
-
-		if ((((path->wav_ss1) >= path->wav_zero_value)
-		     && ((path->wav_ss2) < path->wav_zero_value)))
-			break;
-	}
-
-	*diff = result;
-
-	if (path->wav_current_sample >= path->wav_total_samples)
-		return EOS_EOF;
-
-	return 0;
-}
+/*
+ * _cecb_write_wav_audio()
+ *
+ *
+ */
 
 int _cecb_write_wav_audio(cecb_path_id path, char *buffer, int total_length)
 {
@@ -609,21 +478,27 @@ int _cecb_write_wav_audio(cecb_path_id path, char *buffer, int total_length)
 		{
 			if (((buffer[i] >> j) & 0x01) == 0)
 			{
-				fwrite(path->buffer_1200,
-				       path->buffer_1200_length, 1, path->fd);
-				result += path->buffer_1200_length;
-			}
-			else
-			{
 				fwrite(path->buffer_2400,
 				       path->buffer_2400_length, 1, path->fd);
 				result += path->buffer_2400_length;
+			}
+			else
+			{
+				fwrite(path->buffer_1200,
+				       path->buffer_1200_length, 1, path->fd);
+				result += path->buffer_1200_length;
 			}
 		}
 	}
 
 	return result;
 }
+
+/*
+ * _cecb_write_wav_audio_repeat_byte()
+ *
+ *
+ */
 
 int _cecb_write_wav_audio_repeat_byte(cecb_path_id path, int length,
 				      char byte)
@@ -636,6 +511,12 @@ int _cecb_write_wav_audio_repeat_byte(cecb_path_id path, int length,
 	return result;
 }
 
+/*
+ * _cecb_write_wav_repeat_byte()
+ *
+ *
+ */
+
 int _cecb_write_wav_repeat_byte(cecb_path_id path, int length, char byte)
 {
 	int i;
@@ -645,6 +526,12 @@ int _cecb_write_wav_repeat_byte(cecb_path_id path, int length, char byte)
 
 	return length;
 }
+
+/*
+ * _cecb_write_wav_repeat_short()
+ *
+ *
+ */
 
 int _cecb_write_wav_repeat_short(cecb_path_id path, int length, short bytes)
 {
@@ -656,76 +543,189 @@ int _cecb_write_wav_repeat_short(cecb_path_id path, int length, short bytes)
 	return length * 2;
 }
 
-static void build_sinusoidal_bufer_8(_wave_parity parity,
-				     unsigned char *buffer, int length)
+/*
+ * create_sinusoidal_write_buffers()
+ *
+ *
+ */
+
+error_code create_sinusoidal_write_buffers(cecb_path_id path)
 {
-	double offset, increment = (PI * 2.0) / length;
+	path->buffer_1200_length =
+		path->wav_low_sample_count * (path->wav_bits_per_sample/8);
+	path->buffer_2400_length =
+		path->wav_high_sample_count * (path->wav_bits_per_sample/8);
+
+	path->buffer_1200 = malloc(path->buffer_1200_length);
+	path->buffer_2400 = malloc(path->buffer_2400_length);
+
+	if ((path->buffer_1200 == NULL) || (path->buffer_2400 == NULL))
+		return EOS_MF;
+
+	if (path->wav_bits_per_sample == 8 && path->wav_audioFormat == 1)
+	{
+		build_sinusoidal_bufer_8(path->buffer_1200,
+					 path->buffer_1200_length, cecb_suggest_mc10);
+		build_sinusoidal_bufer_8(path->buffer_2400,
+					 path->buffer_2400_length, cecb_suggest_mc10);
+	}
+	else if (path->wav_bits_per_sample == 16 && path->wav_audioFormat == 1)
+	{
+		build_sinusoidal_bufer_16((short *) path->buffer_1200,
+					  path->buffer_1200_length / 2, cecb_suggest_mc10);
+		build_sinusoidal_bufer_16((short *) path->buffer_2400,
+					  path->buffer_2400_length / 2, cecb_suggest_mc10);
+	}
+	else if (path->wav_bits_per_sample == 24 && path->wav_audioFormat == 1)
+	{
+		build_sinusoidal_buffer_24(path->buffer_1200,
+					  path->buffer_1200_length / 3, cecb_suggest_mc10);
+		build_sinusoidal_buffer_24(path->buffer_2400,
+					  path->buffer_2400_length / 3, cecb_suggest_mc10);
+	}
+	else if (path->wav_bits_per_sample == 32 && path->wav_audioFormat == 1)
+	{
+		build_sinusoidal_buffer_32(path->buffer_1200,
+					  path->buffer_1200_length / 4, cecb_suggest_mc10);
+		build_sinusoidal_buffer_32(path->buffer_2400,
+					  path->buffer_2400_length / 4, cecb_suggest_mc10);
+	}
+	else
+	{
+		fprintf(stderr, "WAV writing in this format unsupported. %d, %d\n", path->wav_bits_per_sample, path->wav_audioFormat);
+		exit(-1);
+	}
+
+	return 0;
+}
+
+/*
+ * build_sinusoidal_bufer_8()
+ *
+ *
+ */
+
+static void build_sinusoidal_bufer_8(unsigned char *buffer, int length, int mc10)
+{
+	double offset, increment = (PI * 2.0) / length; 
 	int i;
 
-	if (parity == EVEN)
-		offset = PI * 2;
-	else
-		offset = PI;
+	offset = PI * 2.0;
 
 	for (i = 0; i < length; i++)
 	{
-		buffer[i] = (sin(increment * i + offset) * 110.0) + 127.0;
+		if (mc10)
+			buffer[i] = sin(increment * i + offset) > 0 ? 255 : 0;
+		else
+			buffer[i] = (sin(increment * i + offset) * 110.0) + 127.0;
 	}
 }
 
-static void build_MC10_bufer_8(_wave_parity parity,
-				     unsigned char *buffer, int length)
+/*
+ * build_sinusoidal_bufer_16()
+ *
+ *
+ */
+
+static void build_sinusoidal_bufer_16(short *buffer, int length, int mc10)
 {
 	double offset, increment = (PI * 2.0) / length;
 	int i;
 
-	if (parity == EVEN)
-		offset = PI * 2;
-	else
-		offset = PI;
+	offset = PI * 2.0;
 
 	for (i = 0; i < length; i++)
 	{
-		buffer[i] = sin(increment * i + offset) > 0 ? 255 : 0;
-	}
-}
-
-static void build_sinusoidal_bufer_16(_wave_parity parity, short *buffer,
-				      int length)
-{
-	double offset, increment = (PI * 2.0) / length;
-	int i;
-
-	if (parity == EVEN)
-		offset = PI * 2;
-	else
-		offset = PI;
-
-	for (i = 0; i < length; i++)
-	{
-		buffer[i] = sin(increment * i + offset) * 25500.0;
+		if (mc10)
+			buffer[i] = sin(increment * i + offset) > 0 ? 32767 : -32768;
+		else
+			buffer[i] = sin(increment * i + offset) * 25500.0;
 #if defined(__BIG_ENDIAN__)
 		buffer[i] = swap_short(buffer[i]);
 #endif
 	}
 }
 
-static void build_MC10_bufer_16(_wave_parity parity, short *buffer,
-				      int length)
+/*
+ * build_sinusoidal_buffer_24()
+ *
+ *
+ */
+
+static void build_sinusoidal_buffer_24(uint8_t *buffer, int length, int mc10)
 {
-	double offset, increment = (PI * 2.0) / length;
-	int i;
+    double offset, increment = (PI * 2.0) / length;
+    int i;
 
-	if (parity == EVEN)
-		offset = PI * 2;
-	else
-		offset = PI;
+    offset = PI * 2.0;
 
-	for (i = 0; i < length; i++)
-	{
-		buffer[i] = sin(increment * i + offset) > 0 ? 32767 : -32768;
-#if defined(__BIG_ENDIAN__)
-		buffer[i] = swap_short(buffer[i]);
-#endif
-	}
+    for (i = 0; i < length; i++)
+    {
+        int32_t sample;
+
+        if (mc10)
+        {
+            /* Full-scale square wave */
+            sample = (sin(increment * i + offset) > 0) ? 0x7FFFFF : -0x800000;
+        }
+        else
+        {
+            /* Match 16-bit scaling proportionally */
+            sample = (int32_t)(sin(increment * i + offset) * 0x63C000);
+            /* 0x63C000 ≈ 25500 << 8 */
+        }
+
+        /* Clamp just in case */
+        if (sample >  0x7FFFFF) sample =  0x7FFFFF;
+        if (sample < -0x800000) sample = -0x800000;
+
+        /* WAV is little-endian, 24-bit */
+        buffer[i * 3 + 0] = (uint8_t)( sample        & 0xFF);
+        buffer[i * 3 + 1] = (uint8_t)((sample >>  8) & 0xFF);
+        buffer[i * 3 + 2] = (uint8_t)((sample >> 16) & 0xFF);
+    }
+}
+
+/*
+ * build_sinusoidal_buffer_32()
+ *
+ * Generate 32-bit signed PCM samples (little-endian)
+ */
+
+static void build_sinusoidal_buffer_32(uint8_t *buffer, int length, int mc10)
+{
+    double offset, increment = (PI * 2.0) / length;
+    int i;
+
+    offset = PI * 2.0;
+
+    for (i = 0; i < length; i++)
+    {
+        int32_t sample;
+
+        if (mc10)
+        {
+            /* Full-scale square wave */
+            sample = (sin(increment * i + offset) > 0)
+                     ? 0x7FFFFFFF
+                     : (int32_t)0x80000000;
+        }
+        else
+        {
+            /* Proportional scaling from 16-bit reference */
+            /* 25500 / 32767 ≈ 0.778 */
+            sample = (int32_t)(sin(increment * i + offset) * 0x63C00000);
+            /* 0x63C00000 ≈ 25500 << 16 */
+        }
+
+        /* Clamp just in case */
+        if (sample >  0x7FFFFFFF) sample =  0x7FFFFFFF;
+        if (sample < (int32_t)0x80000000) sample = (int32_t)0x80000000;
+
+        /* WAV is little-endian, 32-bit */
+        buffer[i * 4 + 0] = (uint8_t)( sample        & 0xFF);
+        buffer[i * 4 + 1] = (uint8_t)((sample >>  8) & 0xFF);
+        buffer[i * 4 + 2] = (uint8_t)((sample >> 16) & 0xFF);
+        buffer[i * 4 + 3] = (uint8_t)((sample >> 24) & 0xFF);
+    }
 }

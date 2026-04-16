@@ -26,9 +26,10 @@
 
 #ifdef __APPLE__
 #include <unistd.h>
-#endif
-
+#include <fuse_t/fuse.h>
+#else
 #include <fuse.h>
+#endif
 
 static int coco_access(const char *path, int mode);
 static int coco_statfs(const char *path, struct statvfs *stbuf);
