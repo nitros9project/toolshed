@@ -454,11 +454,11 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 				/* source is native, destination is coco */
 
 				NativeToDECB((char *) buffer, buffer_size,
-						 &translation_buffer,
-						 &new_translation_size);
+						&translation_buffer,
+						&new_translation_size);
 
 				ec = _coco_write(destpath, translation_buffer,
-						 &new_translation_size);
+						&new_translation_size);
 
 				free(translation_buffer);
 			}
@@ -468,10 +468,10 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 				/* source is coco, destination is native */
 
 				DECBToNative((char *) buffer, buffer_size,
-						 &translation_buffer,
-						 &new_translation_size);
+						&translation_buffer,
+						&new_translation_size);
 				ec = _coco_write(destpath, translation_buffer,
-						 &new_translation_size);
+						&new_translation_size);
 
 				free(translation_buffer);
 			}
