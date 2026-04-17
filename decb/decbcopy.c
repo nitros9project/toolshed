@@ -371,8 +371,7 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 		ec = 0;
 		buffer_size = bytes_read_total;
 	}
-
-	if (buffer_size > 0)
+	else if (buffer_size > 0)
 	{
 		buffer = malloc(buffer_size);
 
@@ -387,16 +386,19 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 		{
 			return -1;
 		}
-
+	}
+	
+	if (buffer_size > 0)
+	{
 		if (binary_concat == 1)
 		{
 			u_char *binconcat_buffer;
 			u_int binconcat_size;
-
+	
 			ec = _decb_binconcat(buffer, buffer_size,
-					     &binconcat_buffer,
-					     &binconcat_size);
-
+						 &binconcat_buffer,
+						 &binconcat_size);
+	
 			if (ec == 0)
 			{
 				free(buffer);
@@ -406,26 +408,26 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 			else
 				return -1;
 		}
-
+	
 		if (tokTranslate == 1)
 		{
 			if (buffer[0] == 0xff)
 			{
 				u_char *detokenize_buffer = NULL;
 				u_int detokenize_size;
-
+	
 				/* File is already a tokenized BASIC file, de-tokenize it */
 				ec = _decb_detoken(buffer, buffer_size,
 						   (char **)
 						   &detokenize_buffer,
 						   &detokenize_size);
-
+	
 				if (ec == 0)
 				{
 					free(buffer);
 					buffer = detokenize_buffer;
 					buffer_size = detokenize_size;
-
+	
 					file_type = 0;
 					data_type = 0xff;
 				}
@@ -440,24 +442,24 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 			{
 				unsigned char *entokenize_buffer = NULL;
 				u_int entokenize_size;
-
+	
 				/* Tokenized file */
 				ec = _decb_entoken(buffer, buffer_size,
 						   &entokenize_buffer,
 						   &entokenize_size,
 						   destpath->type == DECB);
-
+	
 				if (ec == 0)
 				{
 					free(buffer);
 					buffer = entokenize_buffer;
 					buffer_size = entokenize_size;
-
+	
 					file_type = 0;
 					data_type = 0;
-
+	
 					eolTranslate = 0;
-
+	
 				}
 				else
 				{
@@ -467,43 +469,43 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 				}
 			}
 		}
-
+	
 		if (eolTranslate == 1)
 		{
 			if (path->type == NATIVE && destpath->type != NATIVE)
 			{
 				/* source is native, destination is coco */
-
+	
 				NativeToDECB((char *) buffer, buffer_size,
-					     &translation_buffer,
-					     &new_translation_size);
-
+						 &translation_buffer,
+						 &new_translation_size);
+	
 				ec = _coco_write(destpath, translation_buffer,
 						 &new_translation_size);
-
+	
 				free(translation_buffer);
 			}
 			else if (path->type != NATIVE
 				 && destpath->type == NATIVE)
 			{
 				/* source is coco, destination is native */
-
+	
 				DECBToNative((char *) buffer, buffer_size,
-					     &translation_buffer,
-					     &new_translation_size);
+						 &translation_buffer,
+						 &new_translation_size);
 				ec = _coco_write(destpath, translation_buffer,
 						 &new_translation_size);
-
+	
 				free(translation_buffer);
 			}
 		}
 		else
 		{
 			/* One-to-one writing of the data -- no translation needed. */
-
+	
 			ec = _coco_write(destpath, buffer, &buffer_size);
 		}
-
+	
 		if (ec == EOS_DF)
 		{
 			/* Delete file, and return disk full */
@@ -523,44 +525,44 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 		{
 			return ec;
 		}
-
-
+	
+	
 		/* Copy meta data from file descriptor of source to destination */
-
+	
 		{
 			coco_file_stat fd;
-
-
+	
+	
 			_coco_gs_fd(path, &fd);
-
+	
 			_coco_ss_fd(destpath, &fd);
 		}
-
-
+	
+	
 		/* Special -- if this is a DECB file we wrote to, set passed file type and data type. */
-
+	
 		{
 			_path_type t;
-
+	
 			_coco_gs_pathtype(destpath, &t);
-
+	
 			if (t == DECB)
 			{
 				decb_file_stat f;
-
-
+	
+	
 				_decb_gs_fd(destpath->path.decb, &f);
-
+	
 				if (file_type >= 0)
 				{
 					f.file_type = file_type;
 				}
-
+	
 				if (data_type >= 0)
 				{
 					f.data_type = data_type;
 				}
-
+	
 				_decb_ss_fd(destpath->path.decb, &f);
 			}
 		}
