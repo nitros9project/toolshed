@@ -75,7 +75,7 @@ void test_decb_create()
 	// test create of an extra long (illegal) filename with a subfolder on an existing disk image
 	// the root file is a directory when it isn't
 	ec = _decb_create(&p,
-			  "test.dsk,file_doesnt_exist_and_is_much_longer_than_rbf_limit_of_8_characters/and_this_is_an_even_longer_name_than_the_8_character_limit_in9_rbf_because_it_has_more_characters",
+			  "test.dsk,file_doesnt_exist_and_is_much_longer_than_decb_limit_of_8_characters/and_this_is_an_even_longer_name_than_the_8_character_limit_in9_rbf_because_it_has_more_characters",
 			  FAM_READ, 0, 1);
 	ASSERT_EQUALS(EOS_BPNAM, ec);
 	
