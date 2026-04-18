@@ -13,10 +13,6 @@
 #define YES 1
 #define NO 0
 
-/* globals */
-//static u_int buffer_size = 32768;
-//static char *buffer;
-
 static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 			       int tokTranslate, int binary_concat,
 			       int rewrite, int file_type, int data_type);
@@ -287,6 +283,8 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 	int mode = FAM_NOCREATE | FAM_WRITE;
 	unsigned char *buffer = NULL;
 	char *translation_buffer;
+	u_int buffer_capacity;
+	u_int bytes_read_total;
 	u_int new_translation_size;
 	u_int buffer_size;
 	coco_file_stat fstat;
@@ -309,7 +307,6 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 		return ec;
 	}
 
-
 	/* 3. Attempt to create the destfile. */
 
 	fstat.perms = FAP_READ | FAP_WRITE | FAP_PREAD;
@@ -322,33 +319,62 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 		return ec;
 	}
 
+	const u_int CHUNK = 65536;
+	u_int chunk_read;
 
-	ec = _coco_gs_size(path, &buffer_size);
+	buffer_capacity = CHUNK;
+	buffer = malloc(buffer_capacity);
+
+	if (buffer == NULL)
+	{
+		_coco_close(path);
+		_coco_close(destpath);
+		return EOS_MF;
+	}
+
+	bytes_read_total = 0;
+
+	while (1)
+	{
+		chunk_read = buffer_capacity - bytes_read_total;
+		ec = _coco_read(path, buffer + bytes_read_total, &chunk_read);
+		bytes_read_total += chunk_read;
+
+		if (ec != 0)   /* EOS_EOF or real error */
+			break;
+
+		/* Grow buffer if we filled it and haven't hit EOF yet */
+		if (bytes_read_total == buffer_capacity)
+		{
+			buffer_capacity *= 2;
+			unsigned char *tmp = realloc(buffer, buffer_capacity);
+			if (tmp == NULL)
+			{
+				free(buffer);
+				_coco_close(path);
+				_coco_close(destpath);
+				return EOS_MF;
+			}
+			buffer = tmp;
+		}
+	}
+
+	if (ec != EOS_EOF)
+		return ec;
+
+	ec = 0;
+	buffer_size = bytes_read_total;
 
 	if (buffer_size > 0)
 	{
-		buffer = malloc(buffer_size);
-
-		if (buffer == NULL)
-		{
-			return -1;
-		};
-
-		ec = _coco_read(path, buffer, &buffer_size);
-
-		if (ec != 0)
-		{
-			return -1;
-		}
-
 		if (binary_concat == 1)
 		{
 			u_char *binconcat_buffer;
 			u_int binconcat_size;
 
 			ec = _decb_binconcat(buffer, buffer_size,
-					     &binconcat_buffer,
-					     &binconcat_size);
+						 &binconcat_buffer,
+						 &binconcat_size);
 
 			if (ec == 0)
 			{
@@ -428,11 +454,11 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 				/* source is native, destination is coco */
 
 				NativeToDECB((char *) buffer, buffer_size,
-					     &translation_buffer,
-					     &new_translation_size);
+						&translation_buffer,
+						&new_translation_size);
 
 				ec = _coco_write(destpath, translation_buffer,
-						 &new_translation_size);
+						&new_translation_size);
 
 				free(translation_buffer);
 			}
@@ -442,10 +468,10 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 				/* source is coco, destination is native */
 
 				DECBToNative((char *) buffer, buffer_size,
-					     &translation_buffer,
-					     &new_translation_size);
+						&translation_buffer,
+						&new_translation_size);
 				ec = _coco_write(destpath, translation_buffer,
-						 &new_translation_size);
+						&new_translation_size);
 
 				free(translation_buffer);
 			}
@@ -461,17 +487,17 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 		{
 			/* Delete file, and return disk full */
 			_coco_close(destpath);
-			
+
 			ec = _coco_delete(dstfile);
-			
+
 			if( ec != 0 )
 			{
 				fprintf(stderr, "File write failed, then file delete failed.\n");
 			}
-			
+
 			return EOS_DF;
 		}
-		
+
 		if (ec != 0)
 		{
 			return ec;
