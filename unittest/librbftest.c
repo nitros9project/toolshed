@@ -401,9 +401,6 @@ int main()
 	RUN(test_os9_ss_calls);
 	RUN(test_os9_gs_calls);
 	RUN(test_os9_file_allocation);
-
-	remove("test.dsk");
-	remove("test_alloc.dsk");
-
+	
 	return TEST_REPORT();
 }
