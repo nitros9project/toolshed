@@ -69,6 +69,7 @@ int decbbinbust(int, char**);
 
 /* Function prototypes for supported Disk BASIC commands are here */
 int cecbdir(int, char **);
+int cecbdumpblock(int, char **);
 int cecbfstat(int, char **);
 int cecbbulkerase(int, char **);
 int cecbcopy(int, char **);

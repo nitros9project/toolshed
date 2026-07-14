@@ -47,6 +47,7 @@ static struct cmdtbl table[] = {
 	{cecbdir, "dir"},
 	{cecbfstat, "fstat"},
 	{os9dump, "dump"},
+	{cecbdumpblock, "dumpblock"},
 	{decblist, "list"},
 	{cecbbulkerase, "bulkerase"},
 	{cecbcopy, "copy"},

@@ -6,7 +6,7 @@ vpath %.c ../../../cecb ../../../os9
 CFLAGS	+= -I../../../include -Wall -MMD -MP
 
 SRCS = cecbbulkerase.c cecbdir.c cecbfstat.c cecb_main.c cecbcopy.c cecbleader.c \
-	../os9/os9dump.c ../decb/decblist.c
+	cecbdumpblock.c ../os9/os9dump.c ../decb/decblist.c
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)
 

@@ -56,6 +56,7 @@ ToolShed v2.5.1
   * [DIR](#dir_cecb) - Display the directory of a Cassette BASIC image
   * [FSTAT](#fstat_cecb) - Display the file descriptor for a file
   * [DUMP](#dump_cecb) - Display the contents of a binary file
+  * [DUMPBLOCK](#dumpblock_cecb) - Scan and print a hex dump of CoCo Cassette blocks
   * [LIST](#list_cecb) - Display the contents of a file
   * [COPY](#copy_cecb) - Copy one or more files to a casette container
   * [LEADER](#leader_cecb) - Analyse leader in a WAV file
@@ -1314,7 +1315,37 @@ Note that the address of the offset on the left column increases by 16 ($10) byt
 Additional command line options are provided to omit certain parts of the dump output, including the header and ASCII data. Also, the -a and -b options are provided to allow dumping of a file's contents into a format digestible by certain assemblers.
 
 ---
+<h3 id="dumpblock_cecb">DUMPBLOCK - Scan and print a hex dump of CoCo Cassette blocks</h3>
 
+#### Syntax and Scope
+
+    dumpblock {[<opts>]} <imagefile> {[<opts>]}
+
+This command is intended for Cassette BASIC images (`.wav`, `.cas`, `.c10`) only.
+
+#### Description
+
+The `dumpblock` command scans a Color Computer cassette image file sequentially, printing the header details (block type, length, and exact image position markers) followed by a 16-byte aligned hexadecimal and ASCII dump of each raw block's contents. It will continue decoding through non-fatal CRC warnings until it encounters a file read error or hits the End-of-File marker (block type `0xFF`).
+
+#### Options
+
+* `-h`, `?` : Show the help message and exit.
+
+#### Examples
+
+Scanning a `.cas` image and dumping a header block:
+
+Scanning a `.wav` image file:
+
+    cecb dumpblock test.wav
+    Scanning blocks in: test.wav
+    Format: WAV
+    ------------------------------------------------------------
+    Block: Type=0x00, Len=15, End Sample=243200
+      0000: 48 45 4C 4C 4F 20 20 20 00 00 00 42 41 53 49  |HELLO   ...BASI|
+      0010: 43                                            |C|
+
+---
 <h3 id="list_cecb">LIST - Display the contents of a file</h3>
 
 #### Syntax and Scope
