@@ -22,6 +22,8 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 		     char *trackfile, struct personality *hwtype,
 		     int extended);
 
+error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *startlsn);
+
 static struct personality coco = { 18 * 34 };
 static struct personality dragon = { 2 };
 
@@ -159,7 +161,6 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
     error_code ec = 0;
     coco_path_id opath = NULL, cpath = NULL;
     char buffer[256];
-    lsn0_sect LSN0;
     u_int size;
     u_int sectors;
 
@@ -171,8 +172,6 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
         char boottrack[(256 * 18) + 1];
         u_int boottrack_len = 0;
         _path_type track_type = NATIVE;
-		int is_osk;
-		u_char *pd_sct, *pd_cyl, *pd_sid, *pd_typ;
 		int startlsn;
 
         _coco_identify_image(trackfile, &track_type);
@@ -184,38 +183,25 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
             ec = _coco_open(&cpath, buffer, FAM_READ);
             if (ec != 0)
             {
-                fprintf(stderr, "%s: error %d opening track image '%s'\n", argv[0], ec, buffer);
+                fprintf(stderr, "%s: error %d opening trackfile image '%s'\n", argv[0], ec, buffer);
+                return (1);
+            }
+			
+			if (cpath->type != OS9)
+            {
+                fprintf(stderr, "%s: error extracting trackfile from image '%s'\n", argv[0], buffer);
                 return (1);
             }
 
-            /* Read LSN0 to determine image geometry */
-            lsn0_sect track_LSN0;
-            size = sizeof(lsn0_sect);
-            ec = _coco_read(cpath, &track_LSN0, &size);
-            if (ec != 0) return ec;
-
-            u_int total_sectors = int3(track_LSN0.dd_tot);
-            int t34_sct = int2(track_LSN0.dd_opt.m6809.pd_sct);
-            int t34_sid = int1(track_LSN0.dd_opt.m6809.pd_sid);
-
-            /* Fallback to default CoCo 18 sectors/track if uninitialized */
-            if (t34_sct == 0) t34_sct = 18;
-
-            /* If pd_sid is uninitialized, deduce side count from total sectors */
-            if (t34_sid == 0)
-            {
-                /* 35 trk * 18 sct = 630 (1-sided), 1260 (2-sided) */
-                /* 40 trk * 18 sct = 720 (1-sided), 1440 (2-sided) */
-                /* 80 trk * 18 sct = 1440 (1-sided), 2880 (2-sided) */
-                t34_sid = (total_sectors > 720 && (total_sectors % (t34_sct * 2) == 0)) ? 2 : 1;
-            }
-
-            /* Calculate exact LSN for Track 34 Side 0 */
-            int sectors_per_cylinder = t34_sct * t34_sid;
-            int embed_lsn = (hwtype->startlsn == 2) ? 2 : (34 * sectors_per_cylinder);
-
+			ec = get_boottrack_lsn(*cpath->path.os9->lsn0, hwtype, &startlsn);
+			if (ec != 0)
+			{
+				_coco_close(cpath);
+				return 1;
+			}
+			
             /* Seek to Track 34 and verify header */
-            ec = _coco_seek(cpath, embed_lsn * 256, SEEK_SET);
+            ec = _coco_seek(cpath, startlsn * 256, SEEK_SET);
             if (ec != 0) return ec;
             size = 2;
             char track_hdr[2];
@@ -223,15 +209,15 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 
             if (ec == 0 && track_hdr[0] == 'O' && track_hdr[1] == 'S')
             {
-                printf("Using embedded kernel trackfile code found at LSN %d of image '%s'\n", embed_lsn, trackfile);
-                _coco_seek(cpath, embed_lsn * 256, SEEK_SET);
+                printf("Using embedded kernel trackfile code found at LSN %d of image '%s'\n", startlsn, trackfile);
+                _coco_seek(cpath, startlsn * 256, SEEK_SET);
                 boottrack_len = 256 * 18;
                 _coco_read(cpath, boottrack, &boottrack_len);
             }
             else
             {
                 fprintf(stderr, "%s: image '%s' does not contain valid OS kernel trackfile code (0x%02x%02x) at LSN %d\n",
-                	argv[0], trackfile, track_hdr[0], track_hdr[1], embed_lsn);
+                	argv[0], trackfile, track_hdr[0], track_hdr[1], startlsn);
                 _coco_close(cpath);
                 return (1);
             }
@@ -276,90 +262,21 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
             return (1);
         }
 
-        /* Read target LSN0 to get cluster size and sector size */
-        size = sizeof(lsn0_sect);
-        _coco_read(opath, &LSN0, &size);
-
-		is_osk = (memcmp(LSN0.dd_sync, "Cruz", 4) == 0);
-
-		if (is_osk != 0)
+		if (opath->type != OS9)
 		{
-			pd_sct = LSN0.dd_opt.m68k.pd_sct;
-			pd_cyl = LSN0.dd_opt.m68k.pd_cyl;
-			pd_sid = LSN0.dd_opt.m68k.pd_sid;
-			pd_typ = LSN0.dd_opt.m68k.pd_typ;
-		}
-		else
-		{
-			pd_sct = LSN0.dd_opt.m6809.pd_sct;
-			pd_cyl = LSN0.dd_opt.m6809.pd_cyl;
-			pd_sid = LSN0.dd_opt.m6809.pd_sid;
-			pd_typ = LSN0.dd_opt.m6809.pd_typ;
+			fprintf(stderr, "%s: '%s' target needs to be OS9 image\n", argv[0], buffer);
+			_coco_close(opath);
+			return (1);
 		}
 
-		startlsn = hwtype->startlsn;
-
-		if (startlsn == 2)
+		ec = get_boottrack_lsn(*opath->path.os9->lsn0, hwtype, &startlsn);
+		if (ec != 0)
 		{
-			printf("Dragon boottrack selected: ");
-			/* Check to make sure the disk image has minimum of 18 sectors per track */
-			if (int2(pd_sct) < 18)
-			{
-				printf("\n");
-				fprintf(stderr,
-					"Error: minimum sectors per track of 18 required for DragonDOS, found %d\n",
-					int2(pd_sct));
-				_coco_close(opath);
-				return (1);
-			}
+			_coco_close(opath);
+			return 1;
 		}
-		else
-		{
-			printf("CoCo boottrack selected: ");
-			/* If special startLSN for boottrack is set then set startlsn to  */
-			/* the value stored in specialStartLSN  */
-			if (specialStartLSN > 0)
-			{
-				startlsn = specialStartLSN;
-			}
-			else
-			{
-				/* Check to see if disk image is a HDD image if so set for default  */
-				/* startLSN of 612 for the boottrack for use with CoCoSDC and DriveWire HDD images */
-				if (int1(pd_typ) == 0x80)
-				{
-					startlsn = 612;
-				}
-				else
-				{
-					/* Check to make sure the disk image has minimum of 18 sectors per track */
-					if (int2(pd_sct) < 18)
-					{
-						printf("\n");
-						fprintf(stderr,
-							"Error: minimum sectors per track of 18 required for Disk Basic, found %d\n",
-							int2(pd_sct));
-						_coco_close(opath);
-						return (1);
-					}
-					/* Check to make sure the disk image has minimum of 35 tracks */
-					if (int2(pd_cyl) < 35)
-					{
-						printf("\n");
-						fprintf(stderr,
-							"Error: minimum number of tracks required for Disk Basic is 35, found %d\n",
-							int2(pd_cyl));
-						_coco_close(opath);
-						return (1);
-					}
-					/* Use real floppy disk geometry to figure out real startLSN for boottrack */
-					startlsn =
-						34 * int2(pd_sct) *
-						int1(pd_sid);
-				}
-			}
-		}
-		if ((startlsn + 18) > int3(LSN0.dd_tot))
+				
+		if ((startlsn + 18) > int3(opath->path.os9->lsn0->dd_tot))
 		{
 			printf("\n");
 			fprintf(stderr,
@@ -369,13 +286,11 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 		}
 
 		u_int sectorSize = opath->path.os9->bps;
-		u_int clusterSize = int2(LSN0.dd_bit);
+		u_int clusterSize = int2(opath->path.os9->lsn0->dd_bit);
 
         /* Write boot track data out to target using actual read length */
-        fprintf(stderr, "calculated seek: %d\n", startlsn * 256 );
         _coco_seek(opath, startlsn * 256, SEEK_SET);
         size = boottrack_len;
-        fprintf(stderr, "ftell: %ld\n", ftell(opath->path.os9->fd) );
         _coco_write(opath, boottrack, &size);
 
         sectors = (size + sectorSize - 1) / sectorSize;
@@ -423,7 +338,7 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
         {
             _coco_close(cpath);
             fprintf(stderr, "could not generate absolute boot file name\n");
-            return (-1);
+            return (EOS_MF);
         }
 
 		coco_file_stat fstat = { 0 };
@@ -431,10 +346,19 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
         ec = _coco_create(&opath, buffer, FAM_WRITE, &fstat);
         if (ec != 0)
         {
+            _coco_close(opath);
             _coco_close(cpath);
             fprintf(stderr, "%s: error %d creating '%s'\n", argv[0], ec, buffer);
             return (ec);
         }
+
+		if (opath->type != OS9)
+		{
+			fprintf(stderr, "%s: '%s' target needs to be OS9 image\n", argv[0], buffer);
+            _coco_close(opath);
+            _coco_close(cpath);
+			return (1);
+		}
 
         /* Stream copy from source to target */
         char ioBuf[8192];
@@ -480,33 +404,114 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
             return (ec);
         }
 
-        size = sizeof(lsn0_sect);
-        _coco_read(opath, &LSN0, &size);
-
-        if (size != sizeof(lsn0_sect))
-        {
+		if (opath->type != OS9)
+		{
+			fprintf(stderr, "%s: '%s' target needs to be OS9 image\n", argv[0], buffer);
             _coco_close(opath);
-            printf("Error reading LSN0\n");
-            return (1);
-        }
+			return (1);
+		}
 
         if (extended == 0 || (bootfile_Size < 65536 && is_single_segment(fdbuf)))
         {
-            _int3(bootfile_Data, LSN0.dd_bt);
-            _int2(bootfile_Size, LSN0.dd_bsz);
+            _int3(bootfile_Data, opath->path.os9->lsn0->dd_bt);
+            _int2(bootfile_Size, opath->path.os9->lsn0->dd_bsz);
         }
         else
         {
-            _int3(bootfile_LSN, LSN0.dd_bt);
-            _int2(0, LSN0.dd_bsz);
+            _int3(bootfile_LSN, cpath->path.os9->lsn0->dd_bt);
+            _int2(0, opath->path.os9->lsn0->dd_bsz);
         }
 
         _coco_seek(opath, 0, SEEK_SET);
-        _coco_write(opath, &LSN0, &size);
+        size = sizeof(lsn0_sect);
+        _coco_write(opath, opath->path.os9->lsn0, &size);
         _coco_close(opath);
 
         printf("Bootfile Linked! LSN: %d, size: %d\n", bootfile_LSN, bootfile_Size);
     }
 
     return (0);
+}
+
+error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *startlsn)
+{
+	int is_osk;
+	u_char *pd_sct, *pd_cyl, *pd_sid, *pd_typ;
+
+	is_osk = (memcmp(LSN0.dd_sync, "Cruz", 4) == 0);
+
+	if (is_osk != 0)
+	{
+		pd_sct = LSN0.dd_opt.m68k.pd_sct;
+		pd_cyl = LSN0.dd_opt.m68k.pd_cyl;
+		pd_sid = LSN0.dd_opt.m68k.pd_sid;
+		pd_typ = LSN0.dd_opt.m68k.pd_typ;
+	}
+	else
+	{
+		pd_sct = LSN0.dd_opt.m6809.pd_sct;
+		pd_cyl = LSN0.dd_opt.m6809.pd_cyl;
+		pd_sid = LSN0.dd_opt.m6809.pd_sid;
+		pd_typ = LSN0.dd_opt.m6809.pd_typ;
+	}
+
+	*startlsn = hwtype->startlsn;
+
+	if (*startlsn == 2)
+	{
+		printf("Dragon boottrack selected: ");
+		/* Check to make sure the disk image has minimum of 18 sectors per track */
+		if (int2(pd_sct) < 18)
+		{
+			printf("\n");
+			fprintf(stderr,
+				"Error: minimum sectors per track of 18 required for DragonDOS, found %d\n",
+				int2(pd_sct));
+			return (1);
+		}
+	}
+	else
+	{
+		printf("CoCo boottrack selected: ");
+		/* If special startLSN for boottrack is set then set startlsn to  */
+		/* the value stored in specialStartLSN  */
+		if (specialStartLSN > 0)
+		{
+			*startlsn = specialStartLSN;
+		}
+		else
+		{
+			/* Check to see if disk image is a HDD image if so set for default  */
+			/* startLSN of 612 for the boottrack for use with CoCoSDC and DriveWire HDD images */
+			if (int1(pd_typ) == 0x80)
+			{
+				*startlsn = 612;
+			}
+			else
+			{
+				/* Check to make sure the disk image has minimum of 18 sectors per track */
+				if (int2(pd_sct) < 18)
+				{
+					printf("\n");
+					fprintf(stderr,
+						"Error: minimum sectors per track of 18 required for Disk Basic, found %d\n",
+						int2(pd_sct));
+					return (1);
+				}
+				/* Check to make sure the disk image has minimum of 35 tracks */
+				if (int2(pd_cyl) < 35)
+				{
+					printf("\n");
+					fprintf(stderr,
+						"Error: minimum number of tracks required for Disk Basic is 35, found %d\n",
+						int2(pd_cyl));
+					return (1);
+				}
+				/* Use real floppy disk geometry to figure out real startLSN for boottrack */
+				*startlsn = 34 * int2(pd_sct) * int1(pd_sid);
+			}
+		}
+	}
+	
+	return 0;
 }
