@@ -29,6 +29,13 @@ existing command-line build. See the [GUI overview](gui/README.md) and the
 [DiskShed build instructions](gui/wx/README.md) for requirements, native
 Linux/macOS/Windows release artifacts, and usage.
 
+Prebuilt binaries for macOS, Windows, and Linux are available from
+[GitHub Releases](https://github.com/nitros9project/toolshed/releases).
+Development builds from the latest commits and pull requests can be downloaded
+from the [DiskShed Actions workflow](https://github.com/nitros9project/toolshed/actions/workflows/diskshed.yml);
+these workflow artifacts require a GitHub sign-in and expire, so releases are
+recommended for general use.
+
 ## Building on Windows
 
 The recommended build environment is [MingW32 or MingW64](http://mingw.org/), [MSYS2](http://msys2.github.io/), or the [WSL subsystem for Windows 10+](https://en.wikipedia.org/wiki/Windows_Subsystem_for_Linux).
