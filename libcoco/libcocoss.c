@@ -113,6 +113,31 @@ error_code _coco_ss_fd(coco_path_id path, coco_file_stat * statbuf)
 		break;
 
 	case OS9:
+	{
+		time_t create_epoch, modify_epoch;
+		int use_sde = 0;
+		char *sde_env = getenv("SOURCE_DATE_EPOCH");
+
+		/* 1. Parse SOURCE_DATE_EPOCH if present */
+		if (sde_env != NULL)
+		{
+			char *endptr;
+			time_t sde_val = (time_t)strtoll(sde_env, &endptr, 10);
+			if (*endptr == '\0' && sde_val >= 0)
+			{
+				use_sde = 1;
+				create_epoch = sde_val;
+				modify_epoch = sde_val;
+			}
+		}
+
+		/* 2. Fall back to statbuf timestamps if SOURCE_DATE_EPOCH is not set */
+		if (!use_sde)
+		{
+			create_epoch = statbuf->create_time;
+			modify_epoch = statbuf->last_modified_time;
+		}
+
 		ec = _os9_gs_fd(path->path.os9, sizeof(os9_stat), &os9_stat);
 		os9_stat.fd_att &=
 			~(FAP_READ | FAP_WRITE | FAP_EXEC | FAP_PREAD |
@@ -120,18 +145,30 @@ error_code _coco_ss_fd(coco_path_id path, coco_file_stat * statbuf)
 		os9_stat.fd_att |= statbuf->attributes;
 		os9_stat.fd_own[1] = statbuf->user_id;
 		os9_stat.fd_own[0] = statbuf->group_id;
-		timepak = localtime(&(statbuf->create_time));
-		os9_stat.fd_creat[0] = timepak->tm_year;
-		os9_stat.fd_creat[1] = timepak->tm_mon + 1;
-		os9_stat.fd_creat[2] = timepak->tm_mday;
-		timepak = localtime(&(statbuf->last_modified_time));
-		os9_stat.fd_dat[0] = timepak->tm_year;
-		os9_stat.fd_dat[1] = timepak->tm_mon + 1;
-		os9_stat.fd_dat[2] = timepak->tm_mday;
-		os9_stat.fd_dat[3] = timepak->tm_hour;
-		os9_stat.fd_dat[4] = timepak->tm_min;
+
+		/* 3. Format Creation Time: gmtime for SOURCE_DATE_EPOCH, localtime for normal */
+		timepak = use_sde ? gmtime(&create_epoch) : localtime(&create_epoch);
+		if (timepak != NULL)
+		{
+			os9_stat.fd_creat[0] = timepak->tm_year;
+			os9_stat.fd_creat[1] = timepak->tm_mon + 1;
+			os9_stat.fd_creat[2] = timepak->tm_mday;
+		}
+
+		/* 4. Format Modification Time: gmtime for SOURCE_DATE_EPOCH, localtime for normal */
+		timepak = use_sde ? gmtime(&modify_epoch) : localtime(&modify_epoch);
+		if (timepak != NULL)
+		{
+			os9_stat.fd_dat[0] = timepak->tm_year;
+			os9_stat.fd_dat[1] = timepak->tm_mon + 1;
+			os9_stat.fd_dat[2] = timepak->tm_mday;
+			os9_stat.fd_dat[3] = timepak->tm_hour;
+			os9_stat.fd_dat[4] = timepak->tm_min;
+		}
+
 		ec = _os9_ss_fd(path->path.os9, sizeof(os9_stat), &os9_stat);
 		break;
+	}
 
 	case DECB:
 		ec = _decb_gs_fd(path->path.decb, &decb_stat);

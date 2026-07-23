@@ -16,6 +16,25 @@
 
 static EOL_Type DetermineEOLType(char *buffer, int size);
 
+/* Helper function to get the current timestamp, respecting SOURCE_DATE_EPOCH */
+time_t GetSafeTimestamp(void)
+{
+	char *sde_env = getenv("SOURCE_DATE_EPOCH");
+	if (sde_env != NULL)
+	{
+		char *endptr;
+		time_t sde_val = (time_t)strtoll(sde_env, &endptr, 10);
+		if (*endptr == '\0' && sde_val >= 0)
+		{
+			return sde_val;
+		}
+	}
+
+	time_t tp;
+	time(&tp);
+	return tp;
+}
+
 
 int CoCoToUnixPerms(int attrs)
 {
@@ -98,18 +117,42 @@ int UnixToCoCoPerms(int attrs)
 
 char *UnixToOS9Time(time_t currentTime, char *os9time)
 {
-	struct tm *x;
+    struct tm *x;
+    char *sde_env = getenv("SOURCE_DATE_EPOCH");
 
-	x = localtime(&currentTime);
-	os9time[0] = x->tm_year;
-	os9time[1] = x->tm_mon + 1;
-	os9time[2] = x->tm_mday;
-	os9time[3] = x->tm_hour;
-	os9time[4] = x->tm_min;
+    if (sde_env != NULL)
+    {
+        char *endptr;
+        time_t sde_val = (time_t)strtoll(sde_env, &endptr, 10);
+        
+        /* Ensure valid non-negative integer and no leftover junk */
+        if (*endptr == '\0' && sde_val >= 0)
+        {
+            currentTime = sde_val;
+            /* Use gmtime for SOURCE_DATE_EPOCH per specification */
+            x = gmtime(&currentTime);
+        }
+        else
+        {
+            x = localtime(&currentTime);
+        }
+    }
+    else
+    {
+        x = localtime(&currentTime);
+    }
 
-	return (os9time);
+    if (x != NULL)
+    {
+        os9time[0] = x->tm_year;
+        os9time[1] = x->tm_mon + 1;
+        os9time[2] = x->tm_mday;
+        os9time[3] = x->tm_hour;
+        os9time[4] = x->tm_min;
+    }
+
+    return os9time;
 }
-
 
 /* Converts a regular string to an OS-9 filename. OS-9 stores filename with the last
  * character in the name as with bit 7 set. This is also used in LSN0 for

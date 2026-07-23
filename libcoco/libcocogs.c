@@ -166,20 +166,29 @@ error_code _coco_gs_fd(coco_path_id path, coco_file_stat * statbuf)
 		statbuf->attributes = os9_stat.fd_att;
 		statbuf->user_id = os9_stat.fd_own[1];
 		statbuf->group_id = os9_stat.fd_own[0];
+
+		/* Process Creation Time */
 		memset(&timepak, 0, sizeof(timepak));
-		timepak.tm_year = os9_stat.fd_creat[0];
+		/* Handle 2-digit OS-9 years: OS-9 year 0-99 maps to 1900-1999, >= 100 is 2000+ */
+		timepak.tm_year = (os9_stat.fd_creat[0] < 70) ? os9_stat.fd_creat[0] + 100 : os9_stat.fd_creat[0];
 		timepak.tm_mon = os9_stat.fd_creat[1] - 1;
 		timepak.tm_mday = os9_stat.fd_creat[2];
 		timepak.tm_isdst = -1; /* let mktime determine DST */
-		statbuf->create_time = mktime(&timepak);
+		
+		tp = mktime(&timepak);
+		statbuf->create_time = (tp == (time_t)-1) ? 0 : tp;
+
+		/* Process Modification Time */
 		memset(&timepak, 0, sizeof(timepak));
-		timepak.tm_year = os9_stat.fd_dat[0];
+		timepak.tm_year = (os9_stat.fd_dat[0] < 70) ? os9_stat.fd_dat[0] + 100 : os9_stat.fd_dat[0];
 		timepak.tm_mon = os9_stat.fd_dat[1] - 1;
 		timepak.tm_mday = os9_stat.fd_dat[2];
 		timepak.tm_hour = os9_stat.fd_dat[3];
 		timepak.tm_min = os9_stat.fd_dat[4];
 		timepak.tm_isdst = -1; /* let mktime determine DST */
-		statbuf->last_modified_time = mktime(&timepak);
+
+		tp = mktime(&timepak);
+		statbuf->last_modified_time = (tp == (time_t)-1) ? 0 : tp;
 		break;
 
 	case DECB:
@@ -193,8 +202,8 @@ error_code _coco_gs_fd(coco_path_id path, coco_file_stat * statbuf)
 		{
 			statbuf->attributes |= FAP_DIR;
 		}
-		/* Neither does Disk BASIC have date or time stamps. */
-		time(&tp);
+		/* Use SOURCE_DATE_EPOCH if set, or system clock as fallback */
+		tp = GetSafeTimestamp();
 		statbuf->create_time = tp;
 		statbuf->last_modified_time = tp;
 		/* Nor does it have user/group IDs. */
@@ -212,8 +221,8 @@ error_code _coco_gs_fd(coco_path_id path, coco_file_stat * statbuf)
 
 		/* Since Cassette BASIC files have no permissions per se, we make our own. */
 		statbuf->attributes = FAP_READ | FAP_WRITE | FAP_PREAD;
-		/* Neither does Cassette BASIC have date or time stamps. */
-		time(&tp);
+		/* Use SOURCE_DATE_EPOCH if set, or system clock as fallback */
+		tp = GetSafeTimestamp();
 		statbuf->create_time = tp;
 		statbuf->last_modified_time = tp;
 		/* Nor does it have user/group IDs. */
@@ -221,7 +230,6 @@ error_code _coco_gs_fd(coco_path_id path, coco_file_stat * statbuf)
 		statbuf->group_id = 0;
 		break;
 	}
-
 
 	return ec;
 }

@@ -150,9 +150,7 @@ error_code _os9_create(os9_path_id * path, char *pathlist, int mode,
 			return ec;
 		}
 
-		now = time(NULL);
-//        tm = localtime(&now);
-
+		now = GetSafeTimestamp();
 
 		/* 3. Populate file descriptor. */
 
