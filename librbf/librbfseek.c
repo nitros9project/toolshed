@@ -27,7 +27,14 @@ error_code _os9_seek(os9_path_id path, int pos, int mode)
 			}
 		}
 
-		fseek(path->fd, pos, mode);
+		if (fseek(path->fd, pos, mode) == 0)
+		{
+			path->filepos = ftell(path->fd);
+		}
+		else
+		{
+			ec = -1; /* Return failure code if fseek failed */
+		}
 	}
 	else
 	{
@@ -63,7 +70,7 @@ error_code _os9_seek(os9_path_id path, int pos, int mode)
 int _os9_lsn_fseek(os9_path_id path, int lsn)
 {
 	long offset;
-
+	
 	if (lsn >= path->t0s)
 	{
 		/* Skip past missing sectors */
