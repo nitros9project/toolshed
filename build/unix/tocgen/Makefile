@@ -12,7 +12,6 @@ LIBDEPS = ../libtoolshed/libtoolshed.a ../libcoco/libcoco.a ../libnative/libnati
 	../libsys/libsys.a
 
 CFLAGS  += -I../../../include -Wall
-#LDFLAGS += -L../libcoco -L../libnative -L../libdecb -L../libmisc -L../librbf -L../libsys -L../libcecb -lcoco -lnative -lcecb -ldecb -lmisc -lrbf -lsys -lm
 BINARY	= tocgen
 OBJS	= tocgen_main.o
 
