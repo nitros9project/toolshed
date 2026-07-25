@@ -118,6 +118,7 @@ if(DISKSHED_BUILD_GUI)
                 MACOSX_PACKAGE_LOCATION "Resources")
             target_sources(diskshed PRIVATE ${DISKSHED_MAC_ICON})
         elseif(WIN32)
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
             set(DISKSHED_WINDOWS_ICON
                 "${CMAKE_CURRENT_SOURCE_DIR}/packaging/org.nitros9.diskshed.ico")
             configure_file(packaging/diskshed.rc.in diskshed.rc @ONLY)
