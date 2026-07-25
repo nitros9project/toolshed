@@ -10,14 +10,6 @@
  * it, a segment/extent entry, a directory entry (and which byte of
  * its name or LSN pointer), or a byte inside a file's data.
  *
- * Assumptions carried over from the rest of the os9 library:
- *   - os9_path_id already carries bps/spc/bitmap_bytes/cs and a
- *     parsed copy of LSN0 (path->lsn0) once _os9_open() succeeds.
- *   - read_lsn(path, lsn, buffer) reads exactly path->bps bytes of
- *     a single raw LSN into buffer, regardless of interpretation.
- *   - fd_stats/os9_dir_entry/lsn0_sect map byte-for-byte onto their
- *     on-disk sector layouts (as os9id.c already relies on).
- *
  * $Id$
  ********************************************************************/
 #include <util.h>
@@ -60,10 +52,7 @@ static char const *const helpMessage[] = {
 	"Syntax: reveal {[<opts>]} <disk> <lsn>[:<offset>]\n",
 	"        reveal -b <disk> <byte-offset>\n",
 	"Usage:  Explain exactly what lives at a given LSN (and, optionally,\n",
-	"        byte offset within that sector) on an os9 disk image -- a\n",
-	"        piece of LSN0, a bitmap byte and the LSNs it tracks, a file\n",
-	"        descriptor field, a directory entry, or file data -- by\n",
-	"        name and structure, not just a raw hex dump.\n",
+	"        byte offset within that sector) on an os9 disk image.\n",
 	"Options:\n",
 	"  -b    Treat <offset> as an absolute byte offset from the start\n",
 	"        of the disk image, rather than an LSN[:offset] pair.\n",
@@ -75,11 +64,23 @@ static char const *const helpMessage[] = {
  * small helpers
  * ------------------------------------------------------------------ */
 
-static char ord_buf[16];
+/* Several messages below call ordinal() more than once in a single
+ * printf() -- e.g. "%s byte ... %s segment". A single shared static
+ * buffer would get overwritten by the second call before printf()
+ * ever reads the first (argument evaluation order is unspecified in
+ * C), silently corrupting or blanking out one of the two. Rotate
+ * through a small pool of buffers instead so each call in the same
+ * statement gets its own. */
+#define	ORD_NUM_BUFS	4
+static char ord_bufs[ORD_NUM_BUFS][16];
+static int  ord_buf_idx = 0;
 
 static const char *ordinal(unsigned int n)
 {
 	const char *suffix = "th";
+	char *buf = ord_bufs[ord_buf_idx];
+
+	ord_buf_idx = (ord_buf_idx + 1) % ORD_NUM_BUFS;
 
 	if ((n % 100) < 11 || (n % 100) > 13)
 	{
@@ -100,8 +101,8 @@ static const char *ordinal(unsigned int n)
 		}
 	}
 
-	snprintf(ord_buf, sizeof(ord_buf), "%u%s", n, suffix);
-	return (ord_buf);
+	snprintf(buf, 16, "%u%s", n, suffix);
+	return (buf);
 }
 
 
@@ -230,19 +231,19 @@ static void describe_fd_offset(const char *pathname, unsigned int offset)
 		if (segIndex >= NUM_SEGS)
 		{
 			printf("This is byte %u of the file descriptor for file\n"
-			       "\"%s\", past its last possible segment/extent entry.\n",
+			       "\"%s\", past its last possible segment entry.\n",
 			       offset, pathname);
 			return;
 		}
 
 		if (fieldOff < 3)
 			printf("This is byte %u of the file descriptor for file\n"
-			       "\"%s\" -- the LSN field of its %s segment (extent) entry.\n",
+			       "\"%s\" -- the LSN field of its %s segment entry.\n",
 			       offset, pathname, ordinal(segIndex + 1));
 		else
 			printf("This is byte %u of the file descriptor for file\n"
 			       "\"%s\" -- the sector-count field of its %s segment\n"
-			       "(extent) entry.\n",
+			       "entry.\n",
 			       offset, pathname, ordinal(segIndex + 1));
 		return;
 	}
@@ -305,7 +306,9 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 		return (1);
 	}
 
-	if (read_lsn(path, fd_lsn, &fd) != 0)
+	/* read_lsn() returns the number of bytes read on success, not an
+	 * error_code -- 0 (or negative) means the read failed. */
+	if (read_lsn(path, fd_lsn, &fd) <= 0)
 		return (0);
 
 	is_dir = (fd.fd_att & FAP_DIR) ? 1 : 0;
@@ -339,7 +342,9 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 				os9_dir_entry entbuf[64];
 				u_char *entname = NULL;
 
-				if (read_lsn(path, tgt->target_lsn, entbuf) == 0 &&
+				/* read_lsn() returns bytes read, not an
+				 * error_code -- > 0 means success. */
+				if (read_lsn(path, tgt->target_lsn, entbuf) > 0 &&
 				    entbuf[localIndex].name[0] != 0)
 					entname = decode_entry_name(&entbuf[localIndex]);
 
@@ -380,13 +385,23 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 		prevBytes += seg_num * path->bps;
 	}
 
-	/* not in this FD's own sectors -- if it's a directory, recurse */
+	/* not in this FD's own sectors -- if it's a directory, recurse.
+	 * A directory's last allocated sector is often only partially
+	 * used -- OS-9 allocates directories in whole clusters, and the
+	 * unused tail of that final sector is just leftover disk content
+	 * (frequently stale bytes from whatever file previously owned
+	 * that sector), not zeroed. So we bound the scan by fd_siz -- the
+	 * directory's actual byte length -- rather than reading every
+	 * entry slot in every allocated sector; otherwise we walk off
+	 * the end of the real entries into that stale tail and start
+	 * "recursing" into garbage LSNs as if they were real children. */
 	if (is_dir)
 	{
 		unsigned int fsize = int4(fd.fd_siz);
-		unsigned int fileBytes = 0;
+		unsigned int totalEntries = fsize / sizeof(os9_dir_entry);
+		unsigned int entriesSeen = 0;
 
-		for (i = 0; i < NUM_SEGS; i++)
+		for (i = 0; i < NUM_SEGS && entriesSeen < totalEntries; i++)
 		{
 			unsigned int seg_lsn = int3(fd.fd_seg[i].lsn);
 			unsigned int seg_num = int2(fd.fd_seg[i].num);
@@ -395,23 +410,31 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 			if (seg_num == 0)
 				break;
 
-			for (s = 0; s < seg_num && fileBytes < fsize; s++)
+			for (s = 0; s < seg_num && entriesSeen < totalEntries; s++)
 			{
 				os9_dir_entry entbuf[64];
 				int nEntries = path->bps / sizeof(os9_dir_entry);
 				int e;
 
-				if (read_lsn(path, seg_lsn + s, entbuf) != 0)
+				/* read_lsn() returns bytes read, not an
+				 * error_code -- <= 0 means the read failed. */
+				if (read_lsn(path, seg_lsn + s, entbuf) <= 0)
 				{
-					fileBytes += path->bps;
+					/* can't verify this sector's entries;
+					 * skip it but keep the entry count in
+					 * sync so we don't overrun elsewhere */
+					entriesSeen += nEntries;
 					continue;
 				}
 
-				for (e = 0; e < nEntries; e++)
+				for (e = 0; e < nEntries && entriesSeen < totalEntries;
+				     e++, entriesSeen++)
 				{
-					char	childpath[512];
+					char	*childpath;
+					size_t	pathlen;
 					u_char	*childname;
 					unsigned int childlsn;
+					int	found;
 
 					if (entbuf[e].name[0] == 0)
 						continue;
@@ -419,28 +442,41 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 					childname = decode_entry_name(&entbuf[e]);
 					childlsn = int3(entbuf[e].lsn);
 
-					if (strcmp((char *)childname, ".") == 0 ||
-					    strcmp((char *)childname, "..") == 0)
+					if (strcmp((char *) childname, ".") == 0 ||
+					    strcmp((char *) childname, "..") == 0)
+					{
+						free(childname);
+						continue;
+					}
+
+					/* pathname + '/' + childname + '\0' --
+					 * sized exactly, no fixed path limit */
+					pathlen = strlen(pathname) +
+						strlen((char *) childname) + 2;
+					childpath = malloc(pathlen);
+
+					if (childpath == NULL)
 					{
 						free(childname);
 						continue;
 					}
 
 					if (strcmp(pathname, "/") == 0)
-						snprintf(childpath, sizeof(childpath),
+						snprintf(childpath, pathlen,
 							 "/%s", childname);
 					else
-						snprintf(childpath, sizeof(childpath),
+						snprintf(childpath, pathlen,
 							 "%s/%s", pathname, childname);
 
 					free(childname);
 
-					if (reveal_examine_fd(path, childlsn,
-							       childpath, tgt))
+					found = reveal_examine_fd(path, childlsn,
+								   childpath, tgt);
+					free(childpath);
+
+					if (found)
 						return (1);
 				}
-
-				fileBytes += path->bps;
 			}
 		}
 	}
@@ -482,11 +518,17 @@ static void reveal(os9_path_id path, reveal_target *tgt)
 
 	if (!reveal_examine_fd(path, rootDirLsn, "/", tgt))
 	{
+		int allocated = _os9_ckbit(path->bitmap, tgt->target_lsn);
+
 		printf("LSN %u doesn't currently map to any known filesystem\n"
-		       "structure (LSN0, the bitmap, or a live file/directory).\n"
-		       "It's most likely unallocated free space, or it falls in a\n"
-		       "reserved/system area of the disk.\n",
+		       "structure (LSN0, the bitmap, or a live file/directory).\n",
 		       tgt->target_lsn);
+
+		if (allocated)
+			printf("The bitmap marks it as ALLOCATED, though -- it likely\n"
+			       "belongs to boottrack.\n");
+		else
+			printf("The bitmap marks it as UNALLOCATED -- it's free space.\n");
 	}
 }
 
