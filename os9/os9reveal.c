@@ -7,7 +7,7 @@
  * OS-9 disk image and explains -- in plain English -- exactly what
  * lives at that location: a field of LSN0, a bitmap byte and the
  * cluster/LSN range it tracks, a file descriptor and which field of
- * it, a segment/extent entry, a directory entry (and which byte of
+ * it, a segment entry, a directory entry (and which byte of
  * its name or LSN pointer), or a byte inside a file's data.
  *
  * $Id$
@@ -64,15 +64,35 @@ static char const *const helpMessage[] = {
  * small helpers
  * ------------------------------------------------------------------ */
 
-/* Several messages below call ordinal() more than once in a single
- * printf() -- e.g. "%s byte ... %s segment". A single shared static
- * buffer would get overwritten by the second call before printf()
- * ever reads the first (argument evaluation order is unspecified in
- * C), silently corrupting or blanking out one of the two. Rotate
- * through a small pool of buffers instead so each call in the same
- * statement gets its own. */
+#define	NUM_NUM_BUFS	4
+static char num_bufs[NUM_NUM_BUFS][32];
+static int  num_buf_idx = 0;
+
+static const char *format_num(unsigned long n)
+{
+	char	raw[24];
+	char	*buf = num_bufs[num_buf_idx];
+	int	rawlen, i, j;
+
+	num_buf_idx = (num_buf_idx + 1) % NUM_NUM_BUFS;
+
+	snprintf(raw, sizeof(raw), "%lu", n);
+	rawlen = strlen(raw);
+
+	for (i = 0, j = 0; i < rawlen; i++)
+	{
+		if (i > 0 && (rawlen - i) % 3 == 0)
+			buf[j++] = ',';
+		buf[j++] = raw[i];
+	}
+	buf[j] = '\0';
+
+	return (buf);
+}
+
+
 #define	ORD_NUM_BUFS	4
-static char ord_bufs[ORD_NUM_BUFS][16];
+static char ord_bufs[ORD_NUM_BUFS][24];
 static int  ord_buf_idx = 0;
 
 static const char *ordinal(unsigned int n)
@@ -101,14 +121,11 @@ static const char *ordinal(unsigned int n)
 		}
 	}
 
-	snprintf(buf, 16, "%u%s", n, suffix);
+	snprintf(buf, 24, "%s%s", format_num(n), suffix);
 	return (buf);
 }
 
 
-/* Decode a fixed-length os9 name field (high bit terminates the
- * final character) into a plain C string.  Mirrors the pattern
- * os9id.c already uses for the LSN0 disk name. */
 static u_char *decode_os9_name(const u_char *raw, size_t len)
 {
 	char *tmp = malloc(len + 1);
@@ -168,9 +185,8 @@ static void describe_lsn0_offset(lsn0_sect *l0, unsigned int offset)
 	{
 		unsigned int charIndex = offset - (unsigned int) DD_NAM_OFFSET + 1;
 
-		printf("This is byte %u of LSN0 -- specifically, this is the\n"
-		       "%s character of the disk name (currently \"%s\").\n",
-		       offset, ordinal(charIndex), diskname);
+		printf("This is byte %s of LSN0 -- specifically, this is the %s character of the disk name (currently \"%s\").\n",
+		       format_num(offset), ordinal(charIndex), diskname);
 		return;
 	}
 
@@ -180,17 +196,16 @@ static void describe_lsn0_offset(lsn0_sect *l0, unsigned int offset)
 
 		if (offset >= f->offset && offset < f->offset + f->size)
 		{
-			printf("This is byte %u of LSN0, the header sector of disk\n"
-			       "\"%s\" -- within the %s field (byte %u of %lu of it).\n",
-			       offset, diskname, f->label,
+			printf("This is byte %s of LSN0, the header sector of disk \"%s\" -- within the %s field (byte %u of %lu of it).\n",
+			       format_num(offset), diskname, f->label,
 			       offset - (unsigned int) f->offset + 1,
 			       (unsigned long) f->size);
 			return;
 		}
 	}
 
-	printf("This is byte %u of LSN0, in an unnamed or reserved area.\n",
-	       offset);
+	printf("This is byte %s of LSN0, in an unnamed or reserved area.\n",
+	       format_num(offset));
 }
 
 
@@ -217,8 +232,8 @@ static void describe_fd_offset(const char *pathname, unsigned int offset)
 
 	if (offset == 0)
 	{
-		printf("This is the start of the file descriptor for file\n"
-		       "\"%s\".\n", pathname);
+		printf("This is the start of the file descriptor for file \"%s\".\n",
+		       pathname);
 		return;
 	}
 
@@ -230,21 +245,17 @@ static void describe_fd_offset(const char *pathname, unsigned int offset)
 
 		if (segIndex >= NUM_SEGS)
 		{
-			printf("This is byte %u of the file descriptor for file\n"
-			       "\"%s\", past its last possible segment entry.\n",
-			       offset, pathname);
+			printf("This is byte %s of the file descriptor for file \"%s\", past its last possible segment entry.\n",
+			       format_num(offset), pathname);
 			return;
 		}
 
 		if (fieldOff < 3)
-			printf("This is byte %u of the file descriptor for file\n"
-			       "\"%s\" -- the LSN field of its %s segment entry.\n",
-			       offset, pathname, ordinal(segIndex + 1));
+			printf("This is byte %s of the file descriptor for file \"%s\" -- the LSN field of its %s segment entry.\n",
+			       format_num(offset), pathname, ordinal(segIndex + 1));
 		else
-			printf("This is byte %u of the file descriptor for file\n"
-			       "\"%s\" -- the sector-count field of its %s segment\n"
-			       "entry.\n",
-			       offset, pathname, ordinal(segIndex + 1));
+			printf("This is byte %s of the file descriptor for file \"%s\" -- the sector-count field of its %s segment entry.\n",
+			       format_num(offset), pathname, ordinal(segIndex + 1));
 		return;
 	}
 
@@ -254,15 +265,14 @@ static void describe_fd_offset(const char *pathname, unsigned int offset)
 
 		if (offset >= f->offset && offset < f->offset + f->size)
 		{
-			printf("This is byte %u of the file descriptor for file\n"
-			       "\"%s\", within its %s.\n",
-			       offset, pathname, f->label);
+			printf("This is byte %s of the file descriptor for file \"%s\", within its %s.\n",
+			       format_num(offset), pathname, f->label);
 			return;
 		}
 	}
 
-	printf("This is byte %u of the file descriptor for file \"%s\".\n",
-	       offset, pathname);
+	printf("This is byte %s of the file descriptor for file \"%s\".\n",
+	       format_num(offset), pathname);
 }
 
 
@@ -278,13 +288,11 @@ static void describe_bitmap_offset(os9_path_id path, reveal_target *tgt)
 	unsigned int lsnStart = clusterStart * path->spc;
 	unsigned int lsnEnd   = lsnStart + (8 * path->spc) - 1;
 
-	printf("This is byte %u of the allocation bitmap (LSN %u, %u bytes\n"
-	       "into the bitmap area). Each bit marks one %u-sector cluster\n"
-	       "as free or allocated, so this byte's 8 bits cover clusters\n"
-	       "%u through %u -- that is, LSNs %u through %u.\n",
-	       byteInBitmap, tgt->target_lsn,
-	       (tgt->target_lsn - 1) * path->bps + tgt->target_offset,
-	       path->spc, clusterStart, clusterStart + 7, lsnStart, lsnEnd);
+	printf("This is byte %s of the allocation bitmap (LSN %s, %s bytes into the bitmap area). Each bit marks one %u-sector cluster as free or allocated, so this byte's 8 bits cover clusters %s through %s -- that is, LSNs %s through %s.\n",
+	       format_num(byteInBitmap), format_num(tgt->target_lsn),
+	       format_num(byteInBitmap), path->spc,
+	       format_num(clusterStart), format_num(clusterStart + 7),
+	       format_num(lsnStart), format_num(lsnEnd));
 }
 
 
@@ -313,7 +321,7 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 
 	is_dir = (fd.fd_att & FAP_DIR) ? 1 : 0;
 
-	/* does the target LSN fall inside one of this FD's extents? */
+	/* does the target LSN fall inside one of this FD's segements? */
 	for (i = 0; i < NUM_SEGS; i++)
 	{
 		unsigned int seg_lsn = int3(fd.fd_seg[i].lsn);
@@ -348,21 +356,17 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 				    entbuf[localIndex].name[0] != 0)
 					entname = decode_entry_name(&entbuf[localIndex]);
 
-				printf("This is byte %u of the %s extent (segment)\n"
-				       "of directory file \"%s\" --\n",
-				       byteOffset, ordinal(i + 1), pathname);
-
 				if (entryByte < D_NAMELEN)
-					printf("it lands on the %s directory entry%s%s%s,\n"
-					       "the %s character of that entry's filename.\n",
+					printf("This is byte %s of the %s segment of directory file \"%s\" -- it lands on the %s directory entry%s%s%s, the %s character of that entry's filename.\n",
+					       format_num(byteOffset), ordinal(i + 1), pathname,
 					       ordinal(entryIndex + 1),
 					       entname ? " (\"" : "",
 					       entname ? entname : (u_char *)"",
 					       entname ? "\")" : "",
 					       ordinal(entryByte + 1));
 				else
-					printf("it lands on the %s directory entry%s%s%s,\n"
-					       "byte %u of the LSN pointer for that entry.\n",
+					printf("This is byte %s of the %s segment of directory file \"%s\" -- it lands on the %s directory entry%s%s%s, byte %u of the LSN pointer for that entry.\n",
+					       format_num(byteOffset), ordinal(i + 1), pathname,
 					       ordinal(entryIndex + 1),
 					       entname ? " (\"" : "",
 					       entname ? entname : (u_char *)"",
@@ -371,12 +375,10 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 			}
 			else
 			{
-				printf("This is byte %u of file \"%s\" (the %s\n"
-				       "byte overall), found in the %s segment/extent\n"
-				       "of this file, which begins at LSN %u.\n",
-				       byteOffset, pathname,
+				printf("This is byte %s of file \"%s\" (the %s byte overall), found in the %s segment of this file, which begins at LSN %s.\n",
+				       format_num(byteOffset), pathname,
 				       ordinal(byteOffset + 1),
-				       ordinal(i + 1), seg_lsn);
+				       ordinal(i + 1), format_num(seg_lsn));
 			}
 
 			return (1);
@@ -495,9 +497,9 @@ static void reveal(os9_path_id path, reveal_target *tgt)
 	unsigned int	bitmapSectors;
 	unsigned int	rootDirLsn;
 
-	printf("\nExamining LSN %u", tgt->target_lsn);
+	printf("\nExamining LSN %s", format_num(tgt->target_lsn));
 	if (tgt->target_offset != 0)
-		printf(", byte %u", tgt->target_offset);
+		printf(", byte %s", format_num(tgt->target_offset));
 	printf(" of '%s'...\n\n", path->imgfile);
 
 	if (tgt->target_lsn == 0)
@@ -520,13 +522,11 @@ static void reveal(os9_path_id path, reveal_target *tgt)
 	{
 		int allocated = _os9_ckbit(path->bitmap, tgt->target_lsn);
 
-		printf("LSN %u doesn't currently map to any known filesystem\n"
-		       "structure (LSN0, the bitmap, or a live file/directory).\n",
-		       tgt->target_lsn);
+		printf("LSN %s doesn't currently map to any known filesystem structure (LSN0, the bitmap, or a live file/directory).\n",
+		       format_num(tgt->target_lsn));
 
 		if (allocated)
-			printf("The bitmap marks it as ALLOCATED, though -- it likely\n"
-			       "belongs to boottrack.\n");
+			printf("The bitmap marks it as ALLOCATED, though -- it likely belongs to boottrack.\n");
 		else
 			printf("The bitmap marks it as UNALLOCATED -- it's free space.\n");
 	}
