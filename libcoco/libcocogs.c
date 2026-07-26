@@ -170,7 +170,7 @@ error_code _coco_gs_fd(coco_path_id path, coco_file_stat * statbuf)
 		/* Process Creation Time */
 		memset(&timepak, 0, sizeof(timepak));
 		/* Handle 2-digit OS-9 years: OS-9 year 0-99 maps to 1900-1999, >= 100 is 2000+ */
-		timepak.tm_year = (os9_stat.fd_creat[0] < 70) ? os9_stat.fd_creat[0] + 100 : os9_stat.fd_creat[0];
+		timepak.tm_year = os9_stat.fd_creat[0];
 		timepak.tm_mon = os9_stat.fd_creat[1] - 1;
 		timepak.tm_mday = os9_stat.fd_creat[2];
 		timepak.tm_isdst = -1; /* let mktime determine DST */
@@ -180,7 +180,7 @@ error_code _coco_gs_fd(coco_path_id path, coco_file_stat * statbuf)
 
 		/* Process Modification Time */
 		memset(&timepak, 0, sizeof(timepak));
-		timepak.tm_year = (os9_stat.fd_dat[0] < 70) ? os9_stat.fd_dat[0] + 100 : os9_stat.fd_dat[0];
+		timepak.tm_year = os9_stat.fd_dat[0];
 		timepak.tm_mon = os9_stat.fd_dat[1] - 1;
 		timepak.tm_mday = os9_stat.fd_dat[2];
 		timepak.tm_hour = os9_stat.fd_dat[3];
