@@ -36,6 +36,7 @@ ToolShed v2.5.1
   * [MODBUST](#modbust) - Bust a single merged file of OS-9 modules into separate files
   * [PADROM](#padrom) - Pad a file to a specific length
   * [RENAME](#rename_os9) - Give a file a new filename
+  * [REVEAL](#reveal_os9) - Explain what lives at a given LSN of a disk image
 * [decb](#decb) - Manipulate RSDOS formatted disk images
   * [Options](#decb_exec_option) - The DECB executive's option
   * [ATTR](#attr_decb) - Display or modify file attributes
@@ -825,6 +826,35 @@ This command is intended for RBF disk image files only.
 #### Description
 
 The rename command renames a file with a new filename.
+
+---
+
+<h3 id="reveal_os9">REVEAL - Explain what lives at a given LSN of a disk image</h3>
+
+#### Syntax and Scope
+
+    reveal {[<opts>]} <disk> <lsn>[:<offset>]
+    reveal -b <disk> <byte-offset>
+
+This command is intended for RBF disk image files only.
+
+#### Description
+
+Reveal takes an LSN (and, optionally, a byte offset within that sector) or an absolute byte offset into the image, and explains, in plain English, exactly what lives at that location: a field of LSN0, a bitmap byte and the cluster/LSN range it tracks, a file descriptor and which field of it, a segment entry, a directory entry (and which byte of its name or LSN pointer), or a byte inside a file's data. If the LSN doesn't map to anything reveal recognizes, it reports whether the bitmap marks it allocated or free, and whether it falls within the boot track.
+
+Options:
+
+    -b    Treat <offset> as an absolute byte offset from the start
+          of the disk image, rather than an LSN[:offset] pair.
+    -d    Dragon disk (used to find the location of a boot track)
+
+#### Example
+
+    os9 reveal 68SDC.VHD -b 88179138
+
+    Examining LSN 344,449, byte 194 of '68SDC.VHD'...
+
+    This is byte 164,290 of file "/SOURCECODE/ASM/NITROS9/CMDS/grfdrv_older_source.lzh" (the 164,291st byte overall), found in the 2nd segment/extent of this file, which begins at LSN 344,064.
 
 ---
 
