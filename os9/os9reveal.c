@@ -13,6 +13,7 @@
  * $Id$
  ********************************************************************/
 #include <util.h>
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -28,10 +29,16 @@
  * types
  * ------------------------------------------------------------------ */
 
+/* full definition is further down, near get_boottrack_lsn(); a
+ * pointer is all reveal_target needs to carry it that far */
+struct personality;
+
 typedef struct
 {
 	unsigned int	target_lsn;	/* LSN being asked about */
 	unsigned int	target_offset;	/* byte offset within that LSN */
+	struct personality *hwtype;
+	unsigned int	max_valid_lsn;
 } reveal_target;
 
 struct field_desc
@@ -56,14 +63,31 @@ static char const *const helpMessage[] = {
 	"Options:\n",
 	"  -b    Treat <offset> as an absolute byte offset from the start\n",
 	"        of the disk image, rather than an LSN[:offset] pair.\n",
+	"  -d    Dragon disk\n",
 	NULL
 };
+
+static long get_image_byte_size(os9_path_id path)
+{
+	struct stat st;
+
+	if (path->fd == NULL)
+		return (-1);
+
+	if (fstat(fileno(path->fd), &st) != 0)
+		return (-1);
+
+	return ((long) st.st_size);
+}
 
 
 /* ------------------------------------------------------------------
  * small helpers
  * ------------------------------------------------------------------ */
 
+/* Format a number with thousands separators (e.g. 164291 -> "164,291").
+ * Rotates through a small pool of buffers for the same reason ordinal()
+ * does -- so multiple calls in one printf() don't clobber each other. */
 #define	NUM_NUM_BUFS	4
 static char num_bufs[NUM_NUM_BUFS][32];
 static int  num_buf_idx = 0;
@@ -89,7 +113,6 @@ static const char *format_num(unsigned long n)
 
 	return (buf);
 }
-
 
 #define	ORD_NUM_BUFS	4
 static char ord_bufs[ORD_NUM_BUFS][24];
@@ -126,6 +149,9 @@ static const char *ordinal(unsigned int n)
 }
 
 
+/* Decode a fixed-length os9 name field (high bit terminates the
+ * final character) into a plain C string.  Mirrors the pattern
+ * os9id.c already uses for the LSN0 disk name. */
 static u_char *decode_os9_name(const u_char *raw, size_t len)
 {
 	char *tmp = malloc(len + 1);
@@ -277,6 +303,91 @@ static void describe_fd_offset(const char *pathname, unsigned int offset)
 
 
 /* ------------------------------------------------------------------
+ * boot track LSN calculation
+ *
+ * Pasted in from a newer os9gen.c, and wired up below (see the -d
+ * option and the ALLOCATED-but-unmapped-LSN case in reveal()).
+ * ------------------------------------------------------------------ */
+
+struct personality
+{
+	int startlsn;
+};
+
+static struct personality coco   = { 18 * 34 };
+static struct personality dragon = { 2 };
+
+/* No CLI override for this yet (os9gen.c has one; reveal doesn't
+ * expose an equivalent option), so it's always "unset". */
+static int specialStartLSN = 0;
+
+error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *startlsn)
+{
+	int is_osk;
+	u_char *pd_sct, *pd_cyl, *pd_sid, *pd_typ;
+	is_osk = (memcmp(LSN0.dd_sync, "Cruz", 4) == 0);
+	if (is_osk != 0)
+	{
+		pd_sct = LSN0.dd_opt.m68k.pd_sct;
+		pd_cyl = LSN0.dd_opt.m68k.pd_cyl;
+		pd_sid = LSN0.dd_opt.m68k.pd_sid;
+		pd_typ = LSN0.dd_opt.m68k.pd_typ;
+	}
+	else
+	{
+		pd_sct = LSN0.dd_opt.m6809.pd_sct;
+		pd_cyl = LSN0.dd_opt.m6809.pd_cyl;
+		pd_sid = LSN0.dd_opt.m6809.pd_sid;
+		pd_typ = LSN0.dd_opt.m6809.pd_typ;
+	}
+	*startlsn = hwtype->startlsn;
+	if (*startlsn == 2)
+	{
+		/* Check to make sure the disk image has minimum of 18 sectors per track */
+		if (int2(pd_sct) < 18)
+		{
+			return (1);
+		}
+	}
+	else
+	{
+		/* If special startLSN for boottrack is set then set startlsn to  */
+		/* the value stored in specialStartLSN  */
+		if (specialStartLSN > 0)
+		{
+			*startlsn = specialStartLSN;
+		}
+		else
+		{
+			/* Check to see if disk image is a HDD image if so set for default  */
+			/* startLSN of 612 for the boottrack for use with CoCoSDC and DriveWire HDD images */
+			if (int1(pd_typ) == 0x80)
+			{
+				*startlsn = 612;
+			}
+			else
+			{
+				/* Check to make sure the disk image has minimum of 18 sectors per track */
+				if (int2(pd_sct) < 18)
+				{
+					return (1);
+				}
+				/* Check to make sure the disk image has minimum of 35 tracks */
+				if (int2(pd_cyl) < 35)
+				{
+					return (1);
+				}
+				/* Use real floppy disk geometry to figure out real startLSN for boottrack */
+				*startlsn = 34 * int2(pd_sct) * int1(pd_sid);
+			}
+		}
+	}
+	
+	return 0;
+}
+
+
+/* ------------------------------------------------------------------
  * bitmap
  * ------------------------------------------------------------------ */
 
@@ -301,12 +412,39 @@ static void describe_bitmap_offset(os9_path_id path, reveal_target *tgt)
  * ------------------------------------------------------------------ */
 
 static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
-			      const char *pathname, reveal_target *tgt)
+			      const char *pathname, reveal_target *tgt,
+			      unsigned int depth)
 {
 	fd_stats	fd;
 	int		i;
 	unsigned int	prevBytes = 0;
 	int		is_dir;
+
+	/* A corrupted image can have a directory entry that points back
+	 * at itself or an ancestor (accidentally or via disk damage --
+	 * no malice required). Without a limit that's unbounded
+	 * recursion and a stack-overflow crash rather than a clean
+	 * error, since we don't track visited LSNs. A generous cap
+	 * catches that without affecting any real directory tree, which
+	 * won't nest anywhere close to this deep. */
+#define	REVEAL_MAX_DEPTH	256
+	if (depth > REVEAL_MAX_DEPTH)
+	{
+		fprintf(stderr,
+			"reveal: directory nesting exceeds %d levels at\n"
+			"\"%s\" -- stopping (the image may have a corrupt\n"
+			"or cyclic directory structure).\n",
+			REVEAL_MAX_DEPTH, pathname);
+		return (0);
+	}
+
+	/* A corrupt directory entry or segment can claim an LSN that's
+	 * beyond the physical file or the declared format size. The
+	 * actual target LSN is already known to be in-bounds (reveal()
+	 * checked that before calling us at all), so this can only ever
+	 * reject a bogus reference, never the real target. */
+	if (fd_lsn > tgt->max_valid_lsn)
+		return (0);
 
 	if (fd_lsn == tgt->target_lsn)
 	{
@@ -345,16 +483,39 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 					byteOffset / sizeof(os9_dir_entry);
 				unsigned int entryByte =
 					byteOffset % sizeof(os9_dir_entry);
-				unsigned int localIndex =
-					entryIndex % entriesPerSector;
-				os9_dir_entry entbuf[64];
+				unsigned int localIndex;
+				os9_dir_entry *entbuf;
 				u_char *entname = NULL;
 
-				/* read_lsn() returns bytes read, not an
-				 * error_code -- > 0 means success. */
-				if (read_lsn(path, tgt->target_lsn, entbuf) > 0 &&
-				    entbuf[localIndex].name[0] != 0)
-					entname = decode_entry_name(&entbuf[localIndex]);
+				/* A corrupted bps smaller than one directory
+				 * entry would make entriesPerSector 0 and the
+				 * modulo below a crash; bail cleanly instead. */
+				if (entriesPerSector == 0)
+				{
+					printf("This is byte %s of the %s segment of directory file \"%s\", but this disk's sector size (%u bytes) looks too small to hold a directory entry -- the image may be corrupt.\n",
+					       format_num(byteOffset), ordinal(i + 1),
+					       pathname, path->bps);
+					return (1);
+				}
+
+				localIndex = entryIndex % entriesPerSector;
+
+				/* entbuf is sized to path->bps rather than a
+				 * fixed array -- bps comes from this image's
+				 * own (possibly corrupt) LSN0, and a fixed
+				 * stack buffer sized for the common 256-byte
+				 * sector would overflow on a bad/garbage bps
+				 * larger than that. */
+				entbuf = malloc(path->bps);
+
+				if (entbuf != NULL)
+				{
+					/* read_lsn() returns bytes read, not
+					 * an error_code -- > 0 means success. */
+					if (read_lsn(path, tgt->target_lsn, entbuf) > 0 &&
+					    entbuf[localIndex].name[0] != 0)
+						entname = decode_entry_name(&entbuf[localIndex]);
+				}
 
 				if (entryByte < D_NAMELEN)
 					printf("This is byte %s of the %s segment of directory file \"%s\" -- it lands on the %s directory entry%s%s%s, the %s character of that entry's filename.\n",
@@ -372,6 +533,11 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 					       entname ? entname : (u_char *)"",
 					       entname ? "\")" : "",
 					       entryByte - D_NAMELEN + 1);
+
+				if (entname != NULL)
+					free(entname);
+				if (entbuf != NULL)
+					free(entbuf);
 			}
 			else
 			{
@@ -402,6 +568,17 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 		unsigned int fsize = int4(fd.fd_siz);
 		unsigned int totalEntries = fsize / sizeof(os9_dir_entry);
 		unsigned int entriesSeen = 0;
+		int nEntries = path->bps / sizeof(os9_dir_entry);
+
+		/* entbuf is sized to path->bps rather than a fixed array --
+		 * bps comes from this image's own (possibly corrupt) LSN0,
+		 * and a fixed stack buffer sized for the common 256-byte
+		 * sector would overflow on a bad/garbage bps larger than
+		 * that. Allocated once and reused for every sector read. */
+		os9_dir_entry *entbuf = (nEntries > 0) ? malloc(path->bps) : NULL;
+
+		if (entbuf == NULL)
+			return (0);
 
 		for (i = 0; i < NUM_SEGS && entriesSeen < totalEntries; i++)
 		{
@@ -414,8 +591,6 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 
 			for (s = 0; s < seg_num && entriesSeen < totalEntries; s++)
 			{
-				os9_dir_entry entbuf[64];
-				int nEntries = path->bps / sizeof(os9_dir_entry);
 				int e;
 
 				/* read_lsn() returns bytes read, not an
@@ -472,15 +647,31 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 
 					free(childname);
 
+					/* skip a clearly bogus child reference
+					 * (out past both the physical file and
+					 * the declared format size) rather than
+					 * wasting a read attempt on it */
+					if (childlsn > tgt->max_valid_lsn)
+					{
+						free(childpath);
+						continue;
+					}
+
 					found = reveal_examine_fd(path, childlsn,
-								   childpath, tgt);
+								   childpath, tgt,
+								   depth + 1);
 					free(childpath);
 
 					if (found)
+					{
+						free(entbuf);
 						return (1);
+					}
 				}
 			}
 		}
+
+		free(entbuf);
 	}
 
 	return (0);
@@ -496,11 +687,71 @@ static void reveal(os9_path_id path, reveal_target *tgt)
 	lsn0_sect	*l0 = path->lsn0;
 	unsigned int	bitmapSectors;
 	unsigned int	rootDirLsn;
+	unsigned int	logicalTotalSectors;
+	unsigned int	physSectors = 0;
+	unsigned int	bound;
+	long		imageBytes;
+	unsigned long	targetByteOffset;
 
 	printf("\nExamining LSN %s", format_num(tgt->target_lsn));
 	if (tgt->target_offset != 0)
 		printf(", byte %s", format_num(tgt->target_offset));
 	printf(" of '%s'...\n\n", path->imgfile);
+
+	logicalTotalSectors = int3(l0->dd_tot);
+	imageBytes = get_image_byte_size(path);
+	targetByteOffset = (unsigned long) tgt->target_lsn * path->bps +
+		tgt->target_offset;
+
+	/* logical end of the formatted filesystem -- LSN0 itself says
+	 * this disk doesn't contain this LSN at all (dd_tot). This is
+	 * the authoritative bound regardless of the container file's
+	 * physical size. */
+	if (logicalTotalSectors > 0 && tgt->target_lsn >= logicalTotalSectors)
+	{
+		printf("LSN %s is past the logical end of the formatted filesystem -- LSN0 declares only %s total sectors (dd_tot). This is most likely trailing padding, space past a smaller format than the container file, or a corrupt dd_tot value.\n",
+		       format_num(tgt->target_lsn), format_num(logicalTotalSectors));
+		return;
+	}
+
+	/* physical end of the container file. A host image is allowed
+	 * to be shorter than the sectors LSN0 declares -- that's normal
+	 * for a dynamically-growing/sparse image, and just means those
+	 * trailing sectors haven't been referred to (allocated) yet. It
+	 * only becomes a real problem if the bitmap disagrees -- i.e.
+	 * something in this filesystem claims a sector that the file
+	 * doesn't actually contain. */
+	if (imageBytes >= 0 && targetByteOffset >= (unsigned long) imageBytes)
+	{
+		int allocated = _os9_ckbit(path->bitmap, tgt->target_lsn);
+
+		printf("LSN %s is past the physical end of the image file '%s' (which is %s bytes / %s sectors long).",
+		       format_num(tgt->target_lsn), path->imgfile,
+		       format_num((unsigned long) imageBytes),
+		       format_num((unsigned long) (path->bps ?
+						    (unsigned long) imageBytes / path->bps : 0)));
+
+		if (allocated)
+			printf(" The bitmap marks it ALLOCATED, though -- something in this filesystem references a sector the container file doesn't actually contain. That's inconsistent, and likely means the image is truncated or corrupt.\n");
+		else
+			printf(" The bitmap marks it UNALLOCATED, so this is simply space that hasn't been grown into yet -- expected for a dynamically-growing image, not a problem.\n");
+
+		return;
+	}
+
+	/* Bound used deeper in the walk (reveal_examine_fd) to skip
+	 * obviously-corrupt LSNs -- e.g. a directory entry or segment
+	 * pointing somewhere that can't exist -- without wasting a read
+	 * attempt on them. 0xFFFFFFFF means "no bound known". */
+	if (imageBytes >= 0 && path->bps > 0)
+		physSectors = (unsigned int) ((unsigned long) imageBytes / path->bps);
+
+	bound = 0xFFFFFFFFu;
+	if (physSectors > 0 && physSectors < bound)
+		bound = physSectors;
+	if (logicalTotalSectors > 0 && logicalTotalSectors < bound)
+		bound = logicalTotalSectors;
+	tgt->max_valid_lsn = (bound == 0xFFFFFFFFu) ? bound : bound - 1;
 
 	if (tgt->target_lsn == 0)
 	{
@@ -518,7 +769,7 @@ static void reveal(os9_path_id path, reveal_target *tgt)
 
 	rootDirLsn = int3(l0->dd_dir);
 
-	if (!reveal_examine_fd(path, rootDirLsn, "/", tgt))
+	if (!reveal_examine_fd(path, rootDirLsn, "/", tgt, 0))
 	{
 		int allocated = _os9_ckbit(path->bitmap, tgt->target_lsn);
 
@@ -526,7 +777,32 @@ static void reveal(os9_path_id path, reveal_target *tgt)
 		       format_num(tgt->target_lsn));
 
 		if (allocated)
-			printf("The bitmap marks it as ALLOCATED, though -- it likely belongs to boottrack.\n");
+		{
+			int startlsn = 0;
+			error_code btec = get_boottrack_lsn(*l0, tgt->hwtype, &startlsn);
+			int in_boot_track = 0;
+
+			if (btec == 0)
+			{
+				/* Boot track is exactly one track long,
+				 * starting at startlsn -- same pd_sct fetch
+				 * get_boottrack_lsn() itself uses. */
+				int is_osk = (memcmp(l0->dd_sync, "Cruz", 4) == 0);
+				u_char *pd_sct = is_osk ? l0->dd_opt.m68k.pd_sct
+							 : l0->dd_opt.m6809.pd_sct;
+				unsigned int spt = int2(pd_sct);
+
+				in_boot_track = (spt > 0 &&
+					tgt->target_lsn >= (unsigned int) startlsn &&
+					tgt->target_lsn < (unsigned int) startlsn + spt);
+			}
+
+			if (in_boot_track)
+				printf("The bitmap marks it as ALLOCATED, though -- it falls within the boot track (starting at LSN %s), so it likely belongs to boot code rather than a file.\n",
+				       format_num((unsigned int) startlsn));
+			else
+				printf("The bitmap marks it as ALLOCATED, though -- it likely belongs to a deleted file, a reserved area, or something this walk didn't reach.\n");
+		}
 		else
 			printf("The bitmap marks it as UNALLOCATED -- it's free space.\n");
 	}
@@ -578,6 +854,7 @@ int os9reveal(int argc, char *argv[])
 	char		*targetspec = NULL;
 	os9_path_id	path;
 	reveal_target	tgt;
+	struct personality *hwtype = &coco;
 
 	for (i = 1; i < argc; i++)
 	{
@@ -596,6 +873,10 @@ int os9reveal(int argc, char *argv[])
 
 				case 'b':
 					byte_mode = 1;
+					break;
+
+				case 'd':
+					hwtype = &dragon;
 					break;
 
 				default:
@@ -633,7 +914,34 @@ int os9reveal(int argc, char *argv[])
 		return (ec);
 	}
 
+	/* A corrupted LSN0 could yield a bytes-per-sector of 0, which
+	 * would otherwise crash later on division/modulo (bitmap sector
+	 * count, -b byte-offset math). Bail out cleanly instead. */
+	if (path->bps == 0)
+	{
+		fprintf(stderr,
+			"%s: '%s' reports 0 bytes per sector -- LSN0 looks\n"
+			"corrupt or unreadable, refusing to proceed.\n",
+			argv[0], os9pathlist);
+		_os9_close(path);
+		return (-1);
+	}
+
+	/* Likewise a missing LSN0/bitmap (e.g. _os9_open succeeded on a
+	 * badly damaged image without fully populating these) would
+	 * crash reveal() on the first dereference. */
+	if (path->lsn0 == NULL || path->bitmap == NULL)
+	{
+		fprintf(stderr,
+			"%s: '%s' didn't yield a usable LSN0/bitmap --\n"
+			"refusing to proceed on a possibly corrupt image.\n",
+			argv[0], os9pathlist);
+		_os9_close(path);
+		return (-1);
+	}
+
 	parse_target(targetspec, byte_mode, path, &tgt);
+	tgt.hwtype = hwtype;
 
 	reveal(path, &tgt);
 
