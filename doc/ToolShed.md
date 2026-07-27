@@ -653,6 +653,26 @@ This command will work on RBF disk images only.
 
 The gen command gives a disk image the ability to become a bootable disk for a CoCo, Dragon or MM/1.
 
+#### Examples
+
+* **Local files example:**
+  ```bash
+  os9 gen -b=OS9Boot -t=customtrack.bin new.dsk
+  ```
+  Copies the standalone boot file (`OS9Boot`) and kernel track file (`customtrack.bin`) from your host system and writes them directly into `new.dsk`.
+
+* **Files inside an image example:**
+  ```bash
+  os9 gen -b=disk.dsk,folder/MyBootFile -t=disk.dsk,folder/ts.bin new.dsk
+  ```
+  Extracts the boot file and kernel track file located *inside* an existing disk image (`disk.dsk`), then writes them into `new.dsk`.
+
+* **Default paths example:**
+  ```bash
+  os9 gen -b=disk.dsk, -t=disk.dsk, new.dsk
+  ```
+  Uses the standard default boot and track file locations inside `disk.dsk` to prepare `new.dsk` for booting.
+  
 ---
 
 <h3 id="id">ID - Display sector 0 of an image</h3>
