@@ -37,9 +37,9 @@ jobs:
     env:
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Cache wxWidgets
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: vcpkg-cache
           key: vcpkg-wxwidgets-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('.github/workflows/diskshed.yml') }}
@@ -69,7 +69,7 @@ jobs:
             "dist/DiskShed-${DISKSHED_VERSION}-macos-${{ matrix.arch }}.zip"
           shasum -a 256 "dist/DiskShed-${DISKSHED_VERSION}-macos-${{ matrix.arch }}.zip" \
             > "dist/DiskShed-${DISKSHED_VERSION}-macos-${{ matrix.arch }}.zip.sha256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: diskshed-macos-${{ matrix.arch }}
           path: dist/*
@@ -78,7 +78,7 @@ jobs:
     name: Windows (x86_64)
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up MinGW
         uses: msys2/setup-msys2@v2
         with:
@@ -90,7 +90,7 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
       - name: Cache wxWidgets
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: wx-install
           key: wxwidgets-${{ env.WX_VERSION }}-${{ runner.os }}-mingw64-static-1
@@ -133,7 +133,7 @@ jobs:
           cd ..
           sha256sum "dist/DiskShed-${DISKSHED_VERSION}-windows-x86_64.zip" \
             > "dist/DiskShed-${DISKSHED_VERSION}-windows-x86_64.zip.sha256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: diskshed-windows-x86_64
           path: dist/*
@@ -142,7 +142,7 @@ jobs:
     name: Linux (x86_64 AppImage)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -172,7 +172,7 @@ jobs:
           mv DiskShed-*.AppImage "dist/DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage"
           sha256sum "dist/DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage" \
             > "dist/DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage.sha256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: diskshed-linux-x86_64
           path: dist/*
@@ -185,7 +185,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: diskshed-*
           path: dist
