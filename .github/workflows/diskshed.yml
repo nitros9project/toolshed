@@ -69,7 +69,7 @@ jobs:
             "dist/DiskShed-${DISKSHED_VERSION}-macos-${{ matrix.arch }}.zip"
           shasum -a 256 "dist/DiskShed-${DISKSHED_VERSION}-macos-${{ matrix.arch }}.zip" \
             > "dist/DiskShed-${DISKSHED_VERSION}-macos-${{ matrix.arch }}.zip.sha256"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: diskshed-macos-${{ matrix.arch }}
           path: dist/*
@@ -133,7 +133,7 @@ jobs:
           cd ..
           sha256sum "dist/DiskShed-${DISKSHED_VERSION}-windows-x86_64.zip" \
             > "dist/DiskShed-${DISKSHED_VERSION}-windows-x86_64.zip.sha256"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: diskshed-windows-x86_64
           path: dist/*
@@ -172,7 +172,7 @@ jobs:
           mv DiskShed-*.AppImage "dist/DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage"
           sha256sum "dist/DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage" \
             > "dist/DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage.sha256"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: diskshed-linux-x86_64
           path: dist/*
