@@ -89,7 +89,7 @@ static long get_image_byte_size(os9_path_id path)
 /* Format a number with thousands separators (e.g. 164291 -> "164,291").
  * Rotates through a small pool of buffers for the same reason ordinal()
  * does -- so multiple calls in one printf() don't clobber each other. */
-#define	NUM_NUM_BUFS	4
+#define	NUM_NUM_BUFS	8
 static char num_bufs[NUM_NUM_BUFS][32];
 static int  num_buf_idx = 0;
 
@@ -115,7 +115,7 @@ static const char *format_num(unsigned long n)
 	return (buf);
 }
 
-#define	ORD_NUM_BUFS	4
+#define	ORD_NUM_BUFS	8
 static char ord_bufs[ORD_NUM_BUFS][24];
 static int  ord_buf_idx = 0;
 
