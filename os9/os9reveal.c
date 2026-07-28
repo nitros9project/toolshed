@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <cocotypes.h>
 #include <cocopath.h>
+#include <rbfutil.h>
 
 
 /* ------------------------------------------------------------------
@@ -31,7 +32,7 @@
 
 /* full definition is further down, near get_boottrack_lsn(); a
  * pointer is all reveal_target needs to carry it that far */
-struct personality;
+// struct personality;
 
 typedef struct
 {
@@ -309,83 +310,8 @@ static void describe_fd_offset(const char *pathname, unsigned int offset)
  * option and the ALLOCATED-but-unmapped-LSN case in reveal()).
  * ------------------------------------------------------------------ */
 
-struct personality
-{
-	int startlsn;
-};
-
 static struct personality coco   = { 18 * 34 };
 static struct personality dragon = { 2 };
-
-/* No CLI override for this yet (os9gen.c has one; reveal doesn't
- * expose an equivalent option), so it's always "unset". */
-static int specialStartLSN = 0;
-
-error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *startlsn)
-{
-	int is_osk;
-	u_char *pd_sct, *pd_cyl, *pd_sid, *pd_typ;
-	is_osk = (memcmp(LSN0.dd_sync, "Cruz", 4) == 0);
-	if (is_osk != 0)
-	{
-		pd_sct = LSN0.dd_opt.m68k.pd_sct;
-		pd_cyl = LSN0.dd_opt.m68k.pd_cyl;
-		pd_sid = LSN0.dd_opt.m68k.pd_sid;
-		pd_typ = LSN0.dd_opt.m68k.pd_typ;
-	}
-	else
-	{
-		pd_sct = LSN0.dd_opt.m6809.pd_sct;
-		pd_cyl = LSN0.dd_opt.m6809.pd_cyl;
-		pd_sid = LSN0.dd_opt.m6809.pd_sid;
-		pd_typ = LSN0.dd_opt.m6809.pd_typ;
-	}
-	*startlsn = hwtype->startlsn;
-	if (*startlsn == 2)
-	{
-		/* Check to make sure the disk image has minimum of 18 sectors per track */
-		if (int2(pd_sct) < 18)
-		{
-			return (1);
-		}
-	}
-	else
-	{
-		/* If special startLSN for boottrack is set then set startlsn to  */
-		/* the value stored in specialStartLSN  */
-		if (specialStartLSN > 0)
-		{
-			*startlsn = specialStartLSN;
-		}
-		else
-		{
-			/* Check to see if disk image is a HDD image if so set for default  */
-			/* startLSN of 612 for the boottrack for use with CoCoSDC and DriveWire HDD images */
-			if (int1(pd_typ) == 0x80)
-			{
-				*startlsn = 612;
-			}
-			else
-			{
-				/* Check to make sure the disk image has minimum of 18 sectors per track */
-				if (int2(pd_sct) < 18)
-				{
-					return (1);
-				}
-				/* Check to make sure the disk image has minimum of 35 tracks */
-				if (int2(pd_cyl) < 35)
-				{
-					return (1);
-				}
-				/* Use real floppy disk geometry to figure out real startLSN for boottrack */
-				*startlsn = 34 * int2(pd_sct) * int1(pd_sid);
-			}
-		}
-	}
-	
-	return 0;
-}
-
 
 /* ------------------------------------------------------------------
  * bitmap
@@ -779,7 +705,7 @@ static void reveal(os9_path_id path, reveal_target *tgt)
 		if (allocated)
 		{
 			int startlsn = 0;
-			error_code btec = get_boottrack_lsn(*l0, tgt->hwtype, &startlsn);
+			error_code btec = get_boottrack_lsn(*l0, tgt->hwtype, &startlsn, 0);
 			int in_boot_track = 0;
 
 			if (btec == 0)

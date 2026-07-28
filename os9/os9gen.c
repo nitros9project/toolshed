@@ -12,17 +12,11 @@
 #include <cocotypes.h>
 #include <cocopath.h>
 #include <toolshed.h>
-
-struct personality
-{
-	int startlsn;
-};
+#include <rbfutil.h>
 
 static int do_os9gen(char **argv, char *device, char *bootfile,
 		     char *trackfile, struct personality *hwtype,
 		     int extended);
-
-error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *startlsn);
 
 static struct personality coco = { 18 * 34 };
 static struct personality dragon = { 2 };
@@ -193,7 +187,7 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
                 return (1);
             }
 
-			ec = get_boottrack_lsn(*cpath->path.os9->lsn0, hwtype, &startlsn);
+			ec = get_boottrack_lsn(*cpath->path.os9->lsn0, hwtype, &startlsn, 1);
 			if (ec != 0)
 			{
 				_coco_close(cpath);
@@ -269,7 +263,7 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 			return (1);
 		}
 
-		ec = get_boottrack_lsn(*opath->path.os9->lsn0, hwtype, &startlsn);
+		ec = get_boottrack_lsn(*opath->path.os9->lsn0, hwtype, &startlsn, 1);
 		if (ec != 0)
 		{
 			_coco_close(opath);
@@ -433,7 +427,19 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
     return (0);
 }
 
-error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *startlsn)
+#define QPRINTF(enabled, ...) \
+    do { \
+        if (enabled) \
+            printf(__VA_ARGS__); \
+    } while (0)
+    
+#define QFPRINTF(enabled, ...) \
+    do { \
+        if (enabled) \
+            fprintf(stderr, __VA_ARGS__); \
+    } while (0)
+    
+error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *startlsn, int verbose)
 {
 	int is_osk;
 	u_char *pd_sct, *pd_cyl, *pd_sid, *pd_typ;
@@ -459,12 +465,12 @@ error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *st
 
 	if (*startlsn == 2)
 	{
-		printf("Dragon boottrack selected: ");
+		QPRINTF(verbose, "Dragon boottrack selected: ");
 		/* Check to make sure the disk image has minimum of 18 sectors per track */
 		if (int2(pd_sct) < 18)
 		{
-			printf("\n");
-			fprintf(stderr,
+			QPRINTF(verbose, "\n");
+			QFPRINTF(verbose,
 				"Error: minimum sectors per track of 18 required for DragonDOS, found %d\n",
 				int2(pd_sct));
 			return (1);
@@ -472,7 +478,7 @@ error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *st
 	}
 	else
 	{
-		printf("CoCo boottrack selected: ");
+		QPRINTF(verbose, "CoCo boottrack selected: ");
 		/* If special startLSN for boottrack is set then set startlsn to  */
 		/* the value stored in specialStartLSN  */
 		if (specialStartLSN > 0)
@@ -492,7 +498,7 @@ error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *st
 				/* Check to make sure the disk image has minimum of 18 sectors per track */
 				if (int2(pd_sct) < 18)
 				{
-					printf("\n");
+					QPRINTF(verbose, "\n");
 					fprintf(stderr,
 						"Error: minimum sectors per track of 18 required for Disk Basic, found %d\n",
 						int2(pd_sct));
@@ -501,7 +507,7 @@ error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *st
 				/* Check to make sure the disk image has minimum of 35 tracks */
 				if (int2(pd_cyl) < 35)
 				{
-					printf("\n");
+					QPRINTF(verbose, "\n");
 					fprintf(stderr,
 						"Error: minimum number of tracks required for Disk Basic is 35, found %d\n",
 						int2(pd_cyl));

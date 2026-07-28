@@ -46,7 +46,14 @@ int os9padrom(int, char **);
 int os9rename(int, char **);
 
 int StrToInt(char *s);
-void show_help(char **helpMessage);
+void show_help(char const * const *helpMessage);
+
+struct personality
+{
+	int startlsn;
+};
+
+error_code get_boottrack_lsn(lsn0_sect LSN0, struct personality *hwtype, int *startlsn, int verbose);
 
 #ifdef __cplusplus
 }
