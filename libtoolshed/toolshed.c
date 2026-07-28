@@ -469,6 +469,21 @@ error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 	 * then reopen briefly just to apply the metadata (mtime, perms). */
 	_coco_close(destpath);
 
+	/* --- Intercept for Reproducible Builds --- */
+	{
+		char *sde_env = getenv("SOURCE_DATE_EPOCH");
+		if (sde_env != NULL)
+		{
+			char *endptr;
+			time_t sde_val = (time_t)strtoll(sde_env, &endptr, 10);
+			if (*endptr == '\0' && sde_val >= 0)
+			{
+				fdesc.create_time = sde_val;
+				fdesc.last_modified_time = sde_val;
+			}
+		}
+	}
+
 	{
 		coco_path_id metapath;
 		if (_coco_open(&metapath, dstfile, FAM_READ | FAM_WRITE) == 0)

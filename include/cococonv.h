@@ -15,6 +15,7 @@ extern "C" {
 #include <time.h>
 #include <cocotypes.h>
 
+time_t GetSafeTimestamp();
 int CoCoToUnixPerms(int attrs);
 int UnixToCoCoPerms(int attrs);
 char *UnixToOS9Time(time_t currentTime, char *os9time);
