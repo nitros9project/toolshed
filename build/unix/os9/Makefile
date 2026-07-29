@@ -8,7 +8,7 @@ CFLAGS	+= -I../../../include -Wall -MMD -MP
 SRCS = os9copy.c os9dsave.c os9gen.c os9modbust.c os9dcheck.c os9dump.c \
 	os9id.c os9padrom.c os9_main.c os9del.c os9format.c os9ident.c \
 	os9rename.c os9attr.c os9deldir.c os9free.c os9list.c os9cmp.c \
-	os9dir.c os9fstat.c os9makdir.c
+	os9dir.c os9fstat.c os9makdir.c os9reveal.c
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)
 
