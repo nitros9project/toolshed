@@ -78,8 +78,8 @@ jobs:
           mkdir -p dist
           ditto -c -k --sequesterRsrc --keepParent package/DiskShed.app \
             "dist/DiskShed-${DISKSHED_VERSION}-macos-${{ matrix.arch }}.zip"
-          shasum -a 256 "dist/DiskShed-${DISKSHED_VERSION}-macos-${{ matrix.arch }}.zip" \
-            > "dist/DiskShed-${DISKSHED_VERSION}-macos-${{ matrix.arch }}.zip.sha256"
+          (cd dist && shasum -a 256 "DiskShed-${DISKSHED_VERSION}-macos-${{ matrix.arch }}.zip" \
+            > "DiskShed-${DISKSHED_VERSION}-macos-${{ matrix.arch }}.zip.sha256")
       - uses: actions/upload-artifact@v7
         with:
           name: diskshed-macos-${{ matrix.arch }}
@@ -144,9 +144,9 @@ jobs:
           cd package
           cmake -E tar cf "../dist/DiskShed-${DISKSHED_VERSION}-windows-x86_64.zip" \
             --format=zip -- DiskShed.exe
-          cd ..
-          sha256sum "dist/DiskShed-${DISKSHED_VERSION}-windows-x86_64.zip" \
-            > "dist/DiskShed-${DISKSHED_VERSION}-windows-x86_64.zip.sha256"
+          cd ../dist
+          sha256sum "DiskShed-${DISKSHED_VERSION}-windows-x86_64.zip" \
+            > "DiskShed-${DISKSHED_VERSION}-windows-x86_64.zip.sha256"
       - uses: actions/upload-artifact@v7
         with:
           name: diskshed-windows-x86_64
@@ -187,8 +187,8 @@ jobs:
             --output appimage
           mkdir -p dist
           mv DiskShed-*.AppImage "dist/DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage"
-          sha256sum "dist/DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage" \
-            > "dist/DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage.sha256"
+          (cd dist && sha256sum "DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage" \
+            > "DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage.sha256")
       - uses: actions/upload-artifact@v7
         with:
           name: diskshed-linux-x86_64
