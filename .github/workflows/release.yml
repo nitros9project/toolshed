@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 defaults:
-    run:
-        shell: bash {0}
+  run:
+    shell: bash {0}
 
 jobs:
   build:
@@ -23,7 +23,7 @@ jobs:
         sudo apt-get install mingw-w64 markdown libfuse-dev
 
     - name: Checkout
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Build Linux
       run: |
@@ -39,11 +39,10 @@ jobs:
         [ -f build/unix/toolshed-*.zip ] && ls build/unix/toolshed-*.zip | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; unzip -l -v {}'
 
     - name: Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         files: |
           build/unix/toolshed-*.tgz
           build/unix/toolshed-*.zip
-
