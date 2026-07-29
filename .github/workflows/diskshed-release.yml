@@ -3,7 +3,8 @@ name: Release DiskShed
 on:
   push:
     tags:
-      - 'DiskShed-v*'
+      - "DiskShed-v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
