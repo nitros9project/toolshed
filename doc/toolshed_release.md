@@ -105,7 +105,6 @@ git push upstream main
 
 ```
 git tag -a v2.6.0 -m "Toolshed 2.6.0"
-git push upstream v2.6.0
 ```
 
 Do NOT use old underscore format.
@@ -115,8 +114,7 @@ Do NOT use old underscore format.
 ## 5. Push
 
 ```
-git push origin main
-git push origin v2.5
+git push upstream v2.6.0
 ```
 
 ---

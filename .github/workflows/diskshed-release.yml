@@ -1,39 +1,37 @@
-name: Build DiskShed
+name: Release DiskShed
 
 on:
   push:
-    branches:
-      - main
-  pull_request:
-  workflow_dispatch:
+    tags:
+      - 'DiskShed v*'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: diskshed-build-${{ github.ref }}
+  group: diskshed-release-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   WX_VERSION: 3.2.11
 
 jobs:
-  version:
-    name: Determine Build Version
+  parse-version:
+    name: Parse Version Tag
     runs-on: ubuntu-24.04
     outputs:
-      version: ${{ steps.get_version.outputs.version }}
+      version: ${{ steps.extract_version.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
-      - id: get_version
+      - id: extract_version
         run: |
-          # Use short commit SHA as a fallback version for standard CI builds
-          VERSION="dev-${GITHUB_SHA::7}"
+          # Extract everything after "DiskShed v" from "refs/tags/DiskShed v1.0.0" -> "1.0.0"
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG_NAME#DiskShed v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
   macos:
     name: macOS (${{ matrix.arch }})
-    needs: version
+    needs: parse-version
     strategy:
       fail-fast: false
       matrix:
@@ -46,7 +44,7 @@ jobs:
             triplet: x64-osx
     runs-on: ${{ matrix.runner }}
     env:
-      DISKSHED_VERSION: ${{ needs.version.outputs.version }}
+      DISKSHED_VERSION: ${{ needs.parse-version.outputs.version }}
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
     steps:
       - uses: actions/checkout@v6
@@ -54,7 +52,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: vcpkg-cache
-          key: vcpkg-wxwidgets-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('.github/workflows/build.yml') }}
+          key: vcpkg-wxwidgets-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('.github/workflows/release.yml') }}
       - name: Install wxWidgets
         run: |
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
@@ -88,10 +86,10 @@ jobs:
 
   windows:
     name: Windows (x86_64)
-    needs: version
+    needs: parse-version
     runs-on: windows-2022
     env:
-      DISKSHED_VERSION: ${{ needs.version.outputs.version }}
+      DISKSHED_VERSION: ${{ needs.parse-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
       - name: Set up MinGW
@@ -155,10 +153,10 @@ jobs:
 
   linux:
     name: Linux (x86_64 AppImage)
-    needs: version
+    needs: parse-version
     runs-on: ubuntu-24.04
     env:
-      DISKSHED_VERSION: ${{ needs.version.outputs.version }}
+      DISKSHED_VERSION: ${{ needs.parse-version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
       - name: Install build dependencies
@@ -194,3 +192,25 @@ jobs:
         with:
           name: diskshed-linux-x86_64
           path: dist/*
+
+  release:
+    name: Publish DiskShed release binaries
+    needs: [parse-version, macos, windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: diskshed-*
+          path: dist
+          merge-multiple: true
+      - name: Verify release files
+        run: |
+          cd dist
+          sha256sum --check *.sha256
+      - name: Attach binaries to GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          name: "DiskShed v${{ needs.parse-version.outputs.version }}"
