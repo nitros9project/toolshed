@@ -1,0 +1,40 @@
+name: Sync ToolShed Doc to Wiki Home on Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  wiki: write
+
+jobs:
+  copy-to-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Checkout Wiki Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki-repo
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy ToolShed.md to Wiki Home and Push
+        run: |
+          # Copy doc/ToolShed.md over as the Home.md main page
+          cp doc/ToolShed.md wiki-repo/Home.md
+
+          cd wiki-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if [ -n "$(git status --porcelain)" ]; then
+            git add Home.md
+            git commit -m "docs: update Home.md from release ${{ github.event.release.tag_name }}"
+            git push
+          else
+            echo "No changes detected in ToolShed.md."
+          fi
