@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DISKSHED_VERSION: 0.1.0
+  DISKSHED_VERSION: 0.9.0
   WX_VERSION: 3.2.11
 
 jobs:
