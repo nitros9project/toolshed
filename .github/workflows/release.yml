@@ -1,5 +1,10 @@
 name: Make Release
+
 on:
+  push:
+    tags:
+      - 'v*'            # Trigger on standard tags like v1.0.0
+      - '!DiskShed*'    # Explicitly ignore DiskShed tags
   workflow_dispatch:
 
 env:
@@ -18,33 +23,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Setup Requirements
-      run: |
-        sudo apt-get install mingw-w64 markdown libfuse-dev
+      - name: Setup Requirements
+        run: |
+          sudo apt-get install mingw-w64 markdown libfuse-dev
 
-    - name: Checkout
-      uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
 
-    - name: Build Linux
-      run: |
-        sudo make -C build/unix unixpackage
-      
-    - name: Build Windows
-      run: |
-        sudo make -C build/unix winpackage
+      - name: Build Linux
+        run: |
+          sudo make -C build/unix unixpackage
+        
+      - name: Build Windows
+        run: |
+          sudo make -C build/unix winpackage
 
-    - name: Results
-      run: |
-        [ -f build/unix/toolshed-*.tgz ] && ls build/unix/toolshed-*.tgz | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; tar tzvf {}'
-        [ -f build/unix/toolshed-*.zip ] && ls build/unix/toolshed-*.zip | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; unzip -l -v {}'
+      - name: Results
+        run: |
+          [ -f build/unix/toolshed-*.tgz ] && ls build/unix/toolshed-*.tgz | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; tar tzvf {}'
+          [ -f build/unix/toolshed-*.zip ] && ls build/unix/toolshed-*.zip | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; unzip -l -v {}'
 
-    - name: Release
-      uses: softprops/action-gh-release@v3
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        generate_release_notes: true
-        files: |
-          doc/changelog.md
-          build/unix/toolshed-*.tgz
-          build/unix/toolshed-*.zip
+      - name: Release
+        uses: softprops/action-gh-release@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          generate_release_notes: true
+          files: |
+            doc/changelog.md
+            build/unix/toolshed-*.tgz
+            build/unix/toolshed-*.zip
+            
