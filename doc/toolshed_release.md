@@ -34,6 +34,7 @@ build/unix/rules.mak
 Line 3:
 
 ```
+edit build/unix/rules.mak:0
 VERSION = 2.5
 ```
 
@@ -44,7 +45,7 @@ VERSION = 2.5
 File:
 
 ```
-doc/ToolShed.md
+edit doc/ToolShed.md:0
 ```
 
 Line 1:
@@ -68,6 +69,7 @@ Line 3:
 Update version reference accordingly (example):
 
 ```
+edit README.md:3
 Current version: 2.5
 ```
 
@@ -81,11 +83,20 @@ grep -R "2\.4" .
 
 ---
 
+### E. Add release notes to changelog.md
+
+```
+edit doc/changelog.md:0
+```
+
+---
+
 ## 3. Commit Changes
 
 ```
 git add build/unix/rules.mak doc/ToolShed.md README.md
 git commit -m "Release 2.5"
+git push upstream main
 ```
 
 ---
@@ -93,7 +104,8 @@ git commit -m "Release 2.5"
 ## 4. Tag the Release
 
 ```
-git tag -a v2.5 -m "ToolShed 2.5"
+git tag -a v2.6.0 -m "Toolshed 2.6.0"
+git push upstream v2.6.0
 ```
 
 Do NOT use old underscore format.

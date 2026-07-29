@@ -1,5 +1,55 @@
 # ToolShed Changelog
 
+## [v2.6.0] - 2026-07-29
+
+### 🆕 New Features & Utilities
+
+* **DiskShed Graphical Disk Image Editor**: Introduced **DiskShed**, a new native GUI application for managing and inspecting disk images interactively.
+  * Added contextual OS-9 module identification and `Ident` display for OS-9 modules.
+  * Added native application icons, improved macOS compatibility, and optimized Windows builds with static wxWidgets caching.
+  * Included complete documentation and CI workflows for prebuilt binaries across supported platforms.
+* **`os9 reveal`**: Added a new command to inspect and explain OS-9 RBF disk image contents at specific LSNs or byte offsets (`#77`).
+  * Translates LSNs, byte offsets, and directory structures into clear, human-readable descriptions.
+  * Traverses active directory trees, identifies LSN0/bitmap/file descriptor locations, and reports deleted file remnants or free space.
+  * Detects and reports filesystem corruption, truncated images, and invalid sector references.
+* **`decb binbust`**: Added a new utility to strip DECB binary record headers and trailers (`#62`).
+  * Concatenates multi-record DECB binaries into contiguous raw binary files (ideal for ROM extraction and disassembly).
+  * Validates record headers/trailers and operates natively across host, DECB, OS-9, and CECB paths.
+* **`cecb dumpblock`**: Added a new `cecb` subcommand to dump raw cassette block structures with terminal-aware color formatting (`#64`).
+
+---
+
+### ⚡ Enhancements & Updates
+
+* **`os9 gen` Refactoring**: Major update to support copying boot structures directly from existing OS-9 disk images (`#71`).
+  * Added support for embedding kernel track (`-t`) and `OS9Boot` (`-b`) components sourced directly from existing disk images.
+  * Centralized boot track LSN calculation via a unified `get_boottrack_lsn()` helper.
+  * Added strict image validation, file position tracking in `_os9_seek()`, and updated manual documentation.
+* **`os9 copy` Attributes**: Added the `-a` flag to assign OS-9 file attributes directly during copy operations (e.g., `-a=erpepr`) without needing a secondary `os9 attr` step (`#60`).
+* **Reproducible Builds**: Integrated standard `SOURCE_DATE_EPOCH` environment variable support across `libcoco`, `librbf`, and `libtoolshed` (`#76`).
+  * Ensures deterministic file creation and modification timestamps using `gmtime()`.
+  * Improved OS-9 2-digit year handling, `mktime()`/`localtime()` null-checks, and error reporting.
+* **`os9 makdir`**: Improved handling when creating existing directories—reports existence gracefully without returning a hard error (`#70`).
+* **`cecb` Improvements**:
+  * `cecb copy`: Enforced WAV extension for bulk erase, stripped DECB headers when copying binary BASIC, defaulted copy destinations to end-of-file, and improved CLI help text (`#67`).
+  * `cecb dir`: Resolved issue where directory listings stopped after reading the first file (`#65`, `#67`).
+
+---
+
+### 🛠️ Bug Fixes & Infrastructure Updates
+
+* **Core Library & Memory Fixes**:
+  * Fixed a heap use-after-free issue in `qDeleteLastNode` (`#73`).
+  * Fixed uninitialized variable and checksum error handling in `_cecb_read_next_block` and `_cecb_read_next_dir_entry` (`#67`).
+* **Build System & Tooling**:
+  * Honored system `LDFLAGS` across Makefiles and ensured proper trailing newlines (`#73`, `#74`).
+  * Updated `cocoroms` scripts to dynamically detect available MD5 tools (`md5` vs. `md5sum`) across BSD, macOS, and Linux (`#59`).
+* **CI & Release Automation**:
+  * Adjusted Windows CI builds to link runtime statically (`#75`).
+  * Upgraded GitHub Actions dependencies (`actions/checkout` to v5, `upload-artifact` to v7, and Node.js runtime to v24).
+
+
+
 ## [v2.5.1] - 2026-05-03
 
 ### New Features
