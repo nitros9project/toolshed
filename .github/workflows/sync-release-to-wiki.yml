@@ -1,4 +1,4 @@
-name: Sync ToolShed Doc to Wiki Home on Release
+name: Sync Doc to Wiki
 
 on:
   release:
