@@ -57,7 +57,7 @@ jobs:
       - name: Install wxWidgets
         run: |
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
-          "$VCPKG_INSTALLATION_ROOT/vcpkg" install "wxwidgets:${{ matrix.triplet }}"
+          "$VCPKG_INSTALLATION_ROOT/vcpkg" install "wxwidgets:${{ matrix.triplet }}" --downloads-retry=5
       - name: Configure and build
         run: |
           cmake -S gui/wx -B build/diskshed -G Ninja \
