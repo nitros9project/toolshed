@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: write
-  wiki: write
 
 jobs:
   copy-to-wiki:
@@ -24,7 +23,6 @@ jobs:
 
       - name: Copy ToolShed.md to Wiki Home and Push
         run: |
-          # Copy doc/ToolShed.md over as the Home.md main page
           cp doc/ToolShed.md wiki-repo/Home.md
 
           cd wiki-repo
