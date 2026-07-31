@@ -135,6 +135,7 @@ void test_os9_command_copy_metadata()
 
 int main()
 {
+	unsetenv("SOURCE_DATA_EPOCH");
 	remove("test.dsk");
 	RUN(test_os9_command_format);
 	RUN(test_os9_command_copy_metadata);
