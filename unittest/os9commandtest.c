@@ -41,6 +41,18 @@ void test_os9_command_copy_metadata()
 	fd_stats os9_fstat;
 	int os9_fstat_size = sizeof(os9_fstat);
 	fd_stats converted_native_fstat = {0};
+
+	/* Detect reproducible build */
+	char *sde_env = getenv("SOURCE_DATE_EPOCH");
+	int use_sde = 0;
+	time_t sde_val = 0;
+	if (sde_env != NULL) {
+		char *endptr;
+		sde_val = strtoll(sde_env, &endptr, 10);
+		if (*endptr == '\0' && sde_val >= 0) {
+			use_sde = 1;
+		}
+	}
  
 	/* Create a file on the disk image with known content */
 	ec = _os9_create(&os9path, "test.dsk,meta.txt",
@@ -90,7 +102,22 @@ void test_os9_command_copy_metadata()
 // 	fprintf(stderr, "os9_fstat.fd_dat: %d %d %d %d %d\n", os9_fstat.fd_dat[0], os9_fstat.fd_dat[1],os9_fstat.fd_dat[2], os9_fstat.fd_dat[3], os9_fstat.fd_dat[4]);
 // 	fprintf(stderr, "converted_native_fstat.fd_dat: %d %d %d %d %d\n", converted_native_fstat.fd_dat[0], converted_native_fstat.fd_dat[1],converted_native_fstat.fd_dat[2], converted_native_fstat.fd_dat[3], converted_native_fstat.fd_dat[4]);
 	
-	ASSERT_MEM_EQUALS(os9_fstat.fd_dat, converted_native_fstat.fd_dat, 5);
+	if (use_sde) {
+		/* Reproducible mode: Destination is pinned to SOURCE_DATE_EPOCH */
+		ASSERT_EQUALS(sde_val, native_stat.st_mtime);
+
+		struct tm *expected_tm = gmtime(&sde_val);
+		fd_stats expected_from_sde = {0};
+		expected_from_sde.fd_dat[0] = expected_tm->tm_year;
+		expected_from_sde.fd_dat[1] = expected_tm->tm_mon + 1;
+		expected_from_sde.fd_dat[2] = expected_tm->tm_mday;
+		expected_from_sde.fd_dat[3] = expected_tm->tm_hour;
+		expected_from_sde.fd_dat[4] = expected_tm->tm_min;
+
+		ASSERT_MEM_EQUALS(expected_from_sde.fd_dat, converted_native_fstat.fd_dat, 5);
+	} else {
+		ASSERT_MEM_EQUALS(os9_fstat.fd_dat, converted_native_fstat.fd_dat, 5);
+	}
 
 	/* Change the native file's mtime to a different fixed date:
      * March 3, 1984 at 14:15 */
@@ -123,7 +150,11 @@ void test_os9_command_copy_metadata()
 
     /* Check that the OS9 file's mtime matches the native file's mtime */
     fd_stats expected_back_fstat = {0};
-    UnixToOS9Time(native_utime.modtime, (char *) expected_back_fstat.fd_dat);
+	if (use_sde) {
+		UnixToOS9Time(sde_val, (char *) expected_back_fstat.fd_dat);
+	} else {
+		UnixToOS9Time(native_utime.modtime, (char *) expected_back_fstat.fd_dat);
+	}
 
 // 	fprintf(stderr, "os9_back_fstat.fd_dat: %d %d %d %d %d\n", os9_back_fstat.fd_dat[0], os9_back_fstat.fd_dat[1],os9_back_fstat.fd_dat[2], os9_back_fstat.fd_dat[3], os9_back_fstat.fd_dat[4]);
 // 	fprintf(stderr, "expected_back_fstat.fd_dat: %d %d %d %d %d\n", expected_back_fstat.fd_dat[0], expected_back_fstat.fd_dat[1],expected_back_fstat.fd_dat[2], expected_back_fstat.fd_dat[3], expected_back_fstat.fd_dat[4]);
@@ -135,7 +166,6 @@ void test_os9_command_copy_metadata()
 
 int main()
 {
-	unsetenv("SOURCE_DATA_EPOCH");
 	remove("test.dsk");
 	RUN(test_os9_command_format);
 	RUN(test_os9_command_copy_metadata);
