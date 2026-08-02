@@ -1,0 +1,270 @@
+#compdef os9
+#
+# Copy this file to a special directory as _os9 (plain filename with underscore)
+# Check your $fpath for possible locations
+
+# Show ambiguous completions immediately instead of beeping first
+setopt AUTO_LIST
+setopt NO_LIST_BEEP     # optional: silence the bell entirely
+
+_os9() {
+    local context state state_descr line
+    typeset -A opt_args
+
+    local -a commands
+    commands=(
+        'attr:Display or modify file attributes'
+        'cmp:Compare the contents of two files'
+        'copy:Copy one or more files to a target directory'
+        'dcheck:Verify the file structure of a disk image'
+        'del:Delete one or more files'
+        'deldir:Delete a directory and its contents'
+        'dir:Display the contents of a directory'
+        'dsave:Copy the contents of a directory or device'
+        'dump:Display the contents of a file in hexadecimal'
+        'format:Create a disk image of a given size'
+        'free:Display the amount of free space on an image'
+        'fstat:Display the file descriptor sector for a file'
+        'gen:Prepare the disk image for booting'
+        'id:Display sector 0 of an image'
+        'ident:Display OS-9 module information'
+        'list:Display contents of a text file'
+        'makdir:Create one or more directories'
+        'modbust:Bust a single merged file of OS-9 modules into separate files'
+        'padrom:Pad a file to a specific length'
+        'rdump:Print formatted dump of .r and .l files'
+        'rename:Give a file a new filename'
+    )
+
+    _arguments -C \
+        '1: :->command' \
+        '*:: :->args'
+
+    case $state in
+        command)
+            _describe -t commands 'os9 command' commands
+            ;;
+        args)
+            case $line[1] in
+                attr)    _os9_attr    ;;
+                cmp)     _os9_cmp     ;;
+                copy)    _os9_copy    ;;
+                dcheck)  _os9_dcheck  ;;
+                del)     _os9_del     ;;
+                deldir)  _os9_deldir  ;;
+                dir)     _os9_dir     ;;
+                dsave)   _os9_dsave   ;;
+                dump)    _os9_dump    ;;
+                format)  _os9_format  ;;
+                free)    _os9_free    ;;
+                fstat)   _os9_fstat   ;;
+                gen)     _os9_gen     ;;
+                id)      _os9_id      ;;
+                ident)   _os9_ident   ;;
+                list)    _os9_list    ;;
+                makdir)  _os9_makdir  ;;
+                modbust) _os9_modbust ;;
+                padrom)  _os9_padrom  ;;
+                rdump)   _os9_rdump   ;;
+                rename)  _os9_rename  ;;
+            esac
+            ;;
+    esac
+}
+
+# ---- attr ----
+_os9_attr() {
+    _arguments \
+        '-q[quiet mode (suppress output)]' \
+        '-e[set execute permission]' \
+        '-w[set write permission]' \
+        '-r[set read permission]' \
+        '-s[set single user permission]' \
+        '-p+[set public permission (append e/w/r)]' \
+        '-n+[unset owner permissions (append e/w/r/s)]' \
+        '-np+[unset public permissions (append e/w/r)]' \
+        '*:file:_files'
+}
+
+# ---- cmp ----
+_os9_cmp() {
+    _arguments \
+        '1:first file:_files' \
+        '*:additional file:_files'
+}
+
+# ---- copy ----
+_os9_copy() {
+    _arguments \
+        '-b=-[size of copy buffer in bytes or K-bytes]:size' \
+        '-l[perform end of line translation]' \
+        '-o=-[set file'"'"'s owner as id]:owner id' \
+        '-a=-[set file attributes (same syntax as attr)]:attrs' \
+        '-r[rewrite if file exists]' \
+        '*:file:_files' \
+        ':target:_files -/'
+}
+
+# ---- dcheck ----
+_os9_dcheck() {
+    _arguments \
+        '-s[check number of directories/files, verify file descriptors only]' \
+        '-b[suppress listing of unused clusters]' \
+        '-p[print pathlists of questionable clusters]' \
+        '*:disk image:_files'
+}
+
+# ---- del ----
+_os9_del() {
+    _arguments \
+        '*:file:_files'
+}
+
+# ---- deldir ----
+_os9_deldir() {
+    _arguments \
+        '-q[quiet mode (suppress interaction)]' \
+        '1:directory:_files -/'
+}
+
+# ---- dir ----
+_os9_dir() {
+    _arguments \
+        '-a[show all files]' \
+        '-e[extended directory]' \
+        '-r[recurse directories]' \
+        '*:directory:_files -/'
+}
+
+# ---- dsave ----
+_os9_dsave() {
+    _arguments \
+        '-b=-[size of copy buffer in bytes or K-bytes]:size' \
+        '-e[actually execute commands]' \
+        '-l[perform end of line translation on copy]' \
+        '-r[force rewrite on copy]' \
+        ':source:_files' \
+        ':target:_files'
+}
+
+# ---- dump ----
+_os9_dump() {
+    _arguments \
+        '-a[dump output in assembler format (hex)]' \
+        '-b[dump output in assembler format (binary)]' \
+        '-c[don'"'"'t display ASCII character data]' \
+        '-e[dump output in C format]' \
+        '-t[don'"'"'t display header]' \
+        '-h[don'"'"'t display header (DEPRECATED)]' \
+        '-l[don'"'"'t display line label/count]' \
+        '-z[decode DECB binary]' \
+        '*:file:_files'
+}
+
+# ---- format ----
+_os9_format() {
+    _arguments \
+        '-bs+[bytes per sector (default 256)]:bytes per sector' \
+        '-c+[cluster size]:cluster size' \
+        '-e[format entire disk (make full sized image)]' \
+        '-k[make OS-9/68K LSN0]' \
+        '-n+[disk name]:disk name' \
+        '-q[quiet; do not report format summary]' \
+        '-4[48 tpi (default)]' \
+        '-9[96 tpi]' \
+        '-sa[sector allocation size (SAS)]' \
+        '-sd[single density]' \
+        '-dd[double density (default)]' \
+        '-ss[single sided (default)]' \
+        '-ds[double sided]' \
+        '-t+[tracks (default 35)]:tracks' \
+        '-st+[sectors per track (default 18)]:sectors per track' \
+        '-sz+[sectors for track 0 (default 18)]:sectors for track 0' \
+        '-i+[interleave (default 3)]:interleave' \
+        '-dr[format a Dragon disk]' \
+        '-l+[number of logical sectors (hard drive; floppy options ignored)]:logical sectors' \
+        '*:disk image:_files'
+}
+
+# ---- free ----
+_os9_free() {
+    _arguments \
+        '*:disk image:_files'
+}
+
+# ---- fstat ----
+_os9_fstat() {
+    _arguments \
+        '*:file:_files'
+}
+
+# ---- gen ----
+_os9_gen() {
+    _arguments \
+        '-b=-[bootfile to copy and link to the image]:bootfile:_files' \
+        '-c[CoCo disk (default)]' \
+        '-d[Dragon disk]' \
+        '-e[extended boot (fragmented)]' \
+        '-t=-[kernel trackfile to copy to the image]:trackfile:_files' \
+        '-l+[special boottrack/kerneltrack start LSN]:LSN' \
+        ':disk image:_files'
+}
+
+# ---- id ----
+_os9_id() {
+    _arguments \
+        '*:disk image:_files'
+}
+
+# ---- ident ----
+_os9_ident() {
+    _arguments \
+        '-s[short output]' \
+        '*:file:_files'
+}
+
+# ---- list ----
+_os9_list() {
+    _arguments \
+        '*:file:_files'
+}
+
+# ---- makdir ----
+_os9_makdir() {
+    _arguments \
+        '*:directory:_files -/'
+}
+
+# ---- modbust ----
+_os9_modbust() {
+    _arguments \
+        '*:file:_files'
+}
+
+# ---- padrom ----
+_os9_padrom() {
+    _arguments \
+        '-b[place padding at the beginning of the file]' \
+        '-c+[character to pad (n=dec, %bin, 0oct or \$hex)]:pad char' \
+        '1:pad size:' \
+        '*:file:_files'
+}
+
+# ---- rdump ----
+_os9_rdump() {
+    _arguments \
+        '-g[add global definition info]' \
+        '-r[add reference info]' \
+        '-o[add reference and local offset info]' \
+        '-a[all of the above]' \
+        '*:file:_files'
+}
+
+# ---- rename ----
+_os9_rename() {
+    _arguments \
+        '1:file:_files' \
+        '2:new filename:'
+}
+
+_os9 "$@"
