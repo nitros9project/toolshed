@@ -12,7 +12,7 @@ extern "C" {
 
 
 /* ERROR CODES */
-#define EOS_PADROM		257
+#define EOS_PADROM		258
 
 
 const char *TSReportError(error_code te);

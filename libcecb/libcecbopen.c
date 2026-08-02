@@ -274,13 +274,6 @@ error_code _cecb_open(cecb_path_id * path, char *pathlist, int mode)
 	else
 	{
 		(*path)->israw = 0;
-
-		/* If mode is FAM_DIR, then we need to error */
-		if (mode & FAM_DIR)
-		{
-			term_pd(*path);
-			return EOS_SN;
-		}
 	}
 
 	if (mode & FAM_RAW)
@@ -330,6 +323,8 @@ error_code _cecb_open(cecb_path_id * path, char *pathlist, int mode)
 
 	/* Find file */
 
+	int found = 0;
+	
 	while (ec == 0)
 	{
 		ec = _cecb_read_next_dir_entry(*path, &((*path)->dir_entry));
@@ -352,12 +347,15 @@ error_code _cecb_open(cecb_path_id * path, char *pathlist, int mode)
 				else if ((*path)->tape_type == WAV)
 					(*path)->wav_start_sample =
 						(*path)->wav_current_sample;
-
+				
+				found = 1;
 				break;
 			}
 		}
 	}
 
+	if (found == 0 ) ec = EOS_PNNF;
+	
 	return ec;
 }
 
