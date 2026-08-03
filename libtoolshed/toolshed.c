@@ -28,6 +28,8 @@ const char *EOS_PTHFUL_str = "The file cannot be opened because the system path 
 const char *EOS_BMODE_str = "attempt to perform I/O function of which the device or file is incapable";
 const char *EOS_SF_str = "file is too fragmented to be expanded further";
 const char *EOS_SE_str = "physical seek to non-existant sector";
+const char *EOS_OM_str = "out of memory error";
+const char *EOS_SN_str = "syntax error";
 
 const char *TSReportError(error_code te)
 {
@@ -103,6 +105,14 @@ const char *TSReportError(error_code te)
 
 	case EOS_SE:
 		return EOS_SE_str;
+		break;
+
+	case EOS_OM:
+		return EOS_OM_str;
+		break;
+
+	case EOS_SN:
+		return EOS_SN_str;
 		break;
 
 	default:

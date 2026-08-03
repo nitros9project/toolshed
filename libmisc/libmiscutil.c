@@ -80,7 +80,7 @@ int StrToInt(char *s)
 	return (accum);
 }
 
-int strendcasecmp(char *s1, char *s2)
+int strendcasecmp(const char *s1, const char *s2)
 {
 	int a, b;
 
