@@ -66,6 +66,11 @@ error_code _cecb_create(cecb_path_id * path, char *pathlist, int mode,
 
 	(*path)->fd = fopen((*path)->imgfile, open_mode);
 
+	if ((*path)->fd == NULL && (mode & FAM_WRITE))
+	{
+		(*path)->fd = fopen((*path)->imgfile, "wb+");
+	}
+
 	if ((*path)->fd == NULL)
 	{
 		term_pd(*path);
@@ -134,7 +139,12 @@ error_code _cecb_create(cecb_path_id * path, char *pathlist, int mode,
 		(*path)->cas_total_bytes = ftell((*path)->fd);
 
 		if ((*path)->play_at == LONG_MAX)
-			(*path)->play_at = ((*path)->cas_total_bytes * 8) - 1;
+		{
+			if ((*path)->cas_total_bytes == 0)
+				(*path)->play_at = 0;
+			else
+				(*path)->play_at = ((*path)->cas_total_bytes * 8) - 1;
+		}
 		
 		(*path)->cas_start_byte = (*path)->cas_current_byte = (*path)->play_at / 8;
 		(*path)->cas_start_bit = (*path)->cas_current_bit = 0x01 << ((*path)->play_at % 8);
