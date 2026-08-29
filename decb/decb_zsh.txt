@@ -1,0 +1,146 @@
+#compdef decb
+#
+# Copy this file to a special directory as _decb (plain filename with underscore)
+# Check your $fpath for possible locations
+
+# Show ambiguous completions immediately instead of beeping first
+setopt AUTO_LIST
+setopt NO_LIST_BEEP     # optional: silence the bell entirely
+
+_decb() {
+    local -a commands
+    local -a global_opts
+
+    commands=(
+        'attr:Display or modify file attributes'
+        'binbust:Strip DECB binary pre-, inner-, and post-ambles'
+        'copy:Copy one or more files to a target directory'
+        'dir:Display the contents of a directory'
+        'dsave:Copy the contents of a directory or device'
+        'dskini:Create a Disk BASIC image'
+        'free:Display the amount of free space on an image'
+        'fstat:Display detailed information about a file'
+        'dump:hex dump information about a file'
+        'hdbconv:Convert HDB-DOS disk images'
+        'kill:Delete one or more files'
+        'list:Display contents of a text file'
+        'rename:Give a file a new filename'
+    )
+
+    global_opts=(
+        '-g[Granule count in FAT]:granule count:(68 78 156)'
+    )
+
+    # Find the command word
+    if (( CURRENT == 2 )); then
+        _arguments \
+			'-g[Granule count in FAT]:granule count:(68 78 156)' \
+			'1:command:->commands'
+
+        case $state in
+            commands)
+                _describe -t commands 'decb command' commands
+                ;;
+        esac
+        return
+    fi
+
+    # The first non-option argument is the subcommand
+    local cmd
+    cmd=${words[(I)${commands%%:*}]}
+    cmd=${words[2]}
+
+    case $cmd in
+        attr)
+            _arguments \
+                '-0[BASIC program]' \
+                '-1[BASIC data file]' \
+                '-2[Machine-language program]' \
+                '-3[Text file]' \
+                '-a[ASCII file]' \
+                '-b[Binary file]' \
+                '*:file:_files'
+            ;;
+
+        binbust)
+            _arguments \
+                '1:input file:_files' \
+                '2:output file:_files'
+            ;;
+
+        copy)
+            _arguments \
+                '-0[file type: BASIC program]' \
+                '-1[file type: BASIC data file]' \
+                '-2[file type: machine-language program]' \
+                '-3[file type: text editor source file]' \
+                '-a[ASCII data]' \
+                '-b[Binary data]' \
+                '-l[Perform end of line translation]' \
+                '-r[Rewrite if file exists]' \
+                '-t[Perform BASIC token translation]' \
+                '-c[Concatenate machine language segments]' \
+                '*:file:_files'
+            ;;
+
+        dir|free|kill|fstat|list)
+            _arguments \
+                '*:file:_files'
+            ;;
+
+        dsave)
+            _arguments \
+                '-b[size of copy buffer]' \
+                '-e[Execute commands]' \
+                '-l[Perform end of line translation]' \
+                '-t[Perform BASIC token translation]' \
+                '-r[Force rewrite]' \
+                '*:file:_files'
+            ;;
+
+        dump)
+            _arguments \
+                '-a[dump output in assembler format (hex)]' \
+                '-b[dump output in assembler format (binary)]' \
+                '-c[don't display ASCII character data' \
+                '-e[dump output in C format' \
+                '-t[don't display header]' \
+                '-h[don't display header (DEPRECATED)]' \
+                '-l[don't display line label/count]' \
+                '-z[decode DECB binary]' \
+                '*:file:_files'
+            ;;
+
+        dskini)
+            _arguments \
+                '-3[35 track disk]' \
+                '-4[40 track disk]' \
+                '-8[80 track disk]' \
+                '-h[number of HDB-DOS drives]:drives' \
+                '-n[disk name]:name' \
+                '-s[Create skitzo disk]' \
+                '*:disk image:_files'
+            ;;
+
+        hdbconv)
+            _arguments \
+                '-2[512-byte sector to 256-byte sector]' \
+                '-5[256-byte sector to 512-byte sector]' \
+                '*:file:_files'
+            ;;
+
+        rename)
+            _arguments \
+                '1:file:_files' \
+                '2:new filename'
+            ;;
+
+        *)
+            _arguments \
+				'-g[Granule count in FAT]:granule count:(68 78 156)' \
+				'*:file:_files'
+            ;;
+    esac
+}
+
+_decb "$@"

@@ -213,11 +213,14 @@ The number after the plus is the offset. It can be expressed in decimal or hexad
 ---
 
 <h2 id="os9">os9</h2>
-The following pages document the commands built into the os9 tool. As the examples above illustrated, the built in commands such as dir, copy, etc. must be executed from the os9 executive, and any parameters for that command follow the command name.
+The following pages document the commands built into the **os9** tool. As the examples above illustrated, the built-in commands such as **dir**, **copy**, etc. must be executed from the **os9** executive, and any parameters for that command follow the command name.
 
-Issuing the os9 command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using the subcommand.
+Issuing the **os9** command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using that subcommand.
 
-While many commands will work fine host file systems, some commands are designed to only be run on an RBF disk image or file within that image. The Scope section makes it clear in what context the command should be run.
+To make working with the **os9** executive more convenient, Toolshed includes shell completion definitions for both Bash and Zsh. The files **os9-completion.bash** and **os9_zsh.txt** provide tab completion for subcommands and many command options. To install them manually, copy **os9-completion.bash** into your Bash completion directory (or source it from your `~/.bashrc`) or copy **os9_zsh.txt** into a directory in your Zsh `$fpath`, rename it to **_os9**, and run `compinit` (or source it directly from your `~/.zshrc`).
+
+While many commands will work fine on host file systems, some commands are designed to only be run on an RBF disk image or on a file within that image. The **Scope** section makes it clear in what context a command should be run.
+
 
 ---
 
@@ -860,11 +863,14 @@ Options:
 
 <h2 id="decb">decb</h2>
 
-The following pages document the commands built into the decb tool. Its interface is similar to that of the os9 tool discussed in previous pages.
+The following pages document the commands built into the **decb** tool. Its interface is similar to that of the **os9** tool discussed in previous pages.
 
-Issuing the decb command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using the subcommand.
+Issuing the **decb** command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using that subcommand.
 
-Use decb to copy files to and from Disk BASIC formatted disk images to your host file system. While many commands will work fine host file systems, some commands are designed to only be run on a Disk BASIC disk image or file within that image. The Scope section makes it clear in what context the command should be run.
+To make working with the **decb** executive more convenient, Toolshed includes shell completion definitions for both Bash and Zsh. The files **decb-completion.bash** and **decb_zsh.txt** provide tab completion for subcommands and many command options. To install them manually, copy **decb-completion.bash** into your Bash completion directory (or source it from your `~/.bashrc`) or copy **decb_zsh.txt** into a directory in your Zsh `$fpath`, rename it to **_decb**, and run `compinit` (or source it directly from your `~/.zshrc`).
+
+Use **decb** to copy files to and from Disk BASIC formatted disk images and your host file system. While many commands will work fine on host file systems, some commands are designed to only be run on a Disk BASIC disk image or on a file within that image. The **Scope** section makes it clear in what context a command should be run.
+
 
 <h3 id="decb_exec_option">The DECB executive's option</h3>
 
@@ -1215,11 +1221,14 @@ The rename command renames a file with a new filename.
 
 <h2 id="cecb">cecb</h2>
 
-The following pages document the commands built into the cecb tool. Its interface is similar to that of the os9 tool discussed in previous pages.
+The following pages document the commands built into the **cecb** tool. Its interface is similar to that of the **os9** tool discussed in previous pages.
 
-Issuing the cecb command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using the subcommand.
+Issuing the **cecb** command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using that subcommand.
 
-Use cecb to copy files to and from Color BASIC and Micro Color BASIC formatted cassette images to your host file system. While many commands will work fine with host file systems, some commands are designed to only be run on a BASIC cassette image or file within that image. The Scope section makes it clear in what context the command should be run.
+To make working with the **cecb** executive more convenient, Toolshed includes shell completion definitions for both Bash and Zsh. The files **cecb-completion.bash** and **cecb_zsh.txt** provide tab completion for subcommands and many command options. To install them manually, copy **cecb-completion.bash** into your Bash completion directory (or source it from your `~/.bashrc`) or copy **cecb_zsh.txt** into a directory in your Zsh `$fpath`, rename it to **_cecb**, and run `compinit` (or source it directly from your `~/.zshrc`).
+
+Use **cecb** to copy files to and from Color BASIC and Micro Color BASIC formatted cassette images and your host file system. While many commands will work fine with host file systems, some commands are designed to only be run on a BASIC cassette image or on a file within that image. The **Scope** section makes it clear in what context a command should be run.
+
 
 Cecb can work with WAV, CAS, and C10 cassette file containers.
 

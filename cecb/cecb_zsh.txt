@@ -1,0 +1,127 @@
+#compdef cecb
+#
+# Copy this file to a special directory as _cecb (plain filename with underscore)
+# Check your $fpath for possible locations
+
+# Show ambiguous completions immediately instead of beeping first
+setopt AUTO_LIST
+setopt NO_LIST_BEEP     # optional: silence the bell entirely
+
+_cecb() {
+    local context state state_descr line
+    typeset -A opt_args
+
+    local -a global_opts
+    global_opts=(
+        '-r+[Set WAV FSK aspect ratio]:ratio:'
+        '-t+[Set WAV FSK aspect ratio threshold]:threshold:'
+        '-n+[Set near-zero threshold]:threshold:'
+        '-s+[Start at sample/bit]:offset:'
+        '-z[Suggest MC-10 mode]'
+    )
+
+    local -a commands
+    commands=(
+        'bulkerase:Create cassette image files'
+        'copy:Copy files to an image'
+        'dir:Display image directory'
+        'dumpblock:Hex dump cassette blocks'
+        'dump:Display the contents of a file in hexadecimal'
+        'fstat:Display file information'
+        'leader:Analyze WAV leaders'
+    )
+
+    # Use *:: to shift $words so $words[1] becomes the subcommand in the nested state
+    _arguments -s -C \
+        $global_opts \
+        '1:command:->command' \
+        '*::subcommand args:->args'
+
+    case $state in
+        command)
+            _describe 'cecb command' commands
+            ;;
+        args)
+            # Since *:: shifted $words, the subcommand is now exactly $words[1]
+            local cmd="$words[1]"
+            
+            case "$cmd" in
+                bulkerase)
+                    _arguments -s \
+                        $global_opts \
+                        '-s+[Sample rate]:sample rate:(11025 22050 44100 48000 96000)' \
+                        '-b+[Bits per sample]:bits:(8 16 24 32)' \
+                        '-l+[Leader silence length]:seconds:' \
+                        '*:file:_files'
+                    ;;
+
+                copy)
+                    _arguments -s \
+                        $global_opts \
+                        '-0[BASIC program]' \
+                        '-1[BASIC data file]' \
+                        '-2[Machine-language program]' \
+                        '-3[Text editor source file]' \
+                        '-a[ASCII data]' \
+                        '-b[Binary data]' \
+                        '-g[Write gaps]' \
+                        '-n[No gaps]' \
+                        '-d+[Load address]:address:' \
+                        '-e+[Execution address]:address:' \
+                        '-l[Translate line endings]' \
+                        '-t[Entokenize BASIC text]' \
+                        '-k[Detokenize BASIC program]' \
+                        '-s[Encode Motorola S-record]' \
+                        '-f[Decode Motorola S-record]' \
+                        '-c[Concatenate machine-language segments]' \
+                        '-p[Honor global start position]' \
+                        '*:file:_files'
+                    ;;
+
+                dir)
+                    _arguments -s \
+                        $global_opts \
+                        '*:image:_files'
+                    ;;
+
+                dump)
+                    _arguments -s \
+                        $global_opts \
+                        '-a[dump output in assembler format (hex)]' \
+                        '-b[dump output in assembler format (binary)]' \
+                        "-c[don't display ASCII character data]" \
+                        '-e[dump output in C format]' \
+                        "-t[don't display header]" \
+                        "-h[don't display header (DEPRECATED)]" \
+                        "-l[don't display line label/count]" \
+                        '-z[decode DECB binary]' \
+                        '*:file:_files'
+                    ;;
+
+                dumpblock)
+                    _arguments -s \
+                        $global_opts \
+                        '-h[Show help]' \
+                        '*:image:_files'
+                    ;;
+
+                fstat)
+                    _arguments -s \
+                        $global_opts \
+                        '*:file:_files'
+                    ;;
+
+                leader)
+                    _arguments -s \
+                        $global_opts \
+                        '*:wave file:_files'
+                    ;;
+            case)
+                    _message "unknown cecb command: $cmd"
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_cecb "$@"
