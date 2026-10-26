@@ -307,7 +307,8 @@ error_code _decb_readln(decb_path_id path, void *buffer, u_int * size)
 			if (*z == 0x0D)
 			{
 				read_size = (int) (z - buf_ptr) + 1;
-				*size = read_size;
+				/* Include bytes already read from earlier granules. */
+				*size = *size - bytes_left + read_size;
 				bytes_left = read_size;
 				break;
 			}
