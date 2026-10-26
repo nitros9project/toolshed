@@ -16,7 +16,7 @@
 
 
 u_char DecrementLinkCount(os9_path_id path, int fd_lsn);
-static int _os9_freefile(char *filePath, u_char * bitmap);
+static int _os9_freefile(os9_path_id path, int fd_lsn);
 
 
 error_code _os9_delete_directory(char *pathlist)
@@ -225,8 +225,7 @@ error_code _os9_delete(char *pathlist)
 
 				/* Deallocate any bits used by the file */
 
-				ec = _os9_freefile(pathlist,
-						   parent_path->bitmap);
+				ec = _os9_freefile(parent_path, int3(dentry.lsn));
 
 				/* Deallocate the bit used for the file descriptor */
 
@@ -295,22 +294,17 @@ u_char DecrementLinkCount(os9_path_id path, int fd_lsn)
 
 
 
-static int _os9_freefile(char *filePath, u_char * bitmap)
+static int _os9_freefile(os9_path_id path, int fd_lsn)
 {
-	os9_path_id path;
 	fd_stats fdbuf;
 	Fd_seg seg;
-	unsigned int spc;
 	int i;
 	int ec = 0;
 
 
-	ec = _os9_open(&path, filePath, FAM_READ);
-	ec = _os9_gs_fd(path, sizeof(fd_stats), &fdbuf);
-
-	spc = path->spc;
-
-	ec = _os9_close(path);
+	/* Read through the parent path; the target may not be readable. */
+	_os9_lsn_fseek(path, fd_lsn);
+	fread(&fdbuf, 1, sizeof(fd_stats), path->fd);
 
 	seg = fdbuf.fd_seg;
 
@@ -321,8 +315,8 @@ static int _os9_freefile(char *filePath, u_char * bitmap)
 			break;
 		}
 
-		ec = _os9_delbit(bitmap, int3(seg[i].lsn) / spc,
-				 int2(seg[i].num) / spc);
+		ec = _os9_delbit(path->bitmap, int3(seg[i].lsn) / path->spc,
+				 int2(seg[i].num) / path->spc);
 
 		if (ec != 0)
 		{
