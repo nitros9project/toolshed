@@ -164,9 +164,9 @@ error_code _cecb_create(cecb_path_id * path, char *pathlist, int mode,
 	(*path)->dir_entry.ascii_flag = data_type;
 	(*path)->dir_entry.gap_flag = gap;
 	(*path)->dir_entry.ml_load_address1 = ml_load_address >> 8;
-	(*path)->dir_entry.ml_load_address2 = ml_load_address & 0x0f;
+	(*path)->dir_entry.ml_load_address2 = ml_load_address & 0xff;
 	(*path)->dir_entry.ml_exec_address1 = ml_exec_address >> 8;
-	(*path)->dir_entry.ml_exec_address2 = ml_exec_address & 0x0f;
+	(*path)->dir_entry.ml_exec_address2 = ml_exec_address & 0xff;
 
 	/* 7. Write half second of silence */
 

@@ -20,6 +20,11 @@ error_code _cecb_write(cecb_path_id path, void *buffer, unsigned int *size)
 	int fill_bytes, buffer_pointer = 0;
 	char *b = (char *) buffer;
 
+	if ((path->mode & FAM_WRITE) == 0)
+	{
+		return EOS_BMODE;
+	}
+
 	while (*size > 0)
 	{
 		if (path->length == 0xff)

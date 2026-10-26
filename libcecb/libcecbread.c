@@ -105,7 +105,7 @@ error_code _cecb_readln(cecb_path_id path, void *buffer, u_int * size)
 		*size += 1;
 		requested_bytes -= 1;
 
-		if (*current == 0x0d)
+		if (current[-1] == 0x0d)
 			break;
 	}
 
