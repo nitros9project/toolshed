@@ -6,10 +6,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 #include <cecbpath.h>
 #include <cocopath.h>
 #include <util.h>
+#include <cocodump.h>
 
 #ifdef _WIN32
 #include <io.h>
@@ -19,73 +19,20 @@
 #define is_stdout_terminal() isatty(fileno(stdout))
 #endif
 
-#define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
-
 /* Help message */
 static char const *const helpMessage[] = {
-	"Syntax: dumpblock <imagefile>\n",
+	"Syntax: dumpblock [<opts>] <imagefile> [<opts>]\n",
 	"Usage:  Scan a CAS/WAV image and print a hex dump of each block.\n",
 	"Options:\n",
 	"     -h, ?       Show this help message\n",
+	"     -a          dump output in assembler format (hex)\n",
+	"     -b          dump output in assembler format (binary)\n",
+	"     -e          dump output in C format\n",
+	"     -c          don't display ASCII character data\n",
+	"     -t          don't display header\n",
+	"     -l          don't display line label/count\n",
 	NULL
 };
-
-/* Helper to print a 16-byte aligned hex dump */
-static void dump_hex(const unsigned char *data, size_t length)
-{
-	size_t i, j;
-	size_t lines = (length + 15) / 16;
-	int use_color = is_stdout_terminal();
-
-	for (i = 0; i < lines; i++)
-	{
-		size_t offset = i * 16;
-		size_t line_len = MIN(16, length - offset);
-
-		printf("  %04x: ", (unsigned int)offset);
-		
-		for (j = 0; j < 16; j++)
-		{
-			if (j < line_len)
-			{
-				unsigned char c = data[offset + j];
-				if (use_color && isprint(c))
-				{
-					printf("\033[32m%02x\033[0m ", c);
-				}
-				else
-				{
-					printf("%02x ", c);
-				}
-			}
-			else
-			{
-				printf("   ");
-			}
-			if (j == 7) printf(" ");
-		}
-		
-		printf(" |");
-
-		for (j = 0; j < 16; j++)
-		{
-			if (j < line_len)
-			{
-				unsigned char c = data[offset + j];
-				if (isprint(c))
-					printf("%c", c);
-				else
-					printf("%s", "·");
-			}
-			else
-			{
-				printf(" ");
-			}
-		}
-
-		printf("|\n");
-	}
-}
 
 int cecbdumpblock(int argc, char *argv[])
 {
@@ -96,6 +43,9 @@ int cecbdumpblock(int argc, char *argv[])
 	unsigned char block_type, block_length;
 	unsigned char data[256];
 	int use_color = is_stdout_terminal();
+	coco_dump_options options;
+	coco_dump dump;
+	coco_dump_defaults(&options);
 
 	/* 1. Walk command line for options and source file. */
 	for (i = 1; i < argc; i++)
@@ -104,6 +54,19 @@ int cecbdumpblock(int argc, char *argv[])
 		{
 			show_help(helpMessage);
 			return 0;
+		}
+		else if (argv[i][0] == '-')
+		{
+			char *p;
+			for (p = argv[i] + 1; *p; p++)
+			{
+				if (*p == '?') { show_help(helpMessage); return 0; }
+				if (!coco_dump_option(&options, *p))
+				{
+					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
+					return 1;
+				}
+			}
 		}
 		else if (srcfile == NULL)
 		{
@@ -158,19 +121,13 @@ int cecbdumpblock(int argc, char *argv[])
 			ec = 0;
 			break;
 		}
-		
-		/* Print block header with start position */
-		if (path->tape_type == WAV)
+		/* A checksum mismatch still provides a complete, useful block. */
+		if (ec != 0 && ec != EOS_CRC)
 		{
-			printf("Block: Type=0x%02x, Len=%d",
-			       block_type, block_length);
+			fprintf(stderr, "%s: block read error %d\n", argv[0], ec);
+			break;
 		}
-		else
-		{
-			/* CAS/C10: Calculate absolute bit position from byte/bit state */
-			printf("Block: Type=0x%02x, Len=%d",
-			       block_type, block_length);
-		}
+		printf("Block: Type=0x%02x, Len=%d", block_type, block_length);
 
 		/* Handle CRC warnings gracefully (non-fatal for dump) */
 		if (path->block_cksum != path->block_cksum_calc)
@@ -197,12 +154,18 @@ int cecbdumpblock(int argc, char *argv[])
 		}
 		
 		/* Print hex dump of block data */
-		dump_hex(data, block_length);
+		coco_dump_begin(&dump, stdout, &options, 0);
+		coco_dump_write(&dump, data, block_length);
+		coco_dump_end(&dump);
 		printf("\n");
 	} while (1);
 
 	/* 4. Close the path. */
-	_cecb_close(path);
+	{
+		error_code close_ec = _cecb_close(path);
+		if (!ec) ec = close_ec;
+	}
+	if (!ec && ferror(stdout)) ec = 1;
 
 	return ec;
 }
