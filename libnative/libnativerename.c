@@ -18,8 +18,9 @@
 error_code _native_rename(char *pathlist, char *new_name)
 {
 	error_code ec = 0;
-	char *a;
-	char *dest = malloc(strlen(pathlist) + strlen(new_name));
+	char *a = strrchr(pathlist, '/');
+	size_t prefix_length = a == NULL ? 0 : a - pathlist + 1;
+	char *dest = malloc(prefix_length + strlen(new_name) + 1);
 
 
 	if (dest == NULL)
@@ -30,26 +31,15 @@ error_code _native_rename(char *pathlist, char *new_name)
 
 	/* Construct destination path name */
 
-	a = strrchr(pathlist, '/');
+	memcpy(dest, pathlist, prefix_length);
+	strcpy(dest + prefix_length, new_name);
 
-	if (a == NULL)
-	{
-		strcpy(dest, new_name);
-	}
-	else
-	{
-		strncpy(dest, pathlist, a - pathlist + 1);
-		strcat(dest, new_name);
-	}
-
-	rename(pathlist, dest);
-
-	free(dest);
-
-	if (ec != 0)
+	if (rename(pathlist, dest) != 0)
 	{
 		ec = errno;
 	}
+
+	free(dest);
 
 
 	return ec;

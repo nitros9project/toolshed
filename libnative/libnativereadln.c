@@ -43,7 +43,7 @@ error_code _native_readln(native_path_id path, void *buffer, u_int * size)
 		if (*buf_ptr == 0x0A)
 		{
 			*buf_ptr = 0x0D;
-			*size = i;
+			*size = i + 1;
 			break;
 		}
 

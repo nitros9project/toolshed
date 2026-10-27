@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <dirent.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "cocotypes.h"
 #include "cococonv.h"
@@ -175,13 +177,38 @@ error_code _native_open(native_path_id * path, char *pathlist, int mode)
 	}
 	else if (mode & FAM_WRITE)
 	{
-		nativeMode = "b";
+		nativeMode = "wb";
 	}
 
 	strncpy((*path)->pathlist, pathlist, sizeof((*path)->pathlist) - 1);
 	(*path)->pathlist[sizeof((*path)->pathlist) - 1] = '\0';
 
-	(*path)->fd = fopen(pathlist, nativeMode);
+	if ((mode & (FAM_WRITE | FAM_READ)) == FAM_WRITE)
+	{
+		int flags = O_WRONLY;
+		int fd;
+
+#if defined(WIN32)
+		flags |= O_BINARY;
+#endif
+		/* fopen("wb") truncates; fdopen preserves the existing file. */
+		fd = open(pathlist, flags);
+		if (fd >= 0)
+		{
+			(*path)->fd = fdopen(fd, nativeMode);
+			if ((*path)->fd == NULL)
+			{
+				int saved_errno = errno;
+
+				close(fd);
+				errno = saved_errno;
+			}
+		}
+	}
+	else
+	{
+		(*path)->fd = fopen(pathlist, nativeMode);
+	}
 
 	if ((*path)->fd == NULL)
 	{
