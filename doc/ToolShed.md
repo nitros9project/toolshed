@@ -1375,11 +1375,22 @@ This command is intended for Cassette BASIC images (`.wav`, `.cas`, `.c10`) only
 
 #### Description
 
-The `dumpblock` command scans a Color Computer cassette image file sequentially, printing the header details (block type, length, and exact image position markers) followed by a 16-byte aligned hexadecimal and ASCII dump of each raw block's contents. It will continue decoding through non-fatal CRC warnings until it encounters a file read error or hits the End-of-File marker (block type `0xFF`).
+The `dumpblock` command scans a Color Computer cassette image file sequentially, printing the header details (block type, length, checksum, and exact image position markers) followed by a dump of each raw block's contents. It uses the same formatter as `os9 dump`, `decb dump`, and `cecb dump`, with offsets restarting at zero for each block. It continues through non-fatal checksum warnings and end-of-file blocks (type `0xFF`) to scan the entire image.
 
 #### Options
 
 * `-h`, `?` : Show the help message and exit.
+* `-a` : Dump output in assembler format (hex).
+* `-b` : Dump output in assembler format (binary).
+* `-e` : Dump output in C format.
+* `-c` : Omit ASCII character data.
+* `-t` : Omit the dump column header.
+* `-l` : Omit line labels/counts.
+
+Formatting options may be combined and placed before or after the image name.
+Block metadata is always displayed. When output is a terminal, all four dump
+commands show printable ASCII byte values and characters in green; redirected
+output contains no color codes. Checksum warnings are also colored on a terminal.
 
 #### Examples
 
@@ -1387,13 +1398,13 @@ Scanning a `.cas` image and dumping a header block:
 
 Scanning a `.wav` image file:
 
-    cecb dumpblock test.wav
+    cecb dumpblock -t test.wav
     Scanning blocks in: test.wav
     Format: WAV
     ------------------------------------------------------------
-    Block: Type=0x00, Len=15, End Sample=243200
-      0000: 48 45 4C 4C 4F 20 20 20 00 00 00 42 41 53 49  |HELLO   ...BASI|
-      0010: 43                                            |C|
+    Block: Type=0x00, Len=15, CKSUM=0x02, End Sample=243200
+
+    00000000  4845 4c4c 4f20 2020 0000 0042 4153 49   HELLO   ...BASI
 
 ---
 <h3 id="list_cecb">LIST - Display the contents of a file</h3>

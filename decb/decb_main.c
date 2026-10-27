@@ -45,7 +45,7 @@ static struct cmdtbl table[] = {
 	{decbdir, "dir"},
 	{decbdsave, "dsave"},
 	{decbdskini, "dskini"},
-	{os9dump, "dump"},
+	{cocodump, "dump"},
 	{decbfree, "free"},
 	{decbfstat, "fstat"},
 	{decbhdbconv, "hdbconv"},

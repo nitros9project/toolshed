@@ -3,7 +3,7 @@ include ../rules.mak
 
 CFLAGS += -I../../../include -Wall -MMD -MP
 
-SRCS = toolshed.c
+SRCS = toolshed.c cocodump.c cocodumpcommand.c
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)
 
