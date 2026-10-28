@@ -60,6 +60,8 @@ error_code _cecb_seek(cecb_path_id path, long pos, int mode)
 
 			path->filepos = pos;
 			path->eof_flag = 0;
+			path->current_pointer = 0;
+			path->length = 0;
 			break;
 
 		case SEEK_CUR:
@@ -79,4 +81,3 @@ error_code _cecb_seek(cecb_path_id path, long pos, int mode)
 
 	return ec;
 }
-
