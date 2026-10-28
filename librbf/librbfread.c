@@ -54,7 +54,14 @@ error_code _os9_read(os9_path_id path, void *buffer, u_int * size)
 
 		if (path->filepos >= disksize)
 		{
+			*size = 0;
+
 			return EOS_EOF;
+		}
+
+		if (*size > disksize - path->filepos)
+		{
+			*size = disksize - path->filepos;
 		}
 
 		fseek(path->fd, path->filepos, SEEK_SET);

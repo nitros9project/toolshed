@@ -130,6 +130,183 @@ void test_os9_read()
 	ASSERT_EQUALS(0, ec);
 }
 
+void test_os9_raw_read_end_of_disk()
+{
+	os9_path_id p;
+	error_code ec;
+	u_int disksize, size, pos;
+	char expected[16], buffer[32], untouched[32];
+
+	ec = _os9_open(&p, "test.dsk,@", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_gs_size(p, &disksize);
+	ASSERT_EQUALS(0, ec);
+
+	/* Capture the final bytes with a read that ends exactly at EOF. */
+	ec = _os9_seek(p, disksize - sizeof(expected), SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(expected);
+	ec = _os9_read(p, expected, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(expected), size);
+
+	/* A read spanning EOF must report only the bytes remaining. */
+	ec = _os9_seek(p, disksize - sizeof(expected), SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	memset(buffer, 0x5a, sizeof(buffer));
+	memset(untouched, 0x5a, sizeof(untouched));
+	size = sizeof(buffer);
+	ec = _os9_read(p, buffer, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(expected), size);
+	ASSERT_MEM_EQUALS(expected, buffer, sizeof(expected));
+	ASSERT_MEM_EQUALS(untouched, buffer + sizeof(expected),
+			  sizeof(buffer) - sizeof(expected));
+	ec = _os9_gs_pos(p, &pos);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(disksize, pos);
+
+	/* EOF returns no bytes and leaves the buffer and position unchanged. */
+	memcpy(buffer, untouched, sizeof(buffer));
+	size = sizeof(buffer);
+	ec = _os9_read(p, buffer, &size);
+	ASSERT_EQUALS(EOS_EOF, ec);
+	ASSERT_EQUALS(0, size);
+	ASSERT_MEM_EQUALS(untouched, buffer, sizeof(buffer));
+	ec = _os9_gs_pos(p, &pos);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(disksize, pos);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+}
+
+void test_os9_raw_write_position()
+{
+	os9_path_id p;
+	error_code ec;
+	u_int disksize, size, pos, start;
+	char original[64], replacement[16], buffer[16];
+
+	ec = _os9_open(&p, "test.dsk,@", FAM_READ | FAM_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_gs_size(p, &disksize);
+	ASSERT_EQUALS(0, ec);
+	start = disksize - sizeof(original);
+
+	/* Use unused space at the end of the test image. */
+	memset(original, 'A', sizeof(original));
+	memset(replacement, 'B', sizeof(replacement));
+	ec = _os9_seek(p, start, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(original);
+	ec = _os9_write(p, original, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(original), size);
+	ec = _os9_gs_pos(p, &pos);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(disksize, pos);
+
+	ec = _os9_seek(p, start, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(replacement);
+	ec = _os9_write(p, replacement, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(replacement), size);
+	ec = _os9_gs_pos(p, &pos);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(start + sizeof(replacement), pos);
+
+	/* A following read must start after the bytes just written. */
+	size = sizeof(buffer);
+	ec = _os9_read(p, buffer, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(buffer), size);
+	ASSERT_MEM_EQUALS(original + sizeof(replacement), buffer, size);
+	ec = _os9_gs_pos(p, &pos);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(start + sizeof(replacement) + sizeof(buffer), pos);
+
+	/* Confirm the replacement was written at the requested offset. */
+	ec = _os9_seek(p, start, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(buffer);
+	ec = _os9_read(p, buffer, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(buffer), size);
+	ASSERT_MEM_EQUALS(replacement, buffer, size);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+}
+
+void test_os9_readln_across_segments()
+{
+	os9_path_id p;
+	error_code ec;
+	fd_stats fd;
+	u_int size, pos;
+	char sector[256], buffer[32];
+	char tail[] = "BC\rnext\r";
+
+	/* Close after one sector so unused allocation is released. */
+	ec = _os9_create(&p, "test.dsk,lines.txt", FAM_READ | FAM_WRITE,
+			 FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	memset(sector, 'A', sizeof(sector));
+	size = sizeof(sector);
+	ec = _os9_write(p, sector, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(sector), size);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	/* Occupy the following space to force a second data segment. */
+	ec = _os9_create(&p, "test.dsk,line_blocker", FAM_READ | FAM_WRITE,
+			 FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(sector);
+	ec = _os9_write(p, sector, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _os9_open(&p, "test.dsk,lines.txt", FAM_READ | FAM_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_seek(p, sizeof(sector), SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = strlen(tail);
+	ec = _os9_write(p, tail, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(strlen(tail), size);
+	ec = _os9_gs_fd(p, sizeof(fd), &fd);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(1, int2(fd.fd_seg[0].num));
+	ASSERT_NEQUALS(0, int3(fd.fd_seg[1].lsn));
+
+	/* Six bytes in the first segment, then three through the CR. */
+	ec = _os9_seek(p, 250, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(buffer);
+	ec = _os9_readln(p, buffer, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(9, size);
+	ASSERT_MEM_EQUALS("AAAAAABC\r", buffer, size);
+	ec = _os9_gs_pos(p, &pos);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(259, pos);
+
+	size = sizeof(buffer);
+	ec = _os9_readln(p, buffer, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(5, size);
+	ASSERT_MEM_EQUALS("next\r", buffer, size);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_delete("test.dsk,lines.txt");
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_delete("test.dsk,line_blocker");
+	ASSERT_EQUALS(0, ec);
+}
+
 void test_os9_write()
 {
 	os9_path_id p;
@@ -208,6 +385,57 @@ void test_os9_delete()
 
 	// test deletion of a non-exsting file on an existing disk image
 	ec = _os9_delete("test.dsk,test4.txt");
+	ASSERT_EQUALS(0, ec);
+}
+
+void test_os9_delete_write_only_file()
+{
+	os9_path_id p;
+	error_code ec;
+	fd_stats fd;
+	int fd_lsn, i, j;
+	u_int size;
+	char buffer[512];
+
+	ec = _os9_create(&p, "test.dsk,write_only.txt", FAM_WRITE, FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	memset(buffer, 'W', sizeof(buffer));
+	size = sizeof(buffer);
+	ec = _os9_write(p, buffer, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(buffer), size);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	/* Capture the allocated sectors after close has trimmed allocation. */
+	ec = _os9_open(&p, "test.dsk,write_only.txt", FAM_WRITE);
+	ASSERT_EQUALS(0, ec);
+	fd_lsn = p->pl_fd_lsn;
+	ec = _os9_gs_fd(p, sizeof(fd), &fd);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_NEQUALS(0, int3(fd.fd_seg[0].lsn));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	/* Deletion must not require read access to the target file. */
+	ec = _os9_delete("test.dsk,write_only.txt");
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_open(&p, "test.dsk,write_only.txt", FAM_WRITE);
+	ASSERT_EQUALS(EOS_PNNF, ec);
+
+	/* Both the descriptor and all data clusters must be released. */
+	ec = _os9_open(&p, "test.dsk,@", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(0, _os9_ckbit(p->bitmap, fd_lsn / p->spc));
+	for (i = 0; i < NUM_SEGS && int3(fd.fd_seg[i].lsn) != 0; i++)
+	{
+		for (j = 0; j < int2(fd.fd_seg[i].num); j += p->spc)
+		{
+			ASSERT_EQUALS(0, _os9_ckbit(p->bitmap,
+				(int3(fd.fd_seg[i].lsn) + j) / p->spc));
+		}
+	}
+	ec = _os9_close(p);
 	ASSERT_EQUALS(0, ec);
 }
 
@@ -392,9 +620,13 @@ int main()
 	RUN(test_os9_format);
 	RUN(test_os9_create);
 	RUN(test_os9_read);
+	RUN(test_os9_raw_read_end_of_disk);
+	RUN(test_os9_raw_write_position);
+	RUN(test_os9_readln_across_segments);
 	RUN(test_os9_write);
 	RUN(test_os9_open_and_read);
 	RUN(test_os9_delete);
+	RUN(test_os9_delete_write_only_file);
 	RUN(test_os9_makdir);
 	RUN(test_os9_delete_directory);
 	RUN(test_os9_rename);

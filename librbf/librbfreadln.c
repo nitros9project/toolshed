@@ -152,7 +152,8 @@ error_code _os9_readln(os9_path_id path, void *buffer, u_int * size)
 			if (*z == 0x0D)
 			{
 				read_size = (int) (z - buf_ptr) + 1;
-				*size = read_size;
+				/* Include bytes already read from earlier segments. */
+				*size = (u_int) (buf_ptr - (char *) buffer) + read_size;
 				bytes_left = read_size;
 				break;
 			}

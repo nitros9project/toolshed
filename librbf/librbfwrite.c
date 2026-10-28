@@ -32,6 +32,7 @@ error_code _os9_write(os9_path_id path, void *buffer, u_int * size)
 	if (path->israw == 1)
 	{
 		*size = fwrite(buffer, 1, *size, path->fd);
+		path->filepos += *size;
 	}
 	else
 	{
