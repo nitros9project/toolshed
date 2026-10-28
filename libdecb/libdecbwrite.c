@@ -18,7 +18,7 @@ error_code find_free_granule(decb_path_id path, int *granule, int next_to);
 
 error_code _decb_write(decb_path_id path, void *buffer, u_int * size)
 {
-	error_code ec = EOS_WRITE;
+	error_code ec = 0;
 	u_int current_size = 0, accum_size = 0, curr_granule, bytes_left;
 
 
@@ -100,7 +100,7 @@ error_code _decb_write(decb_path_id path, void *buffer, u_int * size)
 
 	/* 7. Copy user supplied data into the file for 'bytes_left' bytes. */
 
-	bytes_left = (path->filepos + *size) - current_size;
+	bytes_left = *size;
 
 
 	while (bytes_left > 0)

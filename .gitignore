@@ -4,6 +4,7 @@
 *.c10
 *.wav
 filldisk.dsk
+AGENTS.md
 
 # Ignore built files
 build/unix/ar2/ar2

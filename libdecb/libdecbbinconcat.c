@@ -37,7 +37,7 @@ error_code _decb_binconcat(unsigned char *in_buffer, int in_size,
 
 	/* Mark all addresses as unused */
 
-	for (i = 0; i < 65535; i++)
+	for (i = 0; i < 65536; i++)
 		buffer[i] = -1;
 
 	/* Unpack BIN file into pseudo RAM space */
@@ -72,7 +72,7 @@ error_code _decb_binconcat(unsigned char *in_buffer, int in_size,
 	*out_size = 0;
 	mode = FREESPACE;
 
-	for (i = 0; i < 65535; i++)
+	for (i = 0; i < 65536; i++)
 	{
 		switch (mode)
 		{
@@ -115,7 +115,7 @@ error_code _decb_binconcat(unsigned char *in_buffer, int in_size,
 	out_pos = 0;
 	mode = FREESPACE;
 
-	for (i = 0; i < 65535; i++)
+	for (i = 0; i < 65536; i++)
 	{
 		switch (mode)
 		{
@@ -246,6 +246,15 @@ error_code _decb_extract_first_segment(u_char * buffer, u_int buffer_size,
 			buffer_position += *extracted_buffer_size;
 
 			first = 1;
+		}
+		else if (amble == PREAMBLE)
+		{
+			u_int length;
+
+			/* Skip the load address and data of subsequent segments. */
+			length = buffer[buffer_position++] << 8;
+			length += buffer[buffer_position++];
+			buffer_position += 2 + length;
 		}
 		else if (amble == POSTAMBLE)
 		{

@@ -130,6 +130,62 @@ void test_decb_read()
 	ASSERT_EQUALS(0, ec);
 }
 
+void test_decb_readln_across_granules()
+{
+	decb_path_id p;
+	error_code ec;
+	char data[2304 + 8 + 5];
+	char buffer[sizeof(data)];
+	u_int size, pos;
+	u_int starts[] = { 0, 2300, 2304 };
+	u_int line_size = 2304 + 8;
+
+	memset(data, 'A', line_size);
+	data[line_size - 1] = '\r';
+	memcpy(data + line_size, "NEXT\r", 5);
+
+	ec = _decb_dskini("readln.dsk", 35, "READLN", 1, 256, 0);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_create(&p, "readln.dsk,LINES.TXT", FAM_READ | FAM_WRITE,
+			  0, 1);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(data);
+	ec = _decb_write(p, data, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(data), size);
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _decb_open(&p, "readln.dsk,LINES.TXT", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	for (u_int i = 0; i < sizeof(starts) / sizeof(starts[0]); i++)
+	{
+		ec = _decb_seek(p, starts[i], SEEK_SET);
+		ASSERT_EQUALS(0, ec);
+		size = sizeof(buffer);
+		ec = _decb_readln(p, buffer, &size);
+		ASSERT_EQUALS(0, ec);
+		ASSERT_EQUALS(line_size - starts[i], size);
+		ASSERT_MEM_EQUALS(data + starts[i], buffer, size);
+		ec = _decb_gs_pos(p, &pos);
+		ASSERT_EQUALS(0, ec);
+		ASSERT_EQUALS(line_size, pos);
+
+		size = sizeof(buffer);
+		ec = _decb_readln(p, buffer, &size);
+		ASSERT_EQUALS(0, ec);
+		ASSERT_EQUALS(5, size);
+		ASSERT_MEM_EQUALS("NEXT\r", buffer, size);
+		size = sizeof(buffer);
+		ec = _decb_readln(p, buffer, &size);
+		ASSERT_EQUALS(EOS_EOF, ec);
+		ASSERT_EQUALS(0, size);
+	}
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+	remove("readln.dsk");
+}
+
 void test_decb_write()
 {
 	decb_path_id p;
@@ -244,6 +300,64 @@ void test_decb_write()
 	free(buffer);
 }
 
+void test_decb_overwrite()
+{
+	decb_path_id p;
+	error_code ec;
+	char data[2304 * 2 + 32];
+	char expected[sizeof(data) + 10], buffer[sizeof(expected)];
+	u_int offsets[] = { 0, 2298, sizeof(data) - 10 };
+	u_int lengths[] = { sizeof(data), 20, 20 };
+	u_int size, pos, filesize, expected_size = sizeof(data);
+
+	ec = _decb_dskini("overwrite.dsk", 35, "OVERWRITE", 1, 256, 0);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_create(&p, "overwrite.dsk,DATA.BIN", FAM_READ | FAM_WRITE,
+			  2, 0);
+	ASSERT_EQUALS(0, ec);
+	memset(data, 'A', sizeof(data));
+	memcpy(expected, data, sizeof(data));
+	size = sizeof(data);
+	ec = _decb_write(p, data, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(data), size);
+
+	for (u_int i = 0; i < sizeof(offsets) / sizeof(offsets[0]); i++)
+	{
+		memset(data, 'B' + i, sizeof(data));
+		memcpy(expected + offsets[i], data, lengths[i]);
+		if (offsets[i] + lengths[i] > expected_size)
+		{
+			expected_size = offsets[i] + lengths[i];
+		}
+		ec = _decb_seek(p, offsets[i], SEEK_SET);
+		ASSERT_EQUALS(0, ec);
+		size = lengths[i];
+		ec = _decb_write(p, data, &size);
+		ASSERT_EQUALS(0, ec);
+		ASSERT_EQUALS(lengths[i], size);
+		ec = _decb_gs_pos(p, &pos);
+		ASSERT_EQUALS(0, ec);
+		ASSERT_EQUALS(offsets[i] + lengths[i], pos);
+		ec = _decb_close(p);
+		ASSERT_EQUALS(0, ec);
+
+		ec = _decb_open(&p, "overwrite.dsk,DATA.BIN", FAM_READ | FAM_WRITE);
+		ASSERT_EQUALS(0, ec);
+		ec = _decb_gs_size(p, &filesize);
+		ASSERT_EQUALS(0, ec);
+		ASSERT_EQUALS(expected_size, filesize);
+		size = sizeof(buffer);
+		ec = _decb_read(p, buffer, &size);
+		ASSERT_EQUALS(0, ec);
+		ASSERT_EQUALS(expected_size, size);
+		ASSERT_MEM_EQUALS(expected, buffer, size);
+	}
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+	remove("overwrite.dsk");
+}
+
 void test_decb_open_and_read()
 {
 	decb_path_id p;
@@ -304,6 +418,66 @@ void test_decb_rename()
 	// test rename of an existing file in an existing disk image with a legal name
 	ec = _decb_rename("test.dsk,test3.txt", "testren.txt");
 	ASSERT_EQUALS(0, ec);
+}
+
+void test_decb_extract_first_segment_multiple_segments()
+{
+	error_code ec;
+	unsigned char *output;
+	u_int output_size, load_address, exec_address;
+	unsigned char input[] = {
+		0x00, 0x00, 0x03, 0x20, 0x00, 0x11, 0x22, 0x33,
+		0x00, 0x00, 0x05, 0x40, 0x00,
+		0xff, 0x00, 0x00, 0x12, 0x34,
+		0xff, 0x00, 0x00, 0x56, 0x78
+	};
+	unsigned char expected[] = { 0x11, 0x22, 0x33 };
+
+	/* The postamble-like bytes in the second segment are ordinary data. */
+	ec = _decb_extract_first_segment(input, sizeof(input), &output,
+					 &output_size, &load_address, &exec_address);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(expected), output_size);
+	ASSERT_MEM_EQUALS(expected, output, output_size);
+	ASSERT_EQUALS(0x2000, load_address);
+	ASSERT_EQUALS(0x5678, exec_address);
+	free(output);
+}
+
+void test_decb_binconcat_last_address()
+{
+	error_code ec;
+	unsigned char *output;
+	u_int output_size;
+	unsigned char input[] = {
+		0x00, 0x00, 0x01, 0xff, 0xff, 0xa5,
+		0xff, 0x00, 0x00, 0x12, 0x34
+	};
+	unsigned char wrapped_input[] = {
+		0x00, 0x00, 0x01, 0xff, 0xfe, 0x5a,
+		0x00, 0x00, 0x02, 0xff, 0xff, 0xa5, 0xc3,
+		0xff, 0x00, 0x00, 0x12, 0x34
+	};
+	unsigned char wrapped_expected[] = {
+		0x00, 0x00, 0x01, 0x00, 0x00, 0xc3,
+		0x00, 0x00, 0x02, 0xff, 0xfe, 0x5a, 0xa5,
+		0xff, 0x00, 0x00, 0x12, 0x34
+	};
+
+	/* A byte at the highest address must survive concatenation. */
+	ec = _decb_binconcat(input, sizeof(input), &output, &output_size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(input), output_size);
+	ASSERT_MEM_EQUALS(input, output, output_size);
+	free(output);
+
+	/* Merge adjacent bytes at the top of memory and preserve wraparound. */
+	ec = _decb_binconcat(wrapped_input, sizeof(wrapped_input),
+			     &output, &output_size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(wrapped_expected), output_size);
+	ASSERT_MEM_EQUALS(wrapped_expected, output, output_size);
+	free(output);
 }
 
 char *basic_prog = "10 PRINT\"Hello World\"\n15 X=INT(234.54-23)\n20 GOTO 10\n";
@@ -477,10 +651,14 @@ int main()
 	RUN(test_decb_dskini);
 	RUN(test_decb_create);
 	RUN(test_decb_read);
+	RUN(test_decb_readln_across_granules);
 	RUN(test_decb_write);
+	RUN(test_decb_overwrite);
 	RUN(test_decb_open_and_read);
 	RUN(test_decb_delete);
 	RUN(test_decb_rename);
+	RUN(test_decb_binconcat_last_address);
+	RUN(test_decb_extract_first_segment_multiple_segments);
 	RUN(test_decb_token);
 	RUN(test_decb_token_keyword_after_var);
 
