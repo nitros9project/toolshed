@@ -118,7 +118,7 @@ int qDeleteNode(NodeType * head, NodeType targetNode)
 	}
 
 	/* other case: walk the queue to find the node to delete */
-	while (p->next != NULL)
+	while (p != NULL)
 	{
 		if (p == targetNode)
 		{

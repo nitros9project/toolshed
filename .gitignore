@@ -21,6 +21,7 @@ build/unix/tocgen/tocgen
 build/unix/unittest/decbcommandtest
 build/unix/unittest/libcecbtest
 build/unix/unittest/libdecbtest
+build/unix/unittest/libmisctest
 build/unix/unittest/libnativetest
 build/unix/unittest/librbftest
 build/unix/unittest/libtoolshedtest

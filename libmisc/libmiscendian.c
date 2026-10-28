@@ -8,7 +8,7 @@
 
 unsigned int int4(u_char * a)
 {
-	return (unsigned int) ((((u_char) * a) << 24) +
+	return (unsigned int) ((((unsigned int) * a) << 24) +
 			       ((u_char) * (a + 1) << 16) +
 			       ((u_char) * (a + 2) << 8) + (u_char) * (a +
 								       3));
