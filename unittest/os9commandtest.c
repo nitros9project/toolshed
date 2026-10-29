@@ -164,11 +164,66 @@ void test_os9_command_copy_metadata()
 	remove("meta_out.txt");
 }
 
+void test_os9_command_copy_exit_status()
+{
+	error_code ec;
+	FILE *file;
+	coco_path_id path;
+	const char contents[] = "copy status regression\n";
+	char result[sizeof(contents)];
+	size_t written;
+	u_int size;
+	int i;
+	const char *commands[] = {
+		"../os9/os9 copy copy_status_source copy_status.dsk,ONE.TXT > /dev/null 2>&1",
+		"../os9/os9 copy copy_status_missing copy_status.dsk,MISSING.TXT > /dev/null 2>&1",
+		"../os9/os9 copy copy_status_source copy_status.dsk,ONE.TXT > /dev/null 2>&1",
+		"../os9/os9 copy copy_status_missing copy_status_source copy_status.dsk, > /dev/null 2>&1",
+		"../os9/os9 copy -r copy_status_source copy_status_missing copy_status.dsk, > /dev/null 2>&1"
+	};
+	const int expected[] = {0, EOS_PNNF, EOS_FAE, EOS_PNNF, EOS_PNNF};
+
+	ec = system("../os9/os9 format -e copy_status.dsk -l630 > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+	remove("copy_status_missing");
+	file = fopen("copy_status_source", "wb");
+	ASSERT("create copy source", file != NULL);
+	written = fwrite(contents, 1, sizeof(contents) - 1, file);
+	ec = fclose(file);
+	ASSERT_EQUALS(sizeof(contents) - 1, written);
+	ASSERT_EQUALS(0, ec);
+
+	for (i = 0; i < 5; i++)
+	{
+		ec = system(commands[i]);
+		ASSERT_EQUALS(1, WIFEXITED(ec));
+		ec = WEXITSTATUS(ec);
+		ASSERT_EQUALS(expected[i], ec);
+
+		/* A failed source must not prevent a later valid source from copying. */
+		if (i == 3)
+		{
+			ec = _coco_open(&path, "copy_status.dsk,copy_status_source", FAM_READ);
+			ASSERT_EQUALS(0, ec);
+			size = sizeof(result);
+			ec = _coco_read(path, result, &size);
+			_coco_close(path);
+			ASSERT_EQUALS(0, ec);
+			ASSERT_EQUALS(sizeof(contents) - 1, size);
+			ASSERT_MEM_EQUALS(contents, result, size);
+		}
+	}
+
+	remove("copy_status_source");
+	remove("copy_status.dsk");
+}
+
 int main()
 {
 	remove("test.dsk");
 	RUN(test_os9_command_format);
 	RUN(test_os9_command_copy_metadata);
+	RUN(test_os9_command_copy_exit_status);
 
 	return TEST_REPORT();
 }

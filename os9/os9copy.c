@@ -37,6 +37,7 @@ static char const *const helpMessage[] = {
 int os9copy(int argc, char *argv[])
 {
 	error_code ec = 0;
+	error_code first_error = 0;
 	char *p = NULL, *q, *desttarget = NULL;
 	int i, j;
 	int targetDirectory = NO;
@@ -384,6 +385,9 @@ int os9copy(int argc, char *argv[])
 
 		if (ec != 0)
 		{
+			/* Keep failures visible even if a later source copies successfully. */
+			if (first_error == 0)
+				first_error = ec;
 			fprintf(stderr,
 				"%s: error %d on file '%s' to '%s': %s\n",
 				argv[0], ec, argv[j], df, TSReportError(ec));
@@ -395,7 +399,7 @@ int os9copy(int argc, char *argv[])
 		free(buffer);
 		buffer = NULL;
 	}
-	return 0;
+	return first_error;
 }
 
 
