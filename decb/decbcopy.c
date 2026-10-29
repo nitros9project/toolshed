@@ -218,6 +218,18 @@ int decbcopy(int argc, char *argv[])
 					strcat(df, GetFilename(argv[j]));
 				}
 			}
+			else
+			{
+				int length;
+
+				length = snprintf(df, sizeof(df), "%s%s%s", desttarget,
+						  desttarget[strlen(desttarget) - 1] == '/' ? "" : "/",
+						  GetFilename(argv[j]));
+				if (length < 0 || (size_t) length >= sizeof(df))
+				{
+					return EOS_BPNAM;
+				}
+			}
 		}
 		else
 		{
@@ -447,7 +459,9 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 			}
 		}
 
-		if (eolTranslate == 1)
+		/* Translate only when crossing between native and CoCo formats. */
+		if (eolTranslate == 1
+		    && ((path->type == NATIVE) != (destpath->type == NATIVE)))
 		{
 			if (path->type == NATIVE && destpath->type != NATIVE)
 			{
@@ -502,46 +516,46 @@ static error_code CopyDECBFile(char *srcfile, char *dstfile, int eolTranslate,
 		{
 			return ec;
 		}
+	}
 
 
-		/* Copy meta data from file descriptor of source to destination */
+	/* Copy metadata even when the source file is empty. */
 
+	{
+		coco_file_stat fd;
+
+
+		_coco_gs_fd(path, &fd);
+
+		_coco_ss_fd(destpath, &fd);
+	}
+
+
+	/* Special -- if this is a DECB file we wrote to, set passed file type and data type. */
+
+	{
+		_path_type t;
+
+		_coco_gs_pathtype(destpath, &t);
+
+		if (t == DECB)
 		{
-			coco_file_stat fd;
+			decb_file_stat f;
 
 
-			_coco_gs_fd(path, &fd);
+			_decb_gs_fd(destpath->path.decb, &f);
 
-			_coco_ss_fd(destpath, &fd);
-		}
-
-
-		/* Special -- if this is a DECB file we wrote to, set passed file type and data type. */
-
-		{
-			_path_type t;
-
-			_coco_gs_pathtype(destpath, &t);
-
-			if (t == DECB)
+			if (file_type >= 0)
 			{
-				decb_file_stat f;
-
-
-				_decb_gs_fd(destpath->path.decb, &f);
-
-				if (file_type >= 0)
-				{
-					f.file_type = file_type;
-				}
-
-				if (data_type >= 0)
-				{
-					f.data_type = data_type;
-				}
-
-				_decb_ss_fd(destpath->path.decb, &f);
+				f.file_type = file_type;
 			}
+
+			if (data_type >= 0)
+			{
+				f.data_type = data_type;
+			}
+
+			_decb_ss_fd(destpath->path.decb, &f);
 		}
 	}
 
