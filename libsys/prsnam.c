@@ -17,6 +17,11 @@ error_code _os9_prsnam(const char *filename)
 	const char *a = filename;
 	int length = 0;
 
+	if (*a == '\0')
+	{
+		return EOS_BPNAM;
+	}
+
 	while (*a != 0)
 	{
 		length++;
@@ -45,9 +50,16 @@ error_code _decb_prsnam(const char *filename)
 	/* 1. Check if filename contains a dot */
 	const char *dot = strchr(filename, '.');
 
+	/* A basename is required, even when an extension is present. */
+	if (*filename == '\0' || dot == filename)
+	{
+		return EOS_BPNAM;
+	}
+
 	if (dot != NULL)
 	{
-		if (dot - filename > 8 || strlen(dot + 1) > 3)
+		if (dot - filename > 8 || strlen(dot + 1) > 3
+		    || strchr(dot + 1, '.') != NULL)
 		{
 			ec = EOS_BPNAM;
 		}
@@ -77,7 +89,7 @@ error_code _cecb_prsnam(const char *filename)
 	{
 		for (i = 0; i < strlen(filename); i++)
 		{
-			if (isgraph((unsigned char)filename[i]) != 0)
+			if (isgraph((unsigned char)filename[i]) == 0)
 				ec = EOS_BPNAM;
 		}
 	}
