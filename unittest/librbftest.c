@@ -612,6 +612,104 @@ void test_os9_file_allocation()
 	ASSERT_EQUALS(bytes_free, new_bytes_free);
 }
 
+/* Exercise both SAS allocation and contiguous extension at bitmap boundaries.
+ * A 256-byte bitmap sector describes 2048 clusters, not 2048 disk sectors.
+ */
+void test_os9_allocation_bitmap_boundaries()
+{
+	int spc, boundary, sas;
+	error_code ec;
+
+	for (spc = 1; spc <= 2; spc *= 2)
+	{
+		for (boundary = 2048; boundary <= 4096; boundary += 2048)
+		{
+			for (sas = 1; sas <= 8; sas += 7)
+			{
+				os9_path_id p;
+				fd_stats fd;
+				int clusterSize = spc;
+				unsigned int totalSectors, totalBytes;
+				u_int size;
+				char buffer[8 * 2 * 256], actual[sizeof(buffer)];
+
+				ec = _os9_format("test_boundary.dsk", 0,
+					256, 16, 16, 4, 256, &clusterSize, "Boundary",
+					sas * spc, 0, 0, 1, 0, 1, 3,
+					&totalSectors, &totalBytes);
+				ASSERT_EQUALS(0, ec);
+				ec = _os9_create(&p, "test_boundary.dsk,file",
+					FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE);
+				ASSERT_EQUALS(0, ec);
+				ASSERT_EQUALS(spc, p->spc);
+				ASSERT_EQUALS(sas * spc, int1(p->lsn0->dd_opt.m6809.pd_sas));
+
+				/* Discard the descriptor cluster's spare sectors so both
+				 * cluster sizes start with an empty segment list. */
+				ASSERT_EQUALS(256, read_lsn(p, p->pl_fd_lsn, &fd));
+				memset(fd.fd_seg, 0, sizeof(fd.fd_seg));
+				_os9_lsn_fseek(p, p->pl_fd_lsn);
+				size = fwrite(&fd, 1, sizeof(fd), p->fd);
+				ASSERT_EQUALS(sizeof(fd), size);
+
+				/* Leave only four free clusters before the boundary and
+				 * sixteen after it. The file descriptor already exists.
+				 */
+				memset(p->bitmap, 0xff, p->bitmap_bytes);
+				_os9_delbit(p->bitmap, boundary - 4, 20);
+				size = 8 * spc * 256;
+				memset(buffer, 0x5a, size);
+				ec = _os9_write(p, buffer, &size);
+				ASSERT_EQUALS(0, ec);
+				ASSERT_EQUALS(8 * spc * 256, size);
+				ASSERT_EQUALS(256, read_lsn(p, p->pl_fd_lsn, &fd));
+
+				if (sas == 1)
+				{
+					/* Extension must split adjacent space at the boundary. */
+					ASSERT_EQUALS((boundary - 4) * spc, int3(fd.fd_seg[0].lsn));
+					ASSERT_EQUALS(4 * spc, int2(fd.fd_seg[0].num));
+					ASSERT_EQUALS(boundary * spc, int3(fd.fd_seg[1].lsn));
+					ASSERT_EQUALS(4 * spc, int2(fd.fd_seg[1].num));
+					ASSERT_EQUALS(0, int3(fd.fd_seg[2].lsn));
+				}
+				else
+				{
+					/* An eight-cluster SAS must skip the short free run. */
+					ASSERT_EQUALS(boundary * spc, int3(fd.fd_seg[0].lsn));
+					ASSERT_EQUALS(8 * spc, int2(fd.fd_seg[0].num));
+					ASSERT_EQUALS(0, int3(fd.fd_seg[1].lsn));
+					ec = _os9_ckbit(p->bitmap, boundary - 4);
+					ASSERT_EQUALS(0, ec);
+				}
+
+				for (int j = 0; j < NUM_SEGS && int3(fd.fd_seg[j].lsn); j++)
+				{
+					int start = int3(fd.fd_seg[j].lsn);
+					int end = start + int2(fd.fd_seg[j].num) - 1;
+					ASSERT_EQUALS(start / spc / 2048, end / spc / 2048);
+				}
+
+				ec = _os9_close(p);
+				ASSERT_EQUALS(0, ec);
+				/* Verify the persisted segment list also reads correctly. */
+				ec = _os9_open(&p, "test_boundary.dsk,file", FAM_READ);
+				ASSERT_EQUALS(0, ec);
+				ec = _os9_read(p, actual, &size);
+				ASSERT_EQUALS(0, ec);
+				ASSERT_EQUALS(8 * spc * 256, size);
+				ASSERT_MEM_EQUALS(buffer, actual, size);
+				ec = _os9_close(p);
+				ASSERT_EQUALS(0, ec);
+				ec = _os9_delete("test_boundary.dsk,file");
+				ASSERT_EQUALS(0, ec);
+				ec = remove("test_boundary.dsk");
+				ASSERT_EQUALS(0, ec);
+			}
+		}
+	}
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -633,6 +731,7 @@ int main()
 	RUN(test_os9_ss_calls);
 	RUN(test_os9_gs_calls);
 	RUN(test_os9_file_allocation);
+	RUN(test_os9_allocation_bitmap_boundaries);
 	
 	return TEST_REPORT();
 }
