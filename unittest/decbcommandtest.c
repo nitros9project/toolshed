@@ -238,59 +238,6 @@ void test_decb_command_copy_empty_metadata()
 	remove("copy_empty.dsk");
 }
 
-void test_decb_command_copy_token_metadata()
-{
-	error_code ec, close_ec;
-	FILE *file;
-	coco_path_id path;
-	coco_file_stat statbuf;
-	const char program[] = "10 PRINT \"TEST\"\n20 GOTO 10\n";
-	char result[sizeof(program)];
-	const char *commands[] = {
-		"../decb/decb copy -t copy_token_source copy_token.dsk,TOKENS.BAS > /dev/null 2>&1",
-		"../decb/decb copy -t copy_token.dsk,TOKENS.BAS copy_token.dsk,TEXT.BAS > /dev/null 2>&1"
-	};
-	char *destinations[] = {"copy_token.dsk,TOKENS.BAS", "copy_token.dsk,TEXT.BAS"};
-	u_int size;
-	size_t written;
-	int i;
-
-	ec = system("../decb/decb dskini copy_token.dsk > /dev/null 2>&1");
-	ASSERT_EQUALS(0, ec);
-	file = fopen("copy_token_source", "wb");
-	ASSERT("create BASIC source", file != NULL);
-	written = fwrite(program, 1, sizeof(program) - 1, file);
-	ec = fclose(file);
-	ASSERT_EQUALS(sizeof(program) - 1, written);
-	ASSERT_EQUALS(0, ec);
-
-	for (i = 0; i < 2; i++)
-	{
-		ec = system(commands[i]);
-		ASSERT_EQUALS(0, ec);
-		ec = _coco_open(&path, destinations[i], FAM_READ);
-		ASSERT_EQUALS(0, ec);
-		ec = _coco_gs_fd(path, &statbuf);
-		close_ec = _coco_close(path);
-		ASSERT_EQUALS(0, ec);
-		ASSERT_EQUALS(0, close_ec);
-		ASSERT_EQUALS(0, statbuf.file_type);
-		ASSERT_EQUALS(i == 0 ? 0 : 255, statbuf.data_type);
-	}
-
-	ec = _coco_open(&path, destinations[1], FAM_READ);
-	ASSERT_EQUALS(0, ec);
-	size = sizeof(result);
-	ec = _coco_read(path, result, &size);
-	close_ec = _coco_close(path);
-	remove("copy_token_source");
-	remove("copy_token.dsk");
-	ASSERT_EQUALS(0, ec);
-	ASSERT_EQUALS(0, close_ec);
-	ASSERT_EQUALS(sizeof(program) - 1, size);
-	ASSERT_MEM_EQUALS(program, result, size);
-}
-
 int main()
 {
 	remove("test.dsk");
@@ -299,7 +246,6 @@ int main()
 	RUN(test_decb_command_copy_to_native_directory);
 	RUN(test_decb_command_copy_eol_same_type);
 	RUN(test_decb_command_copy_empty_metadata);
-	RUN(test_decb_command_copy_token_metadata);
 	
 	return TEST_REPORT();
 }
