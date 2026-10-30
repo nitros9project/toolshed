@@ -84,7 +84,7 @@ int cecbcopy(int argc, char *argv[])
 					break;
 
 				case '1':
-					file_type = 2;
+					file_type = 1;
 					break;
 
 				case '2':
@@ -264,6 +264,18 @@ int cecbcopy(int argc, char *argv[])
 					strcat(df, GetFilename(argv[j]));
 				}
 			}
+			else
+			{
+				int length;
+
+				length = snprintf(df, sizeof(df), "%s%s%s", desttarget,
+						  desttarget[strlen(desttarget) - 1] == '/' ? "" : "/",
+						  GetFilename(argv[j]));
+				if (length < 0 || (size_t) length >= sizeof(df))
+				{
+					return EOS_BPNAM;
+				}
+			}
 		}
 		else
 		{
@@ -356,7 +368,7 @@ static error_code CopyCECBFile(char *srcfile, char *dstfile, int eolTranslate,
 	else if (tokTranslate == -1)
 		file_type = 0;
 
-	if ((data_type == -1) && (tokTranslate == -1))
+	if ((data_type == -1) && (tokTranslate == 1))
 		data_type = 0;
 	else if (tokTranslate == -1)
 		data_type = 0xff;
@@ -576,7 +588,7 @@ static error_code CopyCECBFile(char *srcfile, char *dstfile, int eolTranslate,
 		char *translation_buffer;
 		u_int new_translation_size;
 
-		if (path->type == NATIVE)
+		if (path->type == NATIVE && destpath->type != NATIVE)
 		{
 			/* source is native, destination is coco */
 
@@ -588,7 +600,7 @@ static error_code CopyCECBFile(char *srcfile, char *dstfile, int eolTranslate,
 			buffer = (u_char *) translation_buffer;
 			buffer_size = new_translation_size;
 		}
-		else if (path->type != NATIVE)
+		else if (path->type != NATIVE && destpath->type == NATIVE)
 		{
 			/* source is coco, destination is native */
 
