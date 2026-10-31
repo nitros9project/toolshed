@@ -22,7 +22,8 @@ TEST_LIBS = \
 
 
 TESTS = librbftest libdecbtest libcecbtest libtoolshedtest libnativetest libmisctest os9commandtest \
-	decbcommandtest libsystest
+	decbcommandtest cecbcommandtest libsystest
+
 $(TESTS): $(TEST_LIBS)
 
 testall: $(TESTS)
@@ -36,6 +37,7 @@ ifeq (,$(NOTEST))
 	./libsystest
 	./os9commandtest
 	./decbcommandtest
+	./cecbcommandtest
 endif
 
 clean:
