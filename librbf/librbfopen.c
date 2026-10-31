@@ -518,7 +518,16 @@ error_code _os9_open_parent_directory(os9_path_id * path, char *pathlist,
 {
 	char *pathcopy, *lastPathComponent, *lastPathSeperator;
 
-	/* 1. Generate path to parent. */
+	*filename = NULL;
+
+	/* 1. A pathlist with no comma does not name anything in an image. */
+
+	if (strchr(pathlist, ',') == NULL)
+	{
+		return EOS_BPNAM;
+	}
+
+	/* 2. Generate path to parent. */
 
 	pathcopy = strdup(pathlist);
 

@@ -291,6 +291,46 @@ void test_decb_command_copy_token_metadata()
 	ASSERT_MEM_EQUALS(program, result, size);
 }
 
+void test_decb_command_attr_no_comma_spec()
+{
+	error_code ec;
+	int i;
+	const char *const commands[] = {
+		"../decb/decb attr no_comma.dsk > /dev/null 2>&1",
+		"../decb/decb attr -a no_comma.dsk > /dev/null 2>&1",
+		"../decb/decb attr no_comma.dsk no_comma.dsk,KEEP.TXT > /dev/null 2>&1",
+		"../decb/decb attr no_comma.dsk,KEEP.TXT no_comma.dsk > /dev/null 2>&1",
+		"../decb/decb attr no_comma.dsk,NOPE.TXT no_comma.dsk > /dev/null 2>&1",
+		"../decb/decb attr no_comma.dsk,KEEP.TXT > /dev/null 2>&1",
+	};
+	const int expected[] = {EOS_BPNAM, EOS_BPNAM, EOS_BPNAM, EOS_BPNAM,
+		EOS_PNNF, 0};
+
+	remove("no_comma.dsk");
+	remove("no_comma.before");
+
+	ec = system("../decb/decb dskini no_comma.dsk > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+	ec = system("../decb/decb copy Makefile no_comma.dsk,KEEP.TXT > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+	ec = system("cp no_comma.dsk no_comma.before");
+	ASSERT_EQUALS(0, ec);
+
+	/* A failed spec must be reported even when another spec succeeds. */
+	for (i = 0; i < 6; i++)
+	{
+		ec = system(commands[i]);
+		ASSERT_EQUALS(1, WIFEXITED(ec));
+		ec = WEXITSTATUS(ec);
+		ASSERT_EQUALS(expected[i], ec);
+		ec = system("cmp -s no_comma.dsk no_comma.before");
+		ASSERT_EQUALS(0, ec);
+	}
+
+	remove("no_comma.before");
+	remove("no_comma.dsk");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -300,6 +340,7 @@ int main()
 	RUN(test_decb_command_copy_eol_same_type);
 	RUN(test_decb_command_copy_empty_metadata);
 	RUN(test_decb_command_copy_token_metadata);
+	RUN(test_decb_command_attr_no_comma_spec);
 	
 	return TEST_REPORT();
 }
