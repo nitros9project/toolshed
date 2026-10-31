@@ -298,7 +298,7 @@ int os9format(int argc, char **argv)
 		{
 			unsigned int totalSectors, totalBytes;
 
-			error_code ec =
+			ec =
 				_os9_format(argv[i], os968k, tracks,
 					    sectorsPerTrack, sectorsTrack0,
 					    heads, bytesPerSector, &clusterSize,
@@ -336,6 +336,13 @@ int os9format(int argc, char **argv)
 					printf("   Cluster size: %d\n",
 					       clusterSize);
 				}
+			}
+			else
+			{
+				fprintf(stderr, "%s: error %d formatting '%s'\n",
+					argv[0], ec, argv[i]);
+
+				return (ec);
 			}
 
 		}

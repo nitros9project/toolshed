@@ -218,12 +218,87 @@ void test_os9_command_copy_exit_status()
 	remove("copy_status.dsk");
 }
 
+/* A format that fails must report it, and leave an existing image alone. */
+void test_os9_command_format_rejects_bad_t0s()
+{
+	FILE *file;
+	int ec;
+
+	file = fopen("bad_t0.dsk", "wb");
+	ASSERT("create existing image", file != NULL);
+	fputs("keep", file);
+	fclose(file);
+
+	ec = system("../os9/os9 format -q -st18 -sz19 bad_t0.dsk > /dev/null 2>&1");
+	ASSERT_EQUALS(1, WIFEXITED(ec));
+	ASSERT_NEQUALS(0, WEXITSTATUS(ec));
+
+	file = fopen("bad_t0.dsk", "rb");
+	ASSERT("reopen existing image", file != NULL);
+	ASSERT_EQUALS(0, fseek(file, 0, SEEK_END));
+	ASSERT_EQUALS(4, ftell(file));
+	fclose(file);
+	ec = remove("bad_t0.dsk");
+	ASSERT_EQUALS(0, ec);
+
+}
+
+/* A root directory past T0S must still be identified as an OS-9 image, or the
+ * tools treat the disk as Disk BASIC. Copy a file in and back out to prove it.
+ */
+void test_os9_command_root_past_short_t0()
+{
+	const char *formats[] = {
+		"../os9/os9 format -q -t4 -ds -st18 -sz1 min_t0.dsk > /dev/null 2>&1",
+		"../os9/os9 format -q -t4 -ds -st18 -sz2 min_t0.dsk > /dev/null 2>&1",
+		"../os9/os9 format -q -e -k -t4 -ds -st18 -sz2 min_t0.dsk > /dev/null 2>&1",
+		"../os9/os9 format -q -dr -t8 -ds -st18 -sz14 min_t0.dsk > /dev/null 2>&1"
+	};
+	const char contents[] = "root past track 0\n";
+	char result[sizeof(contents)];
+	FILE *file;
+	size_t count;
+	int ec, i;
+
+	file = fopen("min_t0_source", "wb");
+	ASSERT("create copy source", file != NULL);
+	count = fwrite(contents, 1, sizeof(contents) - 1, file);
+	fclose(file);
+	ASSERT_EQUALS(sizeof(contents) - 1, count);
+
+	for (i = 0; i < 4; i++)
+	{
+		remove("min_t0.dsk");
+		remove("min_t0_result");
+		ec = system(formats[i]);
+		ASSERT_EQUALS(0, ec);
+		ec = system("../os9/os9 dir min_t0.dsk, > /dev/null 2>&1");
+		ASSERT_EQUALS(0, ec);
+		ec = system("../os9/os9 copy min_t0_source min_t0.dsk,FILE > /dev/null 2>&1");
+		ASSERT_EQUALS(0, ec);
+		ec = system("../os9/os9 copy min_t0.dsk,FILE min_t0_result > /dev/null 2>&1");
+		ASSERT_EQUALS(0, ec);
+		file = fopen("min_t0_result", "rb");
+		ASSERT("open copy result", file != NULL);
+		count = fread(result, 1, sizeof(result), file);
+		fclose(file);
+		ASSERT_EQUALS(sizeof(contents) - 1, count);
+		ASSERT_MEM_EQUALS(contents, result, count);
+	}
+
+	remove("min_t0.dsk");
+	remove("min_t0_result");
+	remove("min_t0_source");
+}
+
 int main()
 {
 	remove("test.dsk");
 	RUN(test_os9_command_format);
 	RUN(test_os9_command_copy_metadata);
 	RUN(test_os9_command_copy_exit_status);
+	RUN(test_os9_command_format_rejects_bad_t0s);
+	RUN(test_os9_command_root_past_short_t0);
 
 	return TEST_REPORT();
 }

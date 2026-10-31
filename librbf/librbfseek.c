@@ -81,3 +81,92 @@ int _os9_lsn_fseek(os9_path_id path, int lsn)
 
 	return fseek(path->fd, offset, SEEK_SET);
 }
+
+
+/*
+ * seek_run()
+ *
+ * Seek to a byte offset past the start of a run of contiguous LSNs. Returns
+ * how many of the next 'size' bytes are contiguous in the image file. That is
+ * less than 'size' only when the transfer reaches the first LSN of a short
+ * track zero's missing sectors.
+ */
+
+static u_int seek_run(os9_path_id path, int lsn, u_int offset, u_int size)
+{
+	u_int cur_lsn = lsn + offset / path->bps;
+	u_int sector_offset = offset % path->bps;
+
+	if (cur_lsn < path->t0s)
+	{
+		u_int room = (path->t0s - cur_lsn) * path->bps - sector_offset;
+
+		if (size > room)
+		{
+			size = room;
+		}
+	}
+
+	_os9_lsn_fseek(path, cur_lsn);
+	fseek(path->fd, sector_offset, SEEK_CUR);
+
+	return size;
+}
+
+
+/*
+ * _os9_lsn_read()
+ *
+ * Read from a run of contiguous LSNs, starting 'offset' bytes past 'lsn'.
+ * Returns the number of bytes read.
+ */
+
+u_int _os9_lsn_read(os9_path_id path, int lsn, u_int offset, void *buffer, u_int size)
+{
+	char *buf_ptr = buffer;
+	u_int total = 0;
+
+	while (total < size)
+	{
+		u_int run = seek_run(path, lsn, offset + total, size - total);
+		u_int count = fread(buf_ptr + total, 1, run, path->fd);
+
+		total += count;
+
+		if (count != run)
+		{
+			break;
+		}
+	}
+
+	return total;
+}
+
+
+/*
+ * _os9_lsn_write()
+ *
+ * Write to a run of contiguous LSNs, starting 'offset' bytes past 'lsn'.
+ * Returns the number of bytes written.
+ */
+
+u_int _os9_lsn_write(os9_path_id path, int lsn, u_int offset, const void *buffer, u_int size)
+{
+	const char *buf_ptr = buffer;
+	u_int total = 0;
+
+	while (total < size)
+	{
+		u_int run = seek_run(path, lsn, offset + total, size - total);
+		u_int count = fwrite(buf_ptr + total, 1, run, path->fd);
+
+		total += count;
+
+		if (count != run)
+		{
+			break;
+		}
+	}
+
+	return total;
+}
