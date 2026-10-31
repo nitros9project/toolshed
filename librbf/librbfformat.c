@@ -15,6 +15,50 @@
 
 #define DragonBootSize	16	/* Size of Dragon boot area in sectors */
 
+
+/*
+ * write_lsns()
+ *
+ * Write the next bytes of the disk in LSN order. Track 0 keeps all of its file
+ * slots on a short track 0 disk, so fill the unused ones on reaching T0S.
+ */
+
+static void write_lsns(native_path_id path, void *buffer, u_int size, long long *written,
+		       long long t0sBytes, u_int gapBytes)
+{
+	char *buf_ptr = buffer;
+
+	while (size > 0)
+	{
+		u_int run = size;
+
+		if (*written < t0sBytes && run > t0sBytes - *written)
+		{
+			run = t0sBytes - *written;
+		}
+
+		if (*written == t0sBytes && gapBytes > 0)
+		{
+			char *gap = (char *) malloc(gapBytes);
+
+			if (gap != NULL)
+			{
+				u_int gapSize = gapBytes;
+
+				memset(gap, 0xE5, gapBytes);
+				_native_write(path, gap, &gapSize);
+				free(gap);
+			}
+		}
+
+		_native_write(path, buf_ptr, &run);
+		buf_ptr += run;
+		*written += run;
+		size -= run;
+	}
+}
+
+
 error_code _os9_format(char *pathname, int os968k, int tracks,
 		       int sectorsPerTrack, int sectorsTrack0,
 			   int heads, int sectorSize,
@@ -31,6 +75,21 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 	unsigned int sectorsToAlloc = 0;
 	unsigned int bitmapSectors, bitmapBytes;
 	unsigned int rootSects;
+	long long written = 0;
+	long long t0sBytes = (long long) sectorsTrack0 * sectorSize;
+	u_int gapBytes = (sectorsPerTrack - sectorsTrack0) * sectorSize;
+
+	/* An LSN at or past T0S is offset by the sectors track 0 is missing, which
+	 * needs at least LSN0 on track 0 and no more sectors than a full track.
+	 * Check before the create below truncates any existing image.
+	 */
+	if (sectorsTrack0 < 1 || sectorsTrack0 > sectorsPerTrack)
+	{
+		fprintf(stderr, "Sectors on track 0 (%d) must be from 1 to sectors per track (%d)\n",
+			sectorsTrack0, sectorsPerTrack);
+
+		return (1);
+	}
 
 	/* 1. Open a path to the virtual disk. */
 
@@ -226,15 +285,14 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 		u_int padding = sectorSize - s0size;
 
 		/* write LSN0 structure */
-		_native_write(path, &s0, &s0size);
+		write_lsns(path, &s0, s0size, &written, t0sBytes, gapBytes);
 
 		/* fill in rest of sector with zeros */
 		while (padding--)
 		{
-			u_int size = 1;
 			char nil = '\0';
 
-			_native_write(path, &nil, &size);
+			write_lsns(path, &nil, 1, &written, t0sBytes, gapBytes);
 		}
 	}
 
@@ -300,7 +358,7 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 			sectorsLeft -= sectorsToAlloc;
 		}
 
-		_native_write(path, bitmap, &bitmapSize);
+		write_lsns(path, bitmap, bitmapSize, &written, t0sBytes, gapBytes);
 
 		free(bitmap);
 	}
@@ -315,7 +373,7 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 
 		DragonBoot = (char *) calloc(BootSize, 1);
 		memset(DragonBoot, 0x55, BootSize);
-		_native_write(path, DragonBoot, &BootSize);
+		write_lsns(path, DragonBoot, BootSize, &written, t0sBytes, gapBytes);
 
 		free(DragonBoot);
 	}
@@ -388,7 +446,7 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 		}
 
 
-		_native_write(path, allocedSectors, &totalBytes);
+		write_lsns(path, allocedSectors, totalBytes, &written, t0sBytes, gapBytes);
 
 		free(allocedSectors);
 	}
@@ -406,9 +464,7 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 
 			while (sectorsLeft--)
 			{
-				u_int size = sectorSize;
-
-				_native_write(path, oneEmptySector, &size);
+				write_lsns(path, oneEmptySector, sectorSize, &written, t0sBytes, gapBytes);
 			}
 
 			free(oneEmptySector);

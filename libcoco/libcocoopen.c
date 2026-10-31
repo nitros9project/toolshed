@@ -269,6 +269,11 @@ error_code _coco_identify_image(char *pathlist, _path_type * type)
 			Lsn0_sect os9_sector = (Lsn0_sect) sector_buffer;
 			int dir_sector_offset;
 			int bps = 256;
+			int is_osk = (memcmp(os9_sector->dd_sync, "Cruz", 4) == 0);
+			int spt = int2(os9_sector->dd_spt);
+			int t0s = int2(is_osk ? os9_sector->dd_opt.m68k.pd_t0s
+					      : os9_sector->dd_opt.m6809.pd_t0s);
+			int dir_lsn = int3(os9_sector->dd_dir) + 1;
 
 			/* 0. Look for WAV file marker */
 
@@ -288,8 +293,14 @@ error_code _coco_identify_image(char *pathlist, _path_type * type)
 
 				/* Then, check out the dir sector for .. and . entries. */
 
-				dir_sector_offset =
-					(int3(os9_sector->dd_dir) + 1) * bps;
+				/* Skip the sectors missing from a short track 0. */
+
+				if (t0s > 0 && t0s < spt && dir_lsn >= t0s)
+				{
+					dir_lsn += spt - t0s;
+				}
+
+				dir_sector_offset = dir_lsn * bps;
 
 				fseek(fp, dir_sector_offset, SEEK_SET);
 

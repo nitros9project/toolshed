@@ -710,6 +710,447 @@ void test_os9_allocation_bitmap_boundaries()
 	}
 }
 
+/* Return the image file offset of an LSN on a short track 0 disk, worked out
+ * here rather than through _os9_lsn_fseek so that the tests check the layout.
+ */
+static long short_t0_offset(int lsn, int spt, int t0s, int bps)
+{
+	return (long) (lsn < t0s ? lsn : lsn + spt - t0s) * bps;
+}
+
+/* Check every sector of a file against the expected data at its position in
+ * the image file. The file must be one segment. Returns 0 on success.
+ */
+static int short_t0_file_mismatch(const char *image, int lsn, const char *expected, int size,
+				  int spt, int t0s, int bps)
+{
+	FILE *f = fopen(image, "rb");
+	char sector[512];
+	int pos, result = 0;
+
+	if (f == NULL)
+	{
+		return -1;
+	}
+
+	for (pos = 0; pos < size && result == 0; pos += bps)
+	{
+		int count = size - pos < bps ? size - pos : bps;
+
+		if (fseek(f, short_t0_offset(lsn + pos / bps, spt, t0s, bps), SEEK_SET) != 0
+		    || fread(sector, 1, count, f) != (size_t) count
+		    || memcmp(sector, expected + pos, count) != 0)
+		{
+			result = pos + 1;
+		}
+	}
+
+	fclose(f);
+
+	return result;
+}
+
+/* Write and read a file whose segment crosses T0S on a short track 0 disk. */
+static void short_t0_segment_io(int os968k, int bps)
+{
+	const char *image = "test_short_t0.dsk";
+	const int spt = 18, t0s = 14;
+	os9_path_id p;
+	error_code ec;
+	fd_stats fd;
+	int clusterSize = 1, lsn, i;
+	unsigned int totalSectors, totalBytes;
+	u_int size, chunk, pos;
+	char data[6000], actual[sizeof(data)], patch[300];
+	char line[] = "crossing\r";
+
+	for (i = 0; i < (int) sizeof(data); i++)
+	{
+		data[i] = (char) (i * 7 + i / 256);
+	}
+
+	ec = _os9_format((char *) image, os968k, 8, spt, t0s, 2, bps, &clusterSize, "Short T0",
+			 8, 0, 0, 1, 0, 0, 3, &totalSectors, &totalBytes);
+	ASSERT_EQUALS(0, ec);
+
+	/* A single write across the boundary. */
+	ec = _os9_create(&p, "test_short_t0.dsk,file", FAM_READ | FAM_WRITE,
+			 FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(t0s, p->t0s);
+	ASSERT_EQUALS(bps, p->bps);
+	size = sizeof(data);
+	ec = _os9_write(p, data, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(data), size);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	/* The test only means something if the segment starts below T0S and
+	 * extends past it. */
+	ec = _os9_open(&p, "test_short_t0.dsk,file", FAM_READ | FAM_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_gs_fd(p, sizeof(fd), &fd);
+	ASSERT_EQUALS(0, ec);
+	lsn = int3(fd.fd_seg[0].lsn);
+	ASSERT("segment starts below T0S", lsn < t0s);
+	ASSERT("segment reaches past T0S", lsn + int2(fd.fd_seg[0].num) > t0s);
+	ASSERT("file data reaches past T0S", lsn + (int) sizeof(data) / bps > t0s);
+	ASSERT_EQUALS(0, int3(fd.fd_seg[1].lsn));
+	ASSERT_EQUALS(0, short_t0_file_mismatch(image, lsn, data, sizeof(data), spt, t0s, bps));
+
+	/* A single read across the boundary. */
+	memset(actual, 0, sizeof(actual));
+	ec = _os9_seek(p, 0, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(actual);
+	ec = _os9_read(p, actual, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(data), size);
+	ASSERT_EQUALS(sizeof(data), p->filepos);
+	ASSERT_MEM_EQUALS(data, actual, sizeof(data));
+
+	/* An unaligned overwrite that starts and ends mid-sector either side of
+	 * the boundary. */
+	pos = (t0s - lsn) * bps - 100;
+	memset(patch, 0xa5, sizeof(patch));
+	memcpy(data + pos, patch, sizeof(patch));
+	ec = _os9_seek(p, pos, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(patch);
+	ec = _os9_write(p, patch, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(pos + sizeof(patch), p->filepos);
+	ASSERT_EQUALS(0, short_t0_file_mismatch(image, lsn, data, sizeof(data), spt, t0s, bps));
+
+	/* An unaligned read of the same bytes. */
+	ec = _os9_seek(p, pos, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(patch);
+	memset(actual, 0, sizeof(patch));
+	ec = _os9_read(p, actual, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(patch), size);
+	ASSERT_MEM_EQUALS(patch, actual, sizeof(patch));
+
+	/* A position wholly past T0S, reached through the start of the segment. */
+	pos = (t0s - lsn + 2) * bps + 10;
+	ec = _os9_seek(p, pos, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = 20;
+	ec = _os9_read(p, actual, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_MEM_EQUALS(data + pos, actual, 20);
+
+	/* A line that spans the boundary ends at its terminator, not the buffer. */
+	pos = (t0s - lsn) * bps - 4;
+	memcpy(data + pos, line, strlen(line));
+	ec = _os9_seek(p, pos, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = strlen(line);
+	ec = _os9_write(p, line, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_seek(p, pos, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(actual);
+	memset(actual, 0, sizeof(actual));
+	ec = _os9_readln(p, actual, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(strlen(line), size);
+	ASSERT_EQUALS(pos + strlen(line), p->filepos);
+	ASSERT_MEM_EQUALS(line, actual, strlen(line));
+
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(0, short_t0_file_mismatch(image, lsn, data, sizeof(data), spt, t0s, bps));
+
+	/* Small writes, each starting from the segment start, land the same way. */
+	ec = _os9_delete("test_short_t0.dsk,file");
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_create(&p, "test_short_t0.dsk,file", FAM_READ | FAM_WRITE,
+			 FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	for (pos = 0; pos < sizeof(data); pos += chunk)
+	{
+		chunk = sizeof(data) - pos < 100 ? sizeof(data) - pos : 100;
+		size = chunk;
+		ec = _os9_write(p, data + pos, &size);
+		ASSERT_EQUALS(0, ec);
+		ASSERT_EQUALS(chunk, size);
+	}
+	ec = _os9_gs_fd(p, sizeof(fd), &fd);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(lsn, int3(fd.fd_seg[0].lsn));
+	ASSERT_EQUALS(0, int3(fd.fd_seg[1].lsn));
+	ASSERT_EQUALS(0, short_t0_file_mismatch(image, lsn, data, sizeof(data), spt, t0s, bps));
+
+	ec = remove(image);
+	ASSERT_EQUALS(0, ec);
+}
+
+void test_os9_short_t0_segment_io()
+{
+	short_t0_segment_io(0, 256);
+}
+
+/* OS-9/68K keeps pd_t0s one byte further into DD.OPT, and a misread value is
+ * nothing like the real one. Cover it directly and through file positions.
+ */
+void test_os9_68k_short_t0()
+{
+	os9_path_id p;
+	error_code ec;
+	int clusterSize = 1;
+	unsigned int totalSectors, totalBytes;
+
+	ec = _os9_format("test_osk_t0.dsk", 1, 8, 18, 14, 2, 256, &clusterSize, "OSK T0",
+			 8, 0, 0, 1, 0, 0, 3, &totalSectors, &totalBytes);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_open(&p, "test_osk_t0.dsk,.", FAM_DIR | FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(14, p->t0s);
+	ASSERT_EQUALS(18, p->spt);
+	ASSERT_EQUALS(14, int2(p->lsn0->dd_opt.m68k.pd_t0s));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+	ec = remove("test_osk_t0.dsk");
+	ASSERT_EQUALS(0, ec);
+
+	short_t0_segment_io(1, 256);
+	short_t0_segment_io(1, 512);
+}
+
+/* A full-track-0 disk has no missing sectors, so offsets stay linear. */
+void test_os9_full_t0_positions_unchanged()
+{
+	os9_path_id p;
+	error_code ec;
+	fd_stats fd;
+	int clusterSize = 1, i;
+	unsigned int totalSectors, totalBytes;
+	u_int size;
+	char data[6000];
+
+	for (i = 0; i < (int) sizeof(data); i++)
+	{
+		data[i] = (char) (i * 3 + i / 256);
+	}
+
+	ec = _os9_format("test_full_t0.dsk", 0, 8, 18, 18, 2, 256, &clusterSize, "Full T0",
+			 8, 0, 0, 1, 0, 0, 3, &totalSectors, &totalBytes);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_create(&p, "test_full_t0.dsk,file", FAM_READ | FAM_WRITE,
+			 FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(data);
+	ec = _os9_write(p, data, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_gs_fd(p, sizeof(fd), &fd);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(0, int3(fd.fd_seg[1].lsn));
+	ASSERT_EQUALS(0, short_t0_file_mismatch("test_full_t0.dsk", int3(fd.fd_seg[0].lsn), data,
+						sizeof(data), 18, 18, 256));
+	ec = remove("test_full_t0.dsk");
+	ASSERT_EQUALS(0, ec);
+}
+
+/* Read one sector of an image at its expected file position. */
+static int read_short_t0_sector(FILE *f, int lsn, int spt, int t0s, int bps, void *sector)
+{
+	return fseek(f, short_t0_offset(lsn, spt, t0s, bps), SEEK_SET) == 0
+		&& fread(sector, 1, bps, f) == (size_t) bps;
+}
+
+/* Check where format puts each structure, then that the disk is usable. */
+static void short_t0_format_layout(int os968k, int t0s, int formatEntire, int bps)
+{
+	const char *image = "test_format_t0.dsk";
+	const int tracks = 8, spt = 18, heads = 2;
+	os9_path_id p;
+	error_code ec;
+	FILE *f;
+	lsn0_sect s0;
+	fd_stats fd;
+	os9_dir_entry entry;
+	int clusterSize = 1, dir_lsn, slot;
+	unsigned int totalSectors, totalBytes;
+	u_int size;
+	char sector[512], data[3000], actual[sizeof(data)];
+
+	ec = _os9_format((char *) image, os968k, tracks, spt, t0s, heads, bps, &clusterSize, "Format T0",
+			 8, 0, 0, formatEntire, 0, 0, 3, &totalSectors, &totalBytes);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(tracks * spt * heads - spt + t0s, totalSectors);
+	ASSERT_EQUALS(totalSectors * bps, totalBytes);
+
+	f = fopen(image, "rb");
+	ASSERT("open formatted image", f != NULL);
+	/* ASSERT_EQUALS evaluates its arguments twice, so read outside of it. */
+	size = fread(&s0, 1, sizeof(s0), f);
+	ASSERT_EQUALS(sizeof(s0), size);
+	ASSERT_EQUALS(totalSectors, int3(s0.dd_tot));
+	dir_lsn = int3(s0.dd_dir);
+
+	/* The first bitmap bit covers LSN0, which is always allocated. */
+	ASSERT("read bitmap", read_short_t0_sector(f, 1, spt, t0s, bps, sector));
+	ASSERT("bitmap in place", (sector[0] & 0x80) != 0);
+
+	ASSERT("read root FD", read_short_t0_sector(f, dir_lsn, spt, t0s, bps, sector));
+	memcpy(&fd, sector, sizeof(fd));
+	ASSERT("root FD in place", (fd.fd_att & FAP_DIR) != 0);
+	ASSERT_EQUALS(sizeof(os9_dir_entry) * 2, int4(fd.fd_siz));
+	ASSERT_EQUALS(dir_lsn + 1, int3(fd.fd_seg[0].lsn));
+
+	ASSERT("read root dir", read_short_t0_sector(f, dir_lsn + 1, spt, t0s, bps, sector));
+	memcpy(&entry, sector, sizeof(entry));
+	ASSERT_EQUALS('.', entry.name[0]);
+	ASSERT_EQUALS(dir_lsn, int3(entry.lsn));
+
+	/* Format's structures reaching T0S must leave the unused slots as fill. */
+	if (formatEntire || dir_lsn + (int) int2(fd.fd_seg[0].num) >= t0s)
+	{
+		for (slot = t0s; slot < spt; slot++)
+		{
+			int i;
+
+			ASSERT_EQUALS(0, fseek(f, (long) slot * bps, SEEK_SET));
+			size = fread(sector, 1, bps, f);
+			ASSERT_EQUALS(bps, size);
+			for (i = 0; i < bps; i++)
+			{
+				ASSERT_EQUALS(0xE5, (unsigned char) sector[i]);
+			}
+		}
+	}
+
+	if (formatEntire)
+	{
+		ASSERT_EQUALS(0, fseek(f, 0, SEEK_END));
+		ASSERT_EQUALS((long) tracks * spt * heads * bps, ftell(f));
+	}
+	fclose(f);
+
+	memset(data, 0x5a, sizeof(data));
+	ec = _os9_create(&p, "test_format_t0.dsk,file", FAM_READ | FAM_WRITE,
+			 FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(t0s, p->t0s);
+	size = sizeof(data);
+	ec = _os9_write(p, data, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_open(&p, "test_format_t0.dsk,file", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(actual);
+	ec = _os9_read(p, actual, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(data), size);
+	ASSERT_MEM_EQUALS(data, actual, sizeof(data));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = remove(image);
+	ASSERT_EQUALS(0, ec);
+}
+
+void test_os9_format_short_t0_layout()
+{
+	static const int t0s_values[] = {1, 2, 4, 14, 17};
+	int i, entire, osk;
+
+	for (i = 0; i < (int) (sizeof(t0s_values) / sizeof(t0s_values[0])); i++)
+	{
+		for (entire = 0; entire <= 1; entire++)
+		{
+			for (osk = 0; osk <= 1; osk++)
+			{
+				short_t0_format_layout(osk, t0s_values[i], entire, 256);
+			}
+		}
+		short_t0_format_layout(1, t0s_values[i], 1, 512);
+	}
+}
+
+/* A bitmap of more than one sector crossing T0S must load and save in place. */
+void test_os9_bitmap_crosses_short_t0()
+{
+	const char *image = "test_bitmap_t0.dsk";
+	const int spt = 18, t0s = 2, bps = 256;
+	const int test_cluster = 2048 + 100;	/* described by the second bitmap sector */
+	os9_path_id p;
+	error_code ec;
+	FILE *f;
+	int clusterSize = 1, bitmap_bytes;
+	unsigned int totalSectors, totalBytes;
+	char sector[256];
+
+	ec = _os9_format((char *) image, 0, 80, spt, t0s, 2, bps, &clusterSize, "Bitmap T0",
+			 8, 0, 0, 1, 0, 0, 3, &totalSectors, &totalBytes);
+	ASSERT_EQUALS(0, ec);
+
+	/* The bitmap's first sector is LSN 1 and its second is LSN 2, past T0S. */
+	ec = _os9_open(&p, "test_bitmap_t0.dsk,.", FAM_DIR | FAM_READ | FAM_WRITE);
+	ASSERT_EQUALS(0, ec);
+	bitmap_bytes = p->bitmap_bytes;
+	ASSERT("bitmap crosses T0S", bitmap_bytes > bps);
+	ASSERT_EQUALS(0, _os9_ckbit(p->bitmap, test_cluster));
+	_os9_allbit(p->bitmap, test_cluster, 1);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	f = fopen(image, "rb");
+	ASSERT("open bitmap image", f != NULL);
+	ASSERT("read second bitmap sector", read_short_t0_sector(f, 2, spt, t0s, bps, sector));
+	fclose(f);
+	ASSERT("bit written past the gap", (sector[(test_cluster - 2048) / 8] & (0x80 >> (test_cluster % 8))) != 0);
+
+	ec = _os9_open(&p, "test_bitmap_t0.dsk,.", FAM_DIR | FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_NEQUALS(0, _os9_ckbit(p->bitmap, test_cluster));
+	ASSERT_EQUALS(0, _os9_ckbit(p->bitmap, test_cluster + 1));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = remove(image);
+	ASSERT_EQUALS(0, ec);
+}
+
+/* T0S values with no valid layout must not touch an existing image. */
+void test_os9_format_rejects_bad_t0s()
+{
+	const char *image = "test_bad_t0.dsk";
+	static const int bad_values[] = {0, -1, 19};
+	FILE *f;
+	error_code ec;
+	int clusterSize = 1, i;
+	unsigned int totalSectors, totalBytes;
+
+	f = fopen(image, "wb");
+	ASSERT("create existing image", f != NULL);
+	fputs("keep", f);
+	fclose(f);
+
+	for (i = 0; i < 3; i++)
+	{
+		ec = _os9_format((char *) image, 0, 8, 18, bad_values[i], 2, 256, &clusterSize, "Bad",
+				 8, 0, 0, 1, 0, 0, 3, &totalSectors, &totalBytes);
+		ASSERT_NEQUALS(0, ec);
+	}
+
+	f = fopen(image, "rb");
+	ASSERT("reopen existing image", f != NULL);
+	ASSERT_EQUALS(0, fseek(f, 0, SEEK_END));
+	ASSERT_EQUALS(4, ftell(f));
+	fclose(f);
+	ec = remove(image);
+	ASSERT_EQUALS(0, ec);
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -732,6 +1173,12 @@ int main()
 	RUN(test_os9_gs_calls);
 	RUN(test_os9_file_allocation);
 	RUN(test_os9_allocation_bitmap_boundaries);
-	
+	RUN(test_os9_short_t0_segment_io);
+	RUN(test_os9_68k_short_t0);
+	RUN(test_os9_full_t0_positions_unchanged);
+	RUN(test_os9_format_short_t0_layout);
+	RUN(test_os9_bitmap_crosses_short_t0);
+	RUN(test_os9_format_rejects_bad_t0s);
+
 	return TEST_REPORT();
 }

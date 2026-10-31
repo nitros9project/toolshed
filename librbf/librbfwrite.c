@@ -148,20 +148,12 @@ error_code _os9_write(os9_path_id path, void *buffer, u_int * size)
 		{
 			accum_size += int2(segptr[i].num) * path->bps;
 
-			/* 1. Seek to sector where segment starts and compute the segment size. */
+			/* 1. Compute the segment size. */
 
-			_os9_lsn_fseek(path, int3(segptr[i].lsn));
 			seg_size_bytes = int2(segptr[i].num) * path->bps;
 
 
-			/* 2. Seek within segment to offset. */
-
-			fseek(path->fd,
-			      path->filepos - (accum_size - seg_size_bytes),
-			      SEEK_CUR);
-
-
-			/* 3. Compute write size for this segment. */
+			/* 2. Compute write size for this segment. */
 
 			write_size = accum_size - path->filepos;
 
@@ -170,7 +162,12 @@ error_code _os9_write(os9_path_id path, void *buffer, u_int * size)
 				write_size = bytes_left;
 			}
 
-			fwrite(buf_ptr, 1, write_size, path->fd);
+
+			/* 3. Write at the offset within the segment. */
+
+			_os9_lsn_write(path, int3(segptr[i].lsn),
+				       path->filepos - (accum_size - seg_size_bytes),
+				       buf_ptr, write_size);
 			buf_ptr += write_size;
 			path->filepos += write_size;
 			bytes_left -= write_size;
