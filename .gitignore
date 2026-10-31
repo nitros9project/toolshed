@@ -22,6 +22,7 @@ build/unix/unittest/cecbcommandtest
 build/unix/unittest/decbcommandtest
 build/unix/unittest/libcecbtest
 build/unix/unittest/libdecbtest
+build/unix/unittest/libdiskimagetest
 build/unix/unittest/libmisctest
 build/unix/unittest/libnativetest
 build/unix/unittest/librbftest
