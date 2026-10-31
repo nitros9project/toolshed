@@ -14,7 +14,7 @@
 #define DMK_TRACK_HEADER_SIZE	128
 #define DMK_MAX_IDAMS		64
 #define DMK_MAX_TRACK_LENGTH	0x2940
-#define DMK_CREATE_TRACK_LENGTH	0x1900
+#define DMK_CREATE_TRACK_LENGTH	(DMK_TRACK_HEADER_SIZE + DI_MFM_TRACK_SIZE)
 #define DMK_FLAG_SINGLE_SIDED	0x10
 #define DMK_FLAG_SD_ONE_BYTE	0x40
 #define DMK_FLAG_IGNORE_DENSITY	0x80
@@ -173,10 +173,7 @@ error_code di_dmk_create(FILE *fd, const di_layout *layout)
 		{
 			int count, i;
 
-			/* The track is a little longer than a recorded revolution. */
 			memset(track, 0, DMK_TRACK_HEADER_SIZE);
-			memset(&track[DMK_TRACK_HEADER_SIZE + DI_MFM_TRACK_SIZE], 0x4E,
-			       DMK_CREATE_TRACK_LENGTH - DMK_TRACK_HEADER_SIZE - DI_MFM_TRACK_SIZE);
 			count = di_mfm_track(layout, cylinder, side, &track[DMK_TRACK_HEADER_SIZE], id_pos, data_pos);
 			for (i = 0; i < count; i++)
 			{

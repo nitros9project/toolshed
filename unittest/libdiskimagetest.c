@@ -1688,7 +1688,7 @@ static int recorded_order(diskimage_format format, int track_index, u_char *orde
 
 	if (format == DISKIMAGE_DMK)
 	{
-		const u_char *track = &image[16 + (long)track_index * DMK_TRACK_LENGTH];
+		const u_char *track = &image[16 + (long)track_index * (image[2] | (image[3] << 8))];
 		int previous = 0;
 
 		for (i = 0; i < 64; i++)
@@ -1845,6 +1845,111 @@ static void test_create_interleave_ignored_without_order(void)
 	}
 }
 
+/* Created images must match these byte for byte.  They hold a blank RS-DOS
+   disk of 35 tracks of 18 sectors, at interleave 5, filled with $FF.  The
+   tests run in build/unix/unittest. */
+#define TESTDATA "../../../unittest/testdata/"
+
+static u_char expected_image[sizeof(image)];
+
+static long read_expected(const char *pathname)
+{
+	FILE *fp = fopen(pathname, "rb");
+	long size;
+
+	if (fp == NULL)
+	{
+		return -1;
+	}
+	size = (long)fread(expected_image, 1, sizeof(expected_image), fp);
+	fclose(fp);
+	return size;
+}
+
+/* Find where two images first differ, or -1 if they do not. */
+static long first_difference(long size)
+{
+	long i;
+
+	for (i = 0; i < size; i++)
+	{
+		if (image[i] != expected_image[i])
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+static void check_create_matches_testdata(diskimage_format format, const char *pathname)
+{
+	long expected_size = read_expected(pathname);
+
+	ASSERT("test image must be readable", expected_size > 0);
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, format, 1, 35, 256, 18, 0, 5, 0xFF));
+	ASSERT_EQUALS(expected_size, read_image());
+	ASSERT_EQUALS(-1, first_difference(expected_size));
+	remove(TEST_IMAGE);
+}
+
+static void test_create_dmk_matches_testdata(void)
+{
+	check_create_matches_testdata(DISKIMAGE_DMK, TESTDATA "rsdos artifact.dmk");
+}
+
+static void test_create_sdf_matches_testdata(void)
+{
+	check_create_matches_testdata(DISKIMAGE_SDF, TESTDATA "rsdos artifact.sdf");
+}
+
+/* Images this library did not create must read correctly too. */
+static void check_testdata_reads(diskimage_format format, const char *pathname)
+{
+	diskimage_id disk;
+	diskimage_geometry g;
+	diskimage_sector_info info;
+	diskimage_format found = DISKIMAGE_UNKNOWN;
+	u_char buffer[256];
+	u_int size, i, j;
+
+	ASSERT_CALL(0, _diskimage_identify(pathname, &found));
+	ASSERT_EQUALS(format, found);
+	ASSERT_CALL(0, _diskimage_open(&disk, pathname, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
+	ASSERT_EQUALS(35, g.cylinders);
+	ASSERT_EQUALS(1, g.sides);
+	ASSERT_EQUALS(18, g.sectors_per_track);
+	ASSERT_EQUALS(18, g.sectors_track0);
+	ASSERT_EQUALS(256, g.sector_size);
+	ASSERT_EQUALS(35 * 18, g.total_sectors);
+	ASSERT_EQUALS(1, g.uniform);
+	for (i = 0; i < g.total_sectors; i++)
+	{
+		ASSERT_CALL(0, _diskimage_query_sector(disk, i, &info));
+		ASSERT_EQUALS(i / 18, info.cylinder);
+		ASSERT_EQUALS(i % 18 + 1, info.sector);
+		ASSERT_EQUALS(0, info.flags);
+		size = sizeof(buffer);
+		ASSERT_CALL(0, _diskimage_read_sector(disk, info.cylinder, 0, info.sector, buffer, &size));
+		for (j = 0; j < 256; j++)
+		{
+			ASSERT_EQUALS(0xFF, buffer[j]);
+		}
+	}
+	_diskimage_close(disk);
+}
+
+static void test_dmk_testdata_reads(void)
+{
+	check_testdata_reads(DISKIMAGE_DMK, TESTDATA "rsdos artifact.dmk");
+}
+
+static void test_sdf_testdata_reads(void)
+{
+	check_testdata_reads(DISKIMAGE_SDF, TESTDATA "rsdos artifact.sdf");
+}
+
 static void check_create_sizes(diskimage_format format)
 {
 	static const struct { u_int size, sectors; } layouts[] = {{128, 16}, {256, 18}, {512, 9}, {1024, 5}};
@@ -1924,9 +2029,9 @@ static void test_create_rejects(void)
 	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_SDF, 1, 81, 256, 18, 0, 1, 0xFF));
 
 	/* More than fits in a track, on all tracks or only on track 0. */
-	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_DMK, 1, 35, 256, 19, 0, 1, 0xFF));
-	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_SDF, 1, 35, 256, 19, 0, 1, 0xFF));
-	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_DMK, 1, 35, 256, 18, 19, 1, 0xFF));
+	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_DMK, 1, 35, 256, 20, 0, 1, 0xFF));
+	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_SDF, 1, 35, 256, 20, 0, 1, 0xFF));
+	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_DMK, 1, 35, 256, 18, 20, 1, 0xFF));
 	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_SDF, 1, 35, 1024, 6, 0, 1, 0xFF));
 
 	/* A refused request leaves no file behind. */
@@ -1995,6 +2100,10 @@ int main(void)
 	RUN(test_create_dmk_interleave);
 	RUN(test_create_sdf_interleave);
 	RUN(test_create_interleave_ignored_without_order);
+	RUN(test_create_dmk_matches_testdata);
+	RUN(test_create_sdf_matches_testdata);
+	RUN(test_dmk_testdata_reads);
+	RUN(test_sdf_testdata_reads);
 	RUN(test_create_fill_like_marks);
 	RUN(test_create_keeps_existing_file);
 	RUN(test_create_rejects);

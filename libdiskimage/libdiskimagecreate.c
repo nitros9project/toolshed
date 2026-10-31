@@ -2,7 +2,9 @@
  * libdiskimagecreate.c - Create new disk images
  *
  * DMK and SDF tracks are written as double density, with sector numbers
- * starting at 1 and placed on the track according to the interleave.
+ * starting at 1 and placed on the track according to the interleave.  The
+ * track layout matches the images in unittest/testdata, which were made by
+ * MAME, including the $00 that starts each track.
  ********************************************************************/
 #include <errno.h>
 #include <stdlib.h>
@@ -14,13 +16,14 @@
 #define MFM_GAP_BYTE		0x4E
 #define MFM_GAP1		32
 #define MFM_GAP2		22
-#define MFM_GAP3_MAX		54
+#define MFM_GAP3		24
 #define MFM_GAP3_MIN		10
-#define MFM_SYNC_ZEROS		12
+#define MFM_ID_SYNC_ZEROS	8
+#define MFM_DATA_SYNC_ZEROS	12
 #define MFM_ID_FIELD		7	/* mark, 4 ID bytes, CRC */
 
 /* Everything recorded for a sector besides its data and the gap after it. */
-#define MFM_SECTOR_OVERHEAD	(MFM_SYNC_ZEROS + 3 + MFM_ID_FIELD + MFM_GAP2 + MFM_SYNC_ZEROS + 3 + 1 + 2)
+#define MFM_SECTOR_OVERHEAD	(MFM_ID_SYNC_ZEROS + 3 + MFM_ID_FIELD + MFM_GAP2 + MFM_DATA_SYNC_ZEROS + 3 + 1 + 2)
 
 #define DMK_MAX_CYLINDERS	255
 #define DMK_MAX_SECTORS		64
@@ -50,7 +53,7 @@ static int mfm_gap3(u_int sectors, u_int sector_size)
 		return -1;
 	}
 
-	return gap > MFM_GAP3_MAX ? MFM_GAP3_MAX : gap;
+	return gap > MFM_GAP3 ? MFM_GAP3 : gap;
 }
 
 
@@ -95,6 +98,7 @@ int di_mfm_track(const di_layout *layout, u_int cylinder, u_int side, u_char *ra
 
 	sector_order(sectors, layout->interleave, order);
 	memset(raw, MFM_GAP_BYTE, DI_MFM_TRACK_SIZE);
+	raw[0] = 0x00;
 	p += MFM_GAP1;
 
 	field[0] = 0xFB;
@@ -110,7 +114,7 @@ int di_mfm_track(const di_layout *layout, u_int cylinder, u_int side, u_char *ra
 		id[3] = order[i];
 		id[4] = (u_char)layout->size_code;
 
-		p = put_bytes(p, 0x00, MFM_SYNC_ZEROS);
+		p = put_bytes(p, 0x00, MFM_ID_SYNC_ZEROS);
 		p = put_bytes(p, 0xA1, 3);
 		id_pos[i] = (int)(p - raw);
 		memcpy(p, id, sizeof(id));
@@ -120,7 +124,7 @@ int di_mfm_track(const di_layout *layout, u_int cylinder, u_int side, u_char *ra
 		*p++ = (u_char)crc;
 
 		p = put_bytes(p, MFM_GAP_BYTE, MFM_GAP2);
-		p = put_bytes(p, 0x00, MFM_SYNC_ZEROS);
+		p = put_bytes(p, 0x00, MFM_DATA_SYNC_ZEROS);
 		p = put_bytes(p, 0xA1, 3);
 		*p++ = field[0];
 		data_pos[i] = (int)(p - raw);
