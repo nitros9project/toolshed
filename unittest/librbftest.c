@@ -958,6 +958,199 @@ void test_os9_full_t0_positions_unchanged()
 	ASSERT_EQUALS(0, ec);
 }
 
+/* Read one sector of an image at its expected file position. */
+static int read_short_t0_sector(FILE *f, int lsn, int spt, int t0s, int bps, void *sector)
+{
+	return fseek(f, short_t0_offset(lsn, spt, t0s, bps), SEEK_SET) == 0
+		&& fread(sector, 1, bps, f) == (size_t) bps;
+}
+
+/* Check where format puts each structure, then that the disk is usable. */
+static void short_t0_format_layout(int os968k, int t0s, int formatEntire, int bps)
+{
+	const char *image = "test_format_t0.dsk";
+	const int tracks = 8, spt = 18, heads = 2;
+	os9_path_id p;
+	error_code ec;
+	FILE *f;
+	lsn0_sect s0;
+	fd_stats fd;
+	os9_dir_entry entry;
+	int clusterSize = 1, dir_lsn, slot;
+	unsigned int totalSectors, totalBytes;
+	u_int size;
+	char sector[512], data[3000], actual[sizeof(data)];
+
+	ec = _os9_format((char *) image, os968k, tracks, spt, t0s, heads, bps, &clusterSize, "Format T0",
+			 8, 0, 0, formatEntire, 0, 0, 3, &totalSectors, &totalBytes);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(tracks * spt * heads - spt + t0s, totalSectors);
+	ASSERT_EQUALS(totalSectors * bps, totalBytes);
+
+	f = fopen(image, "rb");
+	ASSERT("open formatted image", f != NULL);
+	/* ASSERT_EQUALS evaluates its arguments twice, so read outside of it. */
+	size = fread(&s0, 1, sizeof(s0), f);
+	ASSERT_EQUALS(sizeof(s0), size);
+	ASSERT_EQUALS(totalSectors, int3(s0.dd_tot));
+	dir_lsn = int3(s0.dd_dir);
+
+	/* The first bitmap bit covers LSN0, which is always allocated. */
+	ASSERT("read bitmap", read_short_t0_sector(f, 1, spt, t0s, bps, sector));
+	ASSERT("bitmap in place", (sector[0] & 0x80) != 0);
+
+	ASSERT("read root FD", read_short_t0_sector(f, dir_lsn, spt, t0s, bps, sector));
+	memcpy(&fd, sector, sizeof(fd));
+	ASSERT("root FD in place", (fd.fd_att & FAP_DIR) != 0);
+	ASSERT_EQUALS(sizeof(os9_dir_entry) * 2, int4(fd.fd_siz));
+	ASSERT_EQUALS(dir_lsn + 1, int3(fd.fd_seg[0].lsn));
+
+	ASSERT("read root dir", read_short_t0_sector(f, dir_lsn + 1, spt, t0s, bps, sector));
+	memcpy(&entry, sector, sizeof(entry));
+	ASSERT_EQUALS('.', entry.name[0]);
+	ASSERT_EQUALS(dir_lsn, int3(entry.lsn));
+
+	/* Format's structures reaching T0S must leave the unused slots as fill. */
+	if (formatEntire || dir_lsn + (int) int2(fd.fd_seg[0].num) >= t0s)
+	{
+		for (slot = t0s; slot < spt; slot++)
+		{
+			int i;
+
+			ASSERT_EQUALS(0, fseek(f, (long) slot * bps, SEEK_SET));
+			size = fread(sector, 1, bps, f);
+			ASSERT_EQUALS(bps, size);
+			for (i = 0; i < bps; i++)
+			{
+				ASSERT_EQUALS(0xE5, (unsigned char) sector[i]);
+			}
+		}
+	}
+
+	if (formatEntire)
+	{
+		ASSERT_EQUALS(0, fseek(f, 0, SEEK_END));
+		ASSERT_EQUALS((long) tracks * spt * heads * bps, ftell(f));
+	}
+	fclose(f);
+
+	memset(data, 0x5a, sizeof(data));
+	ec = _os9_create(&p, "test_format_t0.dsk,file", FAM_READ | FAM_WRITE,
+			 FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(t0s, p->t0s);
+	size = sizeof(data);
+	ec = _os9_write(p, data, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_open(&p, "test_format_t0.dsk,file", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(actual);
+	ec = _os9_read(p, actual, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(data), size);
+	ASSERT_MEM_EQUALS(data, actual, sizeof(data));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = remove(image);
+	ASSERT_EQUALS(0, ec);
+}
+
+void test_os9_format_short_t0_layout()
+{
+	static const int t0s_values[] = {1, 2, 4, 14, 17};
+	int i, entire, osk;
+
+	for (i = 0; i < (int) (sizeof(t0s_values) / sizeof(t0s_values[0])); i++)
+	{
+		for (entire = 0; entire <= 1; entire++)
+		{
+			for (osk = 0; osk <= 1; osk++)
+			{
+				short_t0_format_layout(osk, t0s_values[i], entire, 256);
+			}
+		}
+		short_t0_format_layout(1, t0s_values[i], 1, 512);
+	}
+}
+
+/* A bitmap of more than one sector crossing T0S must load and save in place. */
+void test_os9_bitmap_crosses_short_t0()
+{
+	const char *image = "test_bitmap_t0.dsk";
+	const int spt = 18, t0s = 2, bps = 256;
+	const int test_cluster = 2048 + 100;	/* described by the second bitmap sector */
+	os9_path_id p;
+	error_code ec;
+	FILE *f;
+	int clusterSize = 1, bitmap_bytes;
+	unsigned int totalSectors, totalBytes;
+	char sector[256];
+
+	ec = _os9_format((char *) image, 0, 80, spt, t0s, 2, bps, &clusterSize, "Bitmap T0",
+			 8, 0, 0, 1, 0, 0, 3, &totalSectors, &totalBytes);
+	ASSERT_EQUALS(0, ec);
+
+	/* The bitmap's first sector is LSN 1 and its second is LSN 2, past T0S. */
+	ec = _os9_open(&p, "test_bitmap_t0.dsk,.", FAM_DIR | FAM_READ | FAM_WRITE);
+	ASSERT_EQUALS(0, ec);
+	bitmap_bytes = p->bitmap_bytes;
+	ASSERT("bitmap crosses T0S", bitmap_bytes > bps);
+	ASSERT_EQUALS(0, _os9_ckbit(p->bitmap, test_cluster));
+	_os9_allbit(p->bitmap, test_cluster, 1);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	f = fopen(image, "rb");
+	ASSERT("open bitmap image", f != NULL);
+	ASSERT("read second bitmap sector", read_short_t0_sector(f, 2, spt, t0s, bps, sector));
+	fclose(f);
+	ASSERT("bit written past the gap", (sector[(test_cluster - 2048) / 8] & (0x80 >> (test_cluster % 8))) != 0);
+
+	ec = _os9_open(&p, "test_bitmap_t0.dsk,.", FAM_DIR | FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_NEQUALS(0, _os9_ckbit(p->bitmap, test_cluster));
+	ASSERT_EQUALS(0, _os9_ckbit(p->bitmap, test_cluster + 1));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = remove(image);
+	ASSERT_EQUALS(0, ec);
+}
+
+/* T0S values with no valid layout must not touch an existing image. */
+void test_os9_format_rejects_bad_t0s()
+{
+	const char *image = "test_bad_t0.dsk";
+	static const int bad_values[] = {0, -1, 19};
+	FILE *f;
+	error_code ec;
+	int clusterSize = 1, i;
+	unsigned int totalSectors, totalBytes;
+
+	f = fopen(image, "wb");
+	ASSERT("create existing image", f != NULL);
+	fputs("keep", f);
+	fclose(f);
+
+	for (i = 0; i < 3; i++)
+	{
+		ec = _os9_format((char *) image, 0, 8, 18, bad_values[i], 2, 256, &clusterSize, "Bad",
+				 8, 0, 0, 1, 0, 0, 3, &totalSectors, &totalBytes);
+		ASSERT_NEQUALS(0, ec);
+	}
+
+	f = fopen(image, "rb");
+	ASSERT("reopen existing image", f != NULL);
+	ASSERT_EQUALS(0, fseek(f, 0, SEEK_END));
+	ASSERT_EQUALS(4, ftell(f));
+	fclose(f);
+	ec = remove(image);
+	ASSERT_EQUALS(0, ec);
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -983,6 +1176,9 @@ int main()
 	RUN(test_os9_short_t0_segment_io);
 	RUN(test_os9_68k_short_t0);
 	RUN(test_os9_full_t0_positions_unchanged);
+	RUN(test_os9_format_short_t0_layout);
+	RUN(test_os9_bitmap_crosses_short_t0);
+	RUN(test_os9_format_rejects_bad_t0s);
 
 	return TEST_REPORT();
 }

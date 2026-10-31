@@ -890,9 +890,7 @@ static int init_bitmap(os9_path_id path)
 		return 1;
 	}
 
-	_os9_lsn_fseek(path, 1);
-
-	if (fread(path->bitmap, 1, bitmap_sectors * path->bps, path->fd) == 0)
+	if (_os9_lsn_read(path, 1, 0, path->bitmap, bitmap_sectors * path->bps) == 0)
 	{
 		return EOS_EOF;
 	}
@@ -911,8 +909,7 @@ static int term_bitmap(os9_path_id path)
 {
 	/* 1. Write back out bitmap. */
 
-	_os9_lsn_fseek(path, 1);
-	fwrite(path->bitmap, 1, path->bitmap_bytes, path->fd);
+	_os9_lsn_write(path, 1, 0, path->bitmap, path->bitmap_bytes);
 
 	free(path->bitmap);
 
