@@ -974,7 +974,7 @@ static int init_lsn0(os9_path_id path)
 	/* 5. Determine proper sectors per track */
 
 	path->spt = int2(path->lsn0->dd_spt);
-	path->t0s = int2(is_osk ? path->lsn0->dd_opt.m6809.pd_t0s
+	path->t0s = int2(is_osk ? path->lsn0->dd_opt.m68k.pd_t0s
 				: path->lsn0->dd_opt.m6809.pd_t0s);
 
 	if (path->t0s == 0)

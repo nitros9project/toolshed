@@ -162,19 +162,12 @@ error_code _os9_read(os9_path_id path, void *buffer, u_int * size)
 		accum_size += int2(segptr[i].num) * path->bps;
 
 
-		/* 1. Seek to sector where segment starts and compute the segment size. */
+		/* 1. Compute the segment size. */
 
-		_os9_lsn_fseek(path, int3(segptr[i].lsn));
 		seg_size_bytes = int2(segptr[i].num) * path->bps;
 
 
-		/* 2. Seek within segment to offset. */
-
-		fseek(path->fd, path->filepos - (accum_size - seg_size_bytes),
-		      SEEK_CUR);
-
-
-		/* 3. Compute read size for this segment. */
+		/* 2. Compute read size for this segment. */
 
 		read_size = accum_size - path->filepos;
 
@@ -183,7 +176,12 @@ error_code _os9_read(os9_path_id path, void *buffer, u_int * size)
 			read_size = bytes_left;
 		}
 
-		fread(buf_ptr, 1, read_size, path->fd);
+
+		/* 3. Read from the offset within the segment. */
+
+		_os9_lsn_read(path, int3(segptr[i].lsn),
+			      path->filepos - (accum_size - seg_size_bytes),
+			      buf_ptr, read_size);
 		buf_ptr += read_size;
 		path->filepos += read_size;
 		bytes_left -= read_size;
