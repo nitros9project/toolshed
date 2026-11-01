@@ -26,8 +26,11 @@ static char const *const helpMessage[] = {
 	"Syntax: diskinfo {[<opts>]} <file> {<file> ...}\n",
 	"Options:\n",
 	"     -p  = set the write protect flag of a DMK, SDF or VDK image\n",
+	"     -s  = report one file's possible filesystems in the exit status,\n",
+	"           adding 1 for OS-9, 2 for Disk BASIC and 4 for Dragon DOS.\n",
+	"           Nothing is printed, and the status is 64 if it is not a disk image.\n",
 	"     -u  = clear the write protect flag of a DMK, SDF or VDK image\n",
-	"The exit status is 0 only if every file is a disk image.\n",
+	"Otherwise the exit status is 0 only if every file is a disk image.\n",
 	NULL
 };
 
@@ -380,6 +383,69 @@ static int set_write_protect(const char *pathname, int write_protect)
 }
 
 
+/* -s reports through the exit status, with this for anything but an answer. */
+#define FILESYSTEMS_STATUS_ERROR	64
+
+static int filesystems_status(const char *pathname)
+{
+	diskimage_format format;
+	u_int filesystems;
+	error_code ec = _diskimage_identify(pathname, &format);
+
+	if (ec == 0 && format == DISKIMAGE_UNKNOWN)
+	{
+		ec = EOS_WT;
+	}
+	if (ec == 0)
+	{
+		ec = _coco_detect_filesystems(pathname, &filesystems);
+	}
+	if (ec != 0)
+	{
+		fprintf(stderr, "%s: Error: %d - %s\n", pathname, ec, TSReportError(ec));
+		return FILESYSTEMS_STATUS_ERROR;
+	}
+
+	return (int)filesystems;
+}
+
+
+/* A status that means filesystems can't also mean a mistake in the arguments,
+   so with -s they all fail the same way. */
+static int filesystems_command(int argc, char *argv[])
+{
+	const char *pathname = NULL;
+	int i;
+
+	for (i = 1; i < argc; i++)
+	{
+		if (strcmp(argv[i], "-s") == 0)
+		{
+			continue;
+		}
+		if (argv[i][0] == '-')
+		{
+			fprintf(stderr, "diskinfo: -s can't be used with '%s'\n", argv[i]);
+			return FILESYSTEMS_STATUS_ERROR;
+		}
+		if (pathname != NULL)
+		{
+			fprintf(stderr, "diskinfo: -s reports on one file only\n");
+			return FILESYSTEMS_STATUS_ERROR;
+		}
+		pathname = argv[i];
+	}
+
+	if (pathname == NULL)
+	{
+		fprintf(stderr, "diskinfo: -s needs a file\n");
+		return FILESYSTEMS_STATUS_ERROR;
+	}
+
+	return filesystems_status(pathname);
+}
+
+
 int main(int argc, char *argv[])
 {
 	int status = 0;
@@ -391,6 +457,14 @@ int main(int argc, char *argv[])
 	{
 		show_help(helpMessage);
 		return 1;
+	}
+
+	for (i = 1; i < argc; i++)
+	{
+		if (strcmp(argv[i], "-s") == 0)
+		{
+			return filesystems_command(argc, argv);
+		}
 	}
 
 	for (i = 1; i < argc; i++)

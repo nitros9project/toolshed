@@ -1678,6 +1678,7 @@ This is a tool used to report the format and track layout of disk images, and to
     diskinfo {[<opts>]} <file> {<file> ...}
     -p  set the write protect flag of a DMK, SDF or VDK image
     -u  clear the write protect flag of a DMK, SDF or VDK image
+    -s  report one file's possible filesystems in the exit status
 
 #### Description
 
@@ -1706,6 +1707,19 @@ If the image could hold an OS-9, Disk BASIC or Dragon DOS filesystem, diskinfo n
 `os9 dir`, `decb dir` and `dgndos dir` end their listing by naming any other filesystems the image could hold.
 
     Other possible filesystems: Disk BASIC
+
+With -s, diskinfo prints nothing, and its exit status says which filesystems the one file named could hold. A status that isn't 0 isn't a failure here, so scripts using `set -e` or `&&` need to allow for it.
+
+    0   a disk image, with no filesystem found
+    1   OS-9
+    2   Disk BASIC
+    4   Dragon DOS
+    64  not a disk image, can't be read, or the arguments are wrong
+
+The filesystems add together, so 3 is OS-9 and Disk BASIC. -s takes one file, and can't be used with other options. For example:
+
+    diskinfo -s disk.dmk; fs=$?
+    if [ $((fs & 64)) -ne 0 ]; then echo "error"; elif [ $((fs & 1)) -ne 0 ]; then echo "has OS-9"; fi
 
 With -p or -u, diskinfo changes the write protect flag instead of reporting the layout. Raw and JVC images have no such flag. os9, decb and dgndos can read a write protected image, but cannot change it.
 
