@@ -372,6 +372,83 @@ static void test_dir_of_damaged_image(void)
 	clean_up();
 }
 
+static const char hello_world[] = "10 PRINT \"HELLO WORLD\"\n20 GOTO 10\n";
+
+static void test_list_tokens(void)
+{
+	ASSERT_RUN(0, DGNDOS "list -t " MAME_IMAGE ",HW1.BAS" CAPTURE);
+	read_output();
+	ASSERT_STRING_EQUALS(hello_world, output);
+
+	clean_up();
+	ASSERT_RUN(0, DGNDOS "dskinit " TEST_IMAGE);
+	write_native(NATIVE_FILE, 100);
+	ASSERT_RUN(0, DGNDOS "copy " NATIVE_FILE " " TEST_IMAGE ",DATA");
+	ASSERT_RUN(EOS_WT, DGNDOS "list -t " TEST_IMAGE ",DATA" QUIET);
+	clean_up();
+}
+
+/* Text in and out of a disk, by way of tokens. */
+static void test_copy_tokens(void)
+{
+	static u_char mame[1024 * 1024];
+	static u_char image[1024 * 1024];
+	FILE *fp;
+	long size;
+	int i;
+
+	clean_up();
+	ASSERT_RUN(0, DGNDOS "dskinit " TEST_IMAGE);
+	fp = fopen(NATIVE_FILE, "wb");
+	fputs(hello_world, fp);
+	fclose(fp);
+
+	/* Saving the same program as MAME did gives the same disk. */
+	for (i = 1; i <= 5; i++)
+	{
+		char command[256];
+
+		sprintf(command, DGNDOS "copy -t " NATIVE_FILE " " TEST_IMAGE ",HW%d.BAS", i);
+		ASSERT_RUN(0, command);
+	}
+	size = file_size(TEST_IMAGE, image, sizeof(image));
+	ASSERT_EQUALS(12 + 40 * 18 * 256, size);
+	ASSERT_EQUALS(size, file_size("../../../unittest/testdata/dragondos mame.vdk", mame, sizeof(mame)));
+	ASSERT_MEM_EQUALS(mame + 12, image + 12, size - 12);
+
+	/* Back to the host as text. */
+	ASSERT_RUN(0, DGNDOS "copy -t " TEST_IMAGE ",HW1.BAS " NATIVE_OTHER);
+	size = file_size(NATIVE_OTHER, back, sizeof(back));
+	ASSERT_EQUALS(sizeof(hello_world) - 1, size);
+	ASSERT_MEM_EQUALS(hello_world, back, size);
+	ASSERT_RUN(EOS_FAE, DGNDOS "copy -t " NATIVE_FILE " " TEST_IMAGE ",HW1.BAS" QUIET);
+	ASSERT_RUN(0, DGNDOS "copy -t -r " NATIVE_FILE " " TEST_IMAGE ",HW1.BAS");
+
+	/* As text on the disk, its lines end the way Dragon DOS's do. */
+	ASSERT_RUN(0, DGNDOS "copy -t " TEST_IMAGE ",HW1.BAS " TEST_IMAGE ",HW1.TXT");
+	remove(NATIVE_OTHER);
+	ASSERT_RUN(0, DGNDOS "copy " TEST_IMAGE ",HW1.TXT " NATIVE_OTHER);
+	size = file_size(NATIVE_OTHER, back, sizeof(back));
+	ASSERT_EQUALS(sizeof(hello_world) - 1, size);
+	ASSERT_MEM_EQUALS("10 PRINT \"HELLO WORLD\"\r20 GOTO 10\r", back, size);
+
+	/* And that text tokenizes back again. */
+	ASSERT_RUN(0, DGNDOS "copy -t " TEST_IMAGE ",HW1.TXT " TEST_IMAGE ",HW6.BAS");
+	ASSERT_RUN(0, DGNDOS "fstat " TEST_IMAGE ",HW6.BAS" CAPTURE);
+	read_output();
+	ASSERT("a BASIC program again", strstr(output, "File type          : 1 (BASIC program)\n") != NULL);
+
+	/* Text that isn't a program. */
+	fp = fopen(NATIVE_FILE, "wb");
+	fputs("not a program\n", fp);
+	fclose(fp);
+	ASSERT_RUN(1, DGNDOS "copy -t " NATIVE_FILE " " TEST_IMAGE ",BAD" CAPTURE);
+	read_output();
+	ASSERT("the error is described", strstr(output, "Error: 257") != NULL);
+	ASSERT_RUN(EOS_PNNF, DGNDOS "fstat " TEST_IMAGE ",BAD" QUIET);
+	clean_up();
+}
+
 static void write_bytes(const char *pathname, const u_char *bytes, size_t size)
 {
 	FILE *fp = fopen(pathname, "wb");
@@ -452,5 +529,7 @@ int main(void)
 	RUN(test_attr_rename_kill);
 	RUN(test_dir_of_damaged_image);
 	RUN(test_fstat_file_headers);
+	RUN(test_list_tokens);
+	RUN(test_copy_tokens);
 	return TEST_REPORT();
 }

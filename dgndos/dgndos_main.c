@@ -85,7 +85,8 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "Error: %d - %s\n", ec, TSReportError(ec));
 	}
 
-	return (ec);
+	/* An exit status only holds 8 bits, which would make 256 mean success. */
+	return (ec > 255 ? DGNDOS_USAGE_ERROR : ec);
 }
 
 

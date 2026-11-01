@@ -13,11 +13,12 @@ static char const *const helpMessage[] = {
 	"Syntax: list {[<opts>]} {<file> [<...>]} {[<opts>]}\n",
 	"Usage:  Display contents of a text file.\n",
 	"Options:\n",
+	"     -t         perform BASIC token translation\n",
 	NULL
 };
 
 
-static error_code do_list(char *file)
+static error_code do_list(char *file, int token_translation)
 {
 	coco_path_id path;
 	u_char *buffer = NULL;
@@ -30,7 +31,24 @@ static error_code do_list(char *file)
 		return ec;
 	}
 
-	if (ec == 0 && size != 0)
+	if (ec == 0 && token_translation)
+	{
+		ec = _dragondos_detect_tokenized(buffer, size);
+		if (ec != 0)
+		{
+			ec = EOS_WT;
+		}
+		else
+		{
+			ec = _dragondos_detoken(buffer, size, &translated, &translated_size);
+		}
+		if (ec == 0)
+		{
+			fwrite(translated, translated_size, 1, stdout);
+			free(translated);
+		}
+	}
+	else if (ec == 0 && size != 0)
 	{
 		DECBToNative((char *) buffer, size, &translated, &translated_size);
 		fwrite(translated, translated_size, 1, stdout);
@@ -48,6 +66,7 @@ int dgndoslist(int argc, char *argv[])
 	error_code ec = 0;
 	char *p = NULL;
 	int i;
+	int token_translation = 0;
 
 	/* 1. Walk command line for options. */
 
@@ -59,6 +78,10 @@ int dgndoslist(int argc, char *argv[])
 			{
 				switch (*p)
 				{
+				case 't':
+					token_translation = 1;
+					break;
+
 				case 'h':
 				case '?':
 					show_help(helpMessage);
@@ -83,7 +106,7 @@ int dgndoslist(int argc, char *argv[])
 		}
 
 		p = argv[i];
-		ec = do_list(p);
+		ec = do_list(p, token_translation);
 		if (ec != 0)
 		{
 			fprintf(stderr, "%s: error %d with '%s'\n", argv[0], ec, p);

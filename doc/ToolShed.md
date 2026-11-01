@@ -1728,18 +1728,23 @@ With no options, each file is reported as protected or not. A protected file can
 
     -l         perform end of line translation
     -r         rewrite if file exists
+    -t         perform BASIC token translation
 
 #### Description
 
 A target of `<disk>,` or a host directory takes each file under its own name. Allocation follows the algorithm of the Dragon DOS 1.0 ROM.
 
-A file that doesn't fit is removed, and the error reported. BASIC programs are copied as they are, as their tokens differ from those of Color BASIC.
+A file that doesn't fit is removed, and the error reported.
+
+With -t, a file with the header of a saved BASIC program is listed as text, with its lines ending the way the target's system ends them. Anything else is taken to be a program's text, and is tokenized as Dragon BASIC with Dragon DOS would, giving the same file as its SAVE command. Lines must have ascending numbers, and only upper case is recognized as a keyword. Dragon BASIC's tokens differ from those of Color BASIC.
 
 #### Examples
 
     dgndos copy game.bin disk.vdk,GAME.BIN
     dgndos copy -l notes.txt readme.txt disk.vdk,
     dgndos copy disk.vdk,GAME.BIN game.bin
+    dgndos copy -t program.txt disk.vdk,PROGRAM.BAS
+    dgndos copy -t disk.vdk,PROGRAM.BAS program.txt
 
 ---
 
@@ -1849,9 +1854,13 @@ Other files show `File header : None`, and `Unreadable` if the image lacks the f
 
     list {[<opts>]} {<file> [<...>]} {[<opts>]}
 
+#### Options
+
+    -t         perform BASIC token translation
+
 #### Description
 
-Carriage returns are shown as the host's line endings. BASIC programs are not detokenized.
+Carriage returns are shown as the host's line endings. With -t, a saved BASIC program is listed as Dragon BASIC would. A file that isn't one is an error.
 
 ---
 

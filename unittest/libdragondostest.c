@@ -1271,6 +1271,243 @@ static void test_short_image(void)
 	remove(TEST_IMAGE);
 }
 
+/* Every result here is what the routine at $8F67 of the Dragon BASIC ROM gives,
+   with Dragon DOS's keywords added. */
+static const struct
+{
+	const char *text;
+	const char *tokens;
+} entoken_cases[] =
+{
+	{ "PRINT\"HI\"", "\x87\x22\x48\x49\x22" },
+	{ "?\"HI\"", "\x87\x22\x48\x49\x22" },
+	{ "GOTO 10", "\x81\xbc\x20\x31\x30" },
+	{ "GOSUB 10", "\x81\xbd\x20\x31\x30" },
+	{ "A=1:'NOTE PRINT", "\x41\xcb\x31\x3a\x3a\x83\x4e\x4f\x54\x45\x20\x50\x52\x49\x4e\x54" },
+	{ "IF A THEN B ELSE C", "\x85\x20\x41\x20\xbf\x20\x42\x20\x3a\x84\x20\x43" },
+	{ "A:ELSE", "\x41\x3a\x3a\x84" },
+	{ "BTHEN", "\x42\x54\x48\x45\x4e" },
+	{ "B THEN", "\x42\x20\xbf" },
+	{ "A1THEN", "\x41\x31\x54\x48\x45\x4e" },
+	{ "aTHEN", "\x61\xbf" },
+	{ "print", "\x70\x72\x69\x6e\x74" },
+	{ "DATA A,PRINT:PRINT", "\x86\x20\x41\x2c\x50\x52\x49\x4e\x54\x3a\x87" },
+	{ "DATA \"A:B\",PRINT", "\x86\x20\x22\x41\x3a\x42\x22\x2c\x50\x52\x49\x4e\x54" },
+	{ "REM PRINT:PRINT", "\x82\x20\x50\x52\x49\x4e\x54\x3a\x50\x52\x49\x4e\x54" },
+	{ "PRINT\"UNCLOSED", "\x87\x22\x55\x4e\x43\x4c\x4f\x53\x45\x44" },
+	{ "A$=CHR$(65)", "\x41\x24\xcb\xff\x91\x28\x36\x35\x29" },
+	{ "FOR I=1 TO 2 STEP 3:NEXT", "\x80\x20\x49\xcb\x31\x20\xbc\x20\x32\x20\xc1\x20\x33\x3a\x8b" },
+	{ "SWAP A,B", "\xe7\x20\x41\x2c\x42" },
+	{ "USING", "\xcd" },
+	{ "AUTO", "\xce" },
+	{ "DSKINIT", "\xd7" },
+	{ "ERROR", "\xda" },
+	{ "ERR", "\xff\xa5" },
+	{ "ERL", "\xff\xa4" },
+	{ "FREE", "\xff\xa3" },
+	{ "FRE$", "\xff\xa8" },
+	{ "FRE", "\x46\x52\x45" },
+	{ "LOF(1)", "\xff\xa2\x28\x31\x29" },
+	{ "HIMEM", "\xff\xa6" },
+	{ "USR0", "\xff\xa1\x30" },
+	{ "TAB(1)", "\xbb\x31\x29" },
+	{ "A>=B<C", "\x41\xca\xcb\x42\xcc\x43" },
+	{ "1+2-3*4/5^6", "\x31\xc3\x32\xc4\x33\xc5\x34\xc6\x35\xc7\x36" },
+	{ "PRINT  A ; B", "\x87\x20\x20\x41\x20\x3b\x20\x42" },
+	{ "TOT", "\xbc\x54" },
+	{ "ON X GOTO 1", "\x88\x20\x58\x20\x81\xbc\x20\x31" },
+	{ "SGN(1)", "\xff\x80\x28\x31\x29" },
+	{ "FN A(1)", "\xbe\x20\x41\x28\x31\x29" },
+};
+
+static void test_entoken_matches_rom(void)
+{
+	size_t i;
+
+	for (i = 0; i < sizeof(entoken_cases) / sizeof(entoken_cases[0]); i++)
+	{
+		char line[128];
+		u_char *out;
+		u_int size;
+		size_t expected = strlen(entoken_cases[i].tokens);
+
+		sprintf(line, "10 %s\n", entoken_cases[i].text);
+		call_result = _dragondos_entoken((u_char *)line, (u_int)strlen(line), &out, &size, DRAGONDOS_BASIC_LOAD_ADDRESS);
+		ASSERT(entoken_cases[i].text, call_result == 0);
+		ASSERT(entoken_cases[i].text, size == 9 + 4 + expected + 1 + 2);
+		ASSERT(entoken_cases[i].text, memcmp(out + 9 + 4, entoken_cases[i].tokens, expected) == 0);
+		free(out);
+	}
+}
+
+/* The same as BASIC saved to the MAME disk. */
+static void test_entoken_makes_a_saved_program(void)
+{
+	static const char text[] = "10 PRINT \"HELLO WORLD\"\n20 GOTO 10\n";
+	u_char saved[41];
+	u_char *out;
+	u_int size = sizeof(saved);
+	dragondos_path_id path;
+
+	ASSERT_CALL(0, _dragondos_open(&path, MAME_IMAGE ",HW1.BAS", FAM_READ));
+	ASSERT_CALL(0, _dragondos_read(path, saved, &size));
+	ASSERT_CALL(0, _dragondos_close(path));
+
+	ASSERT_CALL(0, _dragondos_entoken((const u_char *)text, sizeof(text) - 1, &out, &size, DRAGONDOS_BASIC_LOAD_ADDRESS));
+	ASSERT_EQUALS(41, size);
+	ASSERT_MEM_EQUALS(saved, out, 41);
+	ASSERT_CALL(0, _dragondos_detect_tokenized(out, size));
+	free(out);
+}
+
+static void test_detoken_lists_a_saved_program(void)
+{
+	u_char saved[41];
+	char *text;
+	u_int size = sizeof(saved);
+	dragondos_path_id path;
+	static const char expected[] = "10 PRINT \"HELLO WORLD\"\n20 GOTO 10\n";
+
+	ASSERT_CALL(0, _dragondos_open(&path, MAME_IMAGE ",HW1.BAS", FAM_READ));
+	ASSERT_CALL(0, _dragondos_read(path, saved, &size));
+	ASSERT_CALL(0, _dragondos_close(path));
+
+	ASSERT_CALL(0, _dragondos_detect_tokenized(saved, size));
+	ASSERT_CALL(0, _dragondos_detoken(saved, size, &text, &size));
+	ASSERT_EQUALS(sizeof(expected) - 1, size);
+	ASSERT_MEM_EQUALS(expected, text, size);
+	free(text);
+
+	/* A program as BASIC holds it, without the header. */
+	size = sizeof(saved) - 9;
+	ASSERT_CALL(0, _dragondos_detoken(saved + 9, size, &text, &size));
+	ASSERT_EQUALS(sizeof(expected) - 1, size);
+	ASSERT_MEM_EQUALS(expected, text, size);
+	free(text);
+}
+
+static void test_detoken_special_tokens(void)
+{
+	/* Colons that ELSE and an apostrophe carry aren't shown, and ones of the
+	   program's own are.  Tokens past each table's end show as "!", in BASIC too. */
+	static const u_char program[] =
+	{
+		0x24, 0x10, 0x00, 0x0A,
+		0x41, 0x3A, 0x84, 0x42, 0x3A, 0x83, 0x43, 0x3A, 0x41, 0x00,
+		0x24, 0x18, 0x00, 0x14,
+		0xE7, 0xE8, 0xFE, 0xFF, 0xA8, 0xFF, 0xA9, 0x00,
+		0x00, 0x00
+	};
+	static const char expected[] = "10 AELSEB'C:A\n20 SWAP!!FRE$!\n";
+	char *text;
+	u_int size;
+
+	ASSERT_CALL(0, _dragondos_detoken(program, sizeof(program), &text, &size));
+	ASSERT_EQUALS(sizeof(expected) - 1, size);
+	ASSERT_MEM_EQUALS(expected, text, size);
+	free(text);
+}
+
+static void test_detoken_refuses_what_is_not_basic(void)
+{
+	static const u_char machine_code[] = { 0x55, 0x02, 0x30, 0x00, 0x00, 0x01, 0x30, 0x00, 0xAA, 0x39 };
+	static const u_char too_long[] = { 0x55, 0x01, 0x24, 0x01, 0x00, 0x20, 0x8B, 0x8D, 0xAA, 0x00, 0x00 };
+	static const u_char no_end_of_line[] = { 0x24, 0x10, 0x00, 0x0A, 0x41 };
+	static const u_char no_end_of_program[] = { 0x24, 0x10, 0x00, 0x0A, 0x41, 0x00, 0x24 };
+	static const u_char cut_in_a_function[] = { 0x24, 0x10, 0x00, 0x0A, 0xFF };
+	char *text;
+	u_int size;
+
+	ASSERT_CALL(EOS_WT, _dragondos_detoken(machine_code, sizeof(machine_code), &text, &size));
+	ASSERT_CALL(EOS_SN, _dragondos_detect_tokenized(machine_code, sizeof(machine_code)));
+	ASSERT_CALL(EOS_SN, _dragondos_detect_tokenized(too_long, sizeof(too_long)));
+	ASSERT_CALL(EOS_SN, _dragondos_detoken(too_long, sizeof(too_long), &text, &size));
+	ASSERT_CALL(EOS_SN, _dragondos_detoken(no_end_of_line, sizeof(no_end_of_line), &text, &size));
+	ASSERT_CALL(EOS_SN, _dragondos_detoken(no_end_of_program, sizeof(no_end_of_program), &text, &size));
+	ASSERT_CALL(EOS_SN, _dragondos_detoken(cut_in_a_function, sizeof(cut_in_a_function), &text, &size));
+	ASSERT_CALL(EOS_SN, _dragondos_detoken(no_end_of_line, 0, &text, &size));
+}
+
+static void test_entoken_lines(void)
+{
+	static const struct
+	{
+		const char *text;
+		error_code ec;
+		const char *listed;
+	} cases[] =
+	{
+		{ "10 A\r\n20 B\r\n", 0, "10 A\n20 B\n" },
+		{ "10 A\r20 B", 0, "10 A\n20 B\n" },
+		{ "\n\n  10   A  \n\n20 B\n", 0, "10 A  \n20 B\n" },
+		{ "10 A\n15\n15 \n20 B\n", 0, "10 A\n20 B\n" },
+		{ "63999 A\n", 0, "63999 A\n" },
+		{ "0 A\n", 0, "0 A\n" },
+		{ "10 \tA\n", 0, "10 A\n" },
+		{ "64000 A\n", EOS_SN, NULL },
+		{ "A=1\n", EOS_SN, NULL },
+		{ "20 A\n10 B\n", EOS_SN, NULL },
+		{ "10 A\n10 B\n", EOS_SN, NULL },
+		{ "", EOS_SN, NULL },
+		{ "\n \n", EOS_SN, NULL },
+		{ "10\n", EOS_SN, NULL }
+	};
+	size_t i;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+	{
+		u_char *out;
+		char *text;
+		u_int size, text_size;
+
+		call_result = _dragondos_entoken((const u_char *)cases[i].text, (u_int)strlen(cases[i].text), &out, &size, DRAGONDOS_BASIC_LOAD_ADDRESS);
+		ASSERT(cases[i].text, call_result == cases[i].ec);
+		if (cases[i].ec == 0)
+		{
+			call_result = _dragondos_detoken(out, size, &text, &text_size);
+			ASSERT(cases[i].text, call_result == 0);
+			ASSERT(cases[i].text, text_size == strlen(cases[i].listed));
+			ASSERT(cases[i].text, memcmp(text, cases[i].listed, text_size) == 0);
+			free(text);
+			free(out);
+		}
+	}
+}
+
+/* Links follow the load address, and the worst line for growth fits. */
+static void test_entoken_load_address_and_growth(void)
+{
+	static char text[8192];
+	u_char *out;
+	u_int size;
+	int i, position;
+
+	ASSERT_CALL(0, _dragondos_entoken((const u_char *)"10 A\n", 5, &out, &size, 0x1E01));
+	ASSERT_EQUALS(0x1E, out[2]);
+	ASSERT_EQUALS(0x01, out[3]);
+	ASSERT_EQUALS(0x1E, out[9]);
+	ASSERT_EQUALS(0x07, out[10]);
+	free(out);
+
+	position = sprintf(text, "1 ");
+	for (i = 0; i < 4000; i++)
+	{
+		text[position++] = '\'';
+	}
+	/* Only the first is a token: the rest are its comment. */
+	ASSERT_CALL(0, _dragondos_entoken((const u_char *)text, (u_int)position, &out, &size, DRAGONDOS_BASIC_LOAD_ADDRESS));
+	ASSERT_EQUALS(9 + 4 + 2 + 3999 + 1 + 2, size);
+	free(out);
+
+	position = 0;
+	for (i = 1; i <= 1000; i++)
+	{
+		position += sprintf(text + position, "%d '\n", i);
+	}
+	ASSERT_CALL(0, _dragondos_entoken((const u_char *)text, (u_int)position, &out, &size, DRAGONDOS_BASIC_LOAD_ADDRESS));
+	free(out);
+}
+
 static const char *const blank_formats[] = { "raw", "vdk", "dmk", "sdf", "jvc" };
 
 static _path_type identify(char *pathlist)
@@ -1520,6 +1757,13 @@ int main(void)
 	RUN(test_write_needs_only_what_it_touches);
 	RUN(test_write_to_missing_sector);
 	RUN(test_short_image);
+	RUN(test_entoken_matches_rom);
+	RUN(test_entoken_makes_a_saved_program);
+	RUN(test_detoken_lists_a_saved_program);
+	RUN(test_detoken_special_tokens);
+	RUN(test_detoken_refuses_what_is_not_basic);
+	RUN(test_entoken_lines);
+	RUN(test_entoken_load_address_and_growth);
 	RUN(test_coco_identifies_dragondos);
 	RUN(test_coco_still_identifies_others);
 	RUN(test_coco_file_operations);

@@ -79,6 +79,7 @@ set(TOOLSHED_CORE_SOURCES
     ${TOOLSHED_ROOT}/libdragondos/libdragondoskill.c
     ${TOOLSHED_ROOT}/libdragondos/libdragondosopen.c
     ${TOOLSHED_ROOT}/libdragondos/libdragondosread.c
+    ${TOOLSHED_ROOT}/libdragondos/libdragondostokenize.c
     ${TOOLSHED_ROOT}/libdragondos/libdragondoswrite.c
     ${TOOLSHED_ROOT}/libmisc/libmisccococonv.c
     ${TOOLSHED_ROOT}/libmisc/libmiscendian.c

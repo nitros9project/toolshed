@@ -15,6 +15,7 @@ static char const *const helpMessage[] = {
 	"Options:\n",
 	"     -l         perform end of line translation\n",
 	"     -r         rewrite if file exists\n",
+	"     -t         perform BASIC token translation\n",
 	NULL
 };
 
@@ -53,7 +54,79 @@ static char *get_filename(char *path)
 }
 
 
-static error_code copy_file(char *source, char *target, int target_is_directory, int eol_translate, int rewrite)
+/* Tokenize text, or list a tokenized program, and write the result.  Text on a
+   Dragon DOS disk has lines ending in CR. */
+static error_code copy_translating_tokens(char *source, char *destination, int rewrite)
+{
+	coco_path_id path, destpath;
+	coco_file_stat fstat;
+	u_char *buffer = NULL, *result = NULL;
+	u_int size = 0, result_size = 0;
+	error_code ec = _coco_open_read_whole_file(&path, source, FAM_READ, &buffer, &size);
+
+	if (path == NULL)
+	{
+		return ec;
+	}
+	_coco_close(path);
+
+	if (ec == 0)
+	{
+		if (_dragondos_detect_tokenized(buffer, size) == 0)
+		{
+			char *text;
+			u_int text_size;
+
+			ec = _dragondos_detoken(buffer, size, &text, &text_size);
+			if (ec == 0)
+			{
+				_path_type type;
+
+				_coco_identify_image(destination, &type);
+				if (type == NATIVE)
+				{
+					result = (u_char *) text;
+					result_size = text_size;
+				}
+				else
+				{
+					char *translated;
+
+					NativeToCoCo(text, text_size, &translated, &result_size);
+					result = (u_char *) translated;
+					free(text);
+				}
+			}
+		}
+		else
+		{
+			ec = _dragondos_entoken(buffer, size, &result, &result_size, DRAGONDOS_BASIC_LOAD_ADDRESS);
+		}
+	}
+	free(buffer);
+
+	if (ec == 0)
+	{
+		memset(&fstat, 0, sizeof(fstat));
+		fstat.perms = FAP_READ | FAP_WRITE | FAP_PREAD;
+		ec = _coco_create(&destpath, destination, rewrite ? FAM_WRITE : FAM_WRITE | FAM_NOCREATE, &fstat);
+	}
+	if (ec == 0)
+	{
+		if (result_size != 0)
+		{
+			ec = _coco_write(destpath, result, &result_size);
+		}
+		_coco_close(destpath);
+	}
+
+	free(result);
+	return ec;
+}
+
+
+static error_code copy_file(char *source, char *target, int target_is_directory, int eol_translate, int rewrite,
+			    int token_translate)
 {
 	static char buffer[32768];
 	char destination[1024];
@@ -75,7 +148,14 @@ static error_code copy_file(char *source, char *target, int target_is_directory,
 		return EOS_BPNAM;
 	}
 
-	ec = TSCopyFile(source, destination, eol_translate, rewrite, 0, 0, buffer, sizeof(buffer));
+	if (token_translate)
+	{
+		ec = copy_translating_tokens(source, destination, rewrite);
+	}
+	else
+	{
+		ec = TSCopyFile(source, destination, eol_translate, rewrite, 0, 0, buffer, sizeof(buffer));
+	}
 
 	/* Don't leave what fit of a file too large for the disk. */
 	if (ec == EOS_DF)
@@ -91,7 +171,7 @@ int dgndoscopy(int argc, char *argv[])
 	error_code ec = 0;
 	char *p = NULL, *target = NULL;
 	int i, count = 0;
-	int eol_translate = 0, rewrite = 0;
+	int eol_translate = 0, rewrite = 0, token_translate = 0;
 	int target_is_directory;
 
 	/* 1. Walk command line for options. */
@@ -110,6 +190,10 @@ int dgndoscopy(int argc, char *argv[])
 
 				case 'r':
 					rewrite = 1;
+					break;
+
+				case 't':
+					token_translate = 1;
 					break;
 
 				case 'h':
@@ -155,7 +239,7 @@ int dgndoscopy(int argc, char *argv[])
 			continue;
 		}
 
-		copy_ec = copy_file(argv[i], target, target_is_directory, eol_translate, rewrite);
+		copy_ec = copy_file(argv[i], target, target_is_directory, eol_translate, rewrite, token_translate);
 		if (copy_ec != 0)
 		{
 			fprintf(stderr, "%s: error %d copying '%s'\n", argv[0], copy_ec, argv[i]);

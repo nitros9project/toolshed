@@ -189,6 +189,24 @@ error_code _dragondos_ss_fd(dragondos_path_id path, const dragondos_file_stat *s
 /* Only a raw path can be used. */
 error_code _dragondos_ss_sector(dragondos_path_id path, u_int lsn, const void *buffer);
 
+/* BASIC load address of a machine with Dragon DOS, as in a saved program. */
+#define DRAGONDOS_BASIC_LOAD_ADDRESS	0x2401
+
+/* Tokenize a BASIC program's text, with the file header SAVE writes.  Lines
+   end in CR, LF or both, and must have ascending numbers up to 63999.  A blank
+   line or a number alone makes no line.  EOS_SN means text this can't convert.
+   The caller frees out_buffer. */
+error_code _dragondos_entoken(const u_char *in_buffer, u_int in_size, u_char **out_buffer, u_int *out_size, u_int load_address);
+
+/* List a tokenized BASIC program as text, with lines ending in LF.  in_buffer
+   starts with a file header, or with a program as BASIC holds it.  EOS_WT means
+   the header isn't BASIC's and EOS_SN that the program is cut short.  A token
+   that isn't known shows as "!", as in BASIC.  The caller frees out_buffer. */
+error_code _dragondos_detoken(const u_char *in_buffer, u_int in_size, char **out_buffer, u_int *out_size);
+
+/* Returns 0 for a file that starts with the header of a BASIC program. */
+error_code _dragondos_detect_tokenized(const u_char *in_buffer, u_int in_size);
+
 #include <cocopath.h>
 
 #ifdef __cplusplus
