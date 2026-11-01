@@ -4,7 +4,7 @@ vpath %.c ../../../tocgen
 vpath %.h ../../../tocgen
 
 CFLAGS  += -I../../../include -Wall
-LDFLAGS += -L../libcoco -L../libnative -L../libdecb -L../libmisc -L../librbf -L../libsys -L../libcecb -lcoco -lnative -lcecb -ldecb -lmisc -lrbf -lsys -lm
+LDFLAGS += -L../libcoco -L../libdragondos -L../libdiskimage -L../libnative -L../libdecb -L../libmisc -L../librbf -L../libsys -L../libcecb -lcoco -ldragondos -ldiskimage -lnative -lcecb -ldecb -lmisc -lrbf -lsys -lm
 BINARY	= tocgen
 OBJS	= tocgen_main.o
 

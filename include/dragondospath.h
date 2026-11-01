@@ -41,7 +41,6 @@ extern "C" {
 #endif
 
 #include <cocotypes.h>
-#include <cocopath.h>
 #include <diskimage.h>
 
 #define DRAGONDOS_SECTOR_SIZE		256
@@ -116,11 +115,16 @@ typedef struct
 	u_int		file_size;
 } dragondos_file_stat;
 
-/* Pathlists are <image,file>.  With no file, as in "foo.dsk,", the path is
-   raw: it has sectors and the directory, but no file.  Filenames follow
+/* Pathlists are <image,file>.  With no file, as in "foo.dsk,", or with "@" for
+   a file, the path is raw: it has sectors and the directory, but no file.  Filenames follow
    the Dragon DOS rules: up to 8 of A-Z, 0-9 and "-", then optionally "." or
    "/" and up to 3 more.  Lower case is made upper, and extra characters
    in the name part are ignored, but not extra characters in the extension. */
+
+/* Report whether a file is an image of a Dragon DOS disk: its geometry is
+   valid, and its bitmap has the directory track and copy in use.  A file
+   that can't be read as an image is not an error, but not a Dragon DOS disk. */
+error_code _dragondos_identify(const char *pathname, int *found);
 
 /* Make a new image of a blank disk, formatted as DSKINIT does.  An existing
    file is not replaced.  tracks is 21 to 80, sides is 1 or 2.  Unlike DSKINIT,
@@ -153,6 +157,9 @@ error_code _dragondos_seek(dragondos_path_id path, long offset, int mode);
 error_code _dragondos_kill(const char *pathlist);
 error_code _dragondos_rename(const char *pathlist, const char *new_name);
 
+/* As _dragondos_rename, and gets the renamed file's directory entry. */
+error_code _dragondos_rename_ex(const char *pathlist, const char *new_name, dragondos_dir_entry *entry);
+
 /* Read directory entries in order, unused and continuation entries too.
    EOS_EOF marks the end.  An entry that cannot be read returns its error,
    and the next call moves on to the next entry. */
@@ -177,6 +184,8 @@ error_code _dragondos_ss_fd(dragondos_path_id path, const dragondos_file_stat *s
 
 /* Only a raw path can be used. */
 error_code _dragondos_ss_sector(dragondos_path_id path, u_int lsn, const void *buffer);
+
+#include <cocopath.h>
 
 #ifdef __cplusplus
 }

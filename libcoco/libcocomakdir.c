@@ -39,6 +39,10 @@ error_code _coco_makdir(char *pathlist)
 		ec = EOS_FNA;
 		break;
 
+	case DRAGONDOS:
+		ec = EOS_FNA;
+		break;
+
 	case CECB:
 		fprintf(stderr,
 			"_coco_makdir not implemented in libcecb yet.\n");

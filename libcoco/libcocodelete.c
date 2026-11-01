@@ -39,6 +39,10 @@ error_code _coco_delete(char *pathlist)
 		ec = _decb_kill(pathlist);
 		break;
 
+	case DRAGONDOS:
+		ec = _dragondos_kill(pathlist);
+		break;
+
 	case CECB:
 		fprintf(stderr,
 			"_coco_delete not implemented in libcecb yet.\n");
@@ -76,6 +80,10 @@ error_code _coco_delete_directory(char *pathlist)
 		break;
 
 	case DECB:
+		ec = EOS_BPNAM;
+		break;
+
+	case DRAGONDOS:
 		ec = EOS_BPNAM;
 		break;
 

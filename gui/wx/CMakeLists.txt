@@ -63,6 +63,23 @@ set(TOOLSHED_CORE_SOURCES
     ${TOOLSHED_ROOT}/libdecb/libdecbss.c
     ${TOOLSHED_ROOT}/libdecb/libdecbtokenize.c
     ${TOOLSHED_ROOT}/libdecb/libdecbwrite.c
+    ${TOOLSHED_ROOT}/libdiskimage/libdiskimagecreate.c
+    ${TOOLSHED_ROOT}/libdiskimage/libdiskimagedmk.c
+    ${TOOLSHED_ROOT}/libdiskimage/libdiskimagejvc.c
+    ${TOOLSHED_ROOT}/libdiskimage/libdiskimageopen.c
+    ${TOOLSHED_ROOT}/libdiskimage/libdiskimagesdf.c
+    ${TOOLSHED_ROOT}/libdiskimage/libdiskimagesector.c
+    ${TOOLSHED_ROOT}/libdiskimage/libdiskimagestream.c
+    ${TOOLSHED_ROOT}/libdiskimage/libdiskimagetable.c
+    ${TOOLSHED_ROOT}/libdiskimage/libdiskimagevdk.c
+    ${TOOLSHED_ROOT}/libdragondos/libdragondosbitmap.c
+    ${TOOLSHED_ROOT}/libdragondos/libdragondosdir.c
+    ${TOOLSHED_ROOT}/libdragondos/libdragondosdisk.c
+    ${TOOLSHED_ROOT}/libdragondos/libdragondosdskinit.c
+    ${TOOLSHED_ROOT}/libdragondos/libdragondoskill.c
+    ${TOOLSHED_ROOT}/libdragondos/libdragondosopen.c
+    ${TOOLSHED_ROOT}/libdragondos/libdragondosread.c
+    ${TOOLSHED_ROOT}/libdragondos/libdragondoswrite.c
     ${TOOLSHED_ROOT}/libmisc/libmisccococonv.c
     ${TOOLSHED_ROOT}/libmisc/libmiscendian.c
     ${TOOLSHED_ROOT}/libmisc/libmiscqueue.c

@@ -83,6 +83,13 @@ error_code _dragondos_kill(const char *pathlist)
 
 error_code _dragondos_rename(const char *pathlist, const char *new_name)
 {
+	dragondos_dir_entry entry;
+
+	return _dragondos_rename_ex(pathlist, new_name, &entry);
+}
+
+error_code _dragondos_rename_ex(const char *pathlist, const char *new_name, dragondos_dir_entry *renamed)
+{
 	dragondos_path_id path;
 	dragondos_dir_entry *entry;
 	u_char name[11];
@@ -115,6 +122,7 @@ error_code _dragondos_rename(const char *pathlist, const char *new_name)
 			{
 				memcpy(entry->u.header.filename, name, 11);
 				_dd_entry_dirty(path, path->entry_index);
+				memcpy(renamed, entry, sizeof(*renamed));
 			}
 		}
 	}

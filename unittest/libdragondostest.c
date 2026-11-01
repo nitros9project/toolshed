@@ -4,6 +4,8 @@
 
 #include "tinytest.h"
 #include "dragondospath.h"
+#include "cocopath.h"
+#include "toolshed.h"
 #include "../libdragondos/libdragondosint.h"
 
 #define TEST_IMAGE "dragondos_test.dsk"
@@ -1269,6 +1271,219 @@ static void test_short_image(void)
 	remove(TEST_IMAGE);
 }
 
+static const char *const blank_formats[] = { "raw", "vdk", "dmk", "sdf", "jvc" };
+
+static _path_type identify(char *pathlist)
+{
+	_path_type type = NATIVE;
+
+	call_result = _coco_identify_image(pathlist, &type);
+	return type;
+}
+
+static void test_coco_identifies_dragondos(void)
+{
+	static const diskimage_format formats[] =
+	{
+		DISKIMAGE_RAW, DISKIMAGE_VDK, DISKIMAGE_DMK, DISKIMAGE_SDF, DISKIMAGE_JVC
+	};
+	size_t i;
+	u_int sides;
+
+	ASSERT_EQUALS(DRAGONDOS, identify(MAME_IMAGE ","));
+	ASSERT_EQUALS(DRAGONDOS, identify(MAME_IMAGE ",HW1.BAS"));
+
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+	{
+		for (sides = 1; sides <= 2; sides++)
+		{
+			remove(TEST_IMAGE);
+			ASSERT(blank_formats[i], _dragondos_dskinit(TEST_IMAGE, formats[i], 40, sides) == 0);
+			ASSERT(blank_formats[i], identify(TEST_IMAGE ",") == DRAGONDOS);
+			remove(TEST_IMAGE);
+		}
+	}
+}
+
+static void test_coco_still_identifies_others(void)
+{
+	long offset = SS_DIRECTORY * 256L;
+
+	ASSERT_EQUALS(NATIVE, identify("no_comma_here.dsk"));
+
+	/* A drive number means Disk BASIC, as does an empty disk. */
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_EQUALS(DECB, identify(TEST_IMAGE ",FILE:1"));
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _decb_dskini(TEST_IMAGE, 35, "", 1, 256, 0));
+	ASSERT_EQUALS(DECB, identify(TEST_IMAGE ","));
+	remove(TEST_IMAGE);
+
+	/* Check bytes alone don't make a Dragon DOS disk: the bitmap must have
+	   the directory track in use, in either copy it is read from. */
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_EQUALS(720 * 256, read_file(TEST_IMAGE, image, sizeof(image)));
+	image[offset + SS_DIRECTORY / 8 + 1] = 0x01;
+	write_file(TEST_IMAGE, image, 720 * 256);
+	ASSERT_EQUALS(DECB, identify(TEST_IMAGE ","));
+
+	/* Too few tracks to hold the directory. */
+	image[offset + SS_DIRECTORY / 8 + 1] = 0;
+	image[offset + 0xFC] = 20;
+	image[offset + 0xFE] = (u_char)~20;
+	write_file(TEST_IMAGE, image, 720 * 256);
+	ASSERT_EQUALS(DECB, identify(TEST_IMAGE ","));
+	image[offset + 0xFC] = 40;
+	image[offset + 0xFE] = (u_char)~40;
+
+	/* OS-9's marker is looked for first. */
+	memset(image, 0, 256);
+	image[10] = 1;
+	image[2 * 256] = 0x2E;
+	image[2 * 256 + 1] = 0xAE;
+	image[2 * 256 + 32] = 0xAE;
+	write_file(TEST_IMAGE, image, 720 * 256);
+	ASSERT_EQUALS(OS9, identify(TEST_IMAGE ","));
+	remove(TEST_IMAGE);
+}
+
+static void test_coco_file_operations(void)
+{
+	coco_path_id path;
+	coco_file_stat stat;
+	coco_dir_entry entry;
+	u_char name[32];
+	u_int size = 1000;
+	u_int position;
+	int attributes;
+	char line[32];
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_VDK, 40, 1));
+	memset(&stat, 0, sizeof(stat));
+
+	ASSERT_CALL(0, _coco_create(&path, TEST_FILE("FILE.DAT"), RW, &stat));
+	ASSERT_EQUALS(DRAGONDOS, path->type);
+	fill_pattern(size, 6);
+	ASSERT_CALL(0, _coco_write(path, data, &size));
+	ASSERT_EQUALS(1000, size);
+	ASSERT_CALL(0, _coco_gs_pos(path, &position));
+	ASSERT_EQUALS(1000, position);
+	ASSERT_CALL(0, _coco_close(path));
+	ASSERT("the file reads back", file_matches(TEST_FILE("FILE.DAT"), 1000, 6));
+
+	ASSERT_CALL(0, _coco_gs_size_pathlist(TEST_FILE("FILE.DAT"), &size));
+	ASSERT_EQUALS(1000, size);
+
+	ASSERT_CALL(0, _coco_open(&path, TEST_FILE("FILE.DAT"), RW));
+	ASSERT_CALL(0, _coco_seek(path, 100, SEEK_SET));
+	size = 50;
+	ASSERT_CALL(0, _coco_read(path, back, &size));
+	ASSERT_MEM_EQUALS(data + 100, back, 50);
+	ASSERT_EQUALS(0, _coco_gs_eof(path));
+	ASSERT_CALL(0, _coco_ss_size(path, 10));
+	ASSERT_CALL(0, _coco_gs_size(path, &size));
+	ASSERT_EQUALS(10, size);
+	ASSERT_CALL(0, _coco_seek(path, 0, SEEK_END));
+	ASSERT_CALL(EOS_EOF, _coco_gs_eof(path));
+	size = 4;
+	ASSERT_CALL(0, _coco_write(path, "A\rB\r", &size));
+	ASSERT_CALL(0, _coco_seek(path, 10, SEEK_SET));
+	size = sizeof(line);
+	ASSERT_CALL(0, _coco_readln(path, line, &size));
+	ASSERT_EQUALS(2, size);
+	ASSERT_CALL(0, _coco_close(path));
+
+	/* Renaming hands back the entry. */
+	ASSERT_CALL(0, _coco_rename_ex(TEST_FILE("FILE.DAT"), "NEW.BIN", &entry));
+	ASSERT_MEM_EQUALS("NEW\0\0\0\0\0BIN", entry.dentry.dragondos.u.header.filename, 11);
+	ASSERT_CALL(0, _coco_rename(TEST_FILE("NEW.BIN"), "LAST.BIN"));
+
+	ASSERT_CALL(EOS_FNA, _coco_makdir(TEST_FILE("DIR")));
+	ASSERT_CALL(EOS_BPNAM, _coco_delete_directory(TEST_FILE("LAST.BIN")));
+
+	/* Listing a directory reports each file, and not what surrounds them. */
+	ASSERT_CALL(0, save(TEST_FILE("GONE"), 10, 1));
+	ASSERT_CALL(0, save(TEST_FILE("KEEP"), 20, 2));
+	ASSERT_CALL(0, _coco_delete(TEST_FILE("GONE")));
+	ASSERT_CALL(0, _coco_open(&path, TEST_IMAGE ",", FAM_READ));
+	ASSERT_CALL(0, _coco_readdir(path, &entry));
+	ASSERT_EQUALS(DRAGONDOS, entry.type);
+	ASSERT_CALL(0, _coco_ncpy_name(&entry, name, sizeof(name)));
+	ASSERT_STRING_EQUALS("LAST.BIN", (char *)name);
+	ASSERT_CALL(0, _coco_readdir(path, &entry));
+	ASSERT_CALL(0, _coco_ncpy_name(&entry, name, sizeof(name)));
+	ASSERT_STRING_EQUALS("KEEP", (char *)name);
+	ASSERT_CALL(EOS_EOF, _coco_readdir(path, &entry));
+
+	/* A raw path is the root directory. */
+	ASSERT_CALL(0, _coco_gs_fd(path, &stat));
+	ASSERT_EQUALS(FAP_DIR, stat.attributes & FAP_DIR);
+	ASSERT_CALL(0, _coco_gs_attr(path, &attributes));
+	ASSERT_EQUALS(FAP_DIR, attributes & FAP_DIR);
+	ASSERT_CALL(0, _coco_close(path));
+	ASSERT_CALL(0, _coco_open(&path, TEST_IMAGE ",@", FAM_READ));
+	ASSERT_EQUALS(1, path->path.dragondos->israw);
+	ASSERT_CALL(0, _coco_close(path));
+	remove(TEST_IMAGE);
+}
+
+/* Protecting a file is the one permission Dragon DOS has. */
+static void test_coco_protection(void)
+{
+	coco_path_id path;
+	coco_file_stat stat;
+	int attributes;
+	u_int size = 1;
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, save(TEST_FILE("FILE"), 100, 2));
+
+	ASSERT_CALL(0, _coco_open(&path, TEST_FILE("FILE"), RW));
+	ASSERT_CALL(0, _coco_gs_attr(path, &attributes));
+	ASSERT_EQUALS(FAP_READ | FAP_WRITE | FAP_PREAD, attributes);
+	ASSERT_CALL(0, _coco_ss_attr(path, FAP_READ | FAP_PREAD));
+	ASSERT_CALL(0, _coco_gs_fd(path, &stat));
+	ASSERT_EQUALS(FAP_READ | FAP_PREAD, stat.attributes);
+	ASSERT_CALL(EOS_FNA, _coco_write(path, data, &size));
+	stat.attributes |= FAP_WRITE;
+	ASSERT_CALL(0, _coco_ss_fd(path, &stat));
+	size = 1;
+	ASSERT_CALL(0, _coco_write(path, data, &size));
+	ASSERT_CALL(0, _coco_close(path));
+	remove(TEST_IMAGE);
+}
+
+/* The generic copy moves a file on and off a disk by way of libcoco. */
+static void test_coco_copy_through_toolshed(void)
+{
+	static char buffer[512];
+	const char *native = "dragondos_native.bin";
+	const char *copied = "dragondos_copied.bin";
+	long size;
+
+	remove(TEST_IMAGE);
+	remove(native);
+	remove(copied);
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_VDK, 40, 1));
+	fill_pattern(5000, 8);
+	write_file(native, data, 5000);
+
+	ASSERT_CALL(0, TSCopyFile((char *)native, TEST_FILE("COPY.BIN"), 0, 1, 0, 0, buffer, sizeof(buffer)));
+	ASSERT("the copy reads back", file_matches(TEST_FILE("COPY.BIN"), 5000, 8));
+	ASSERT_CALL(0, TSCopyFile(TEST_FILE("COPY.BIN"), (char *)copied, 0, 1, 0, 0, buffer, sizeof(buffer)));
+	size = read_file(copied, back, sizeof(back));
+	ASSERT_EQUALS(5000, size);
+	fill_pattern(5000, 8);
+	ASSERT_MEM_EQUALS(data, back, 5000);
+
+	remove(native);
+	remove(copied);
+	remove(TEST_IMAGE);
+}
+
 int main(void)
 {
 	RUN(test_allocator_matches_rom);
@@ -1305,5 +1520,10 @@ int main(void)
 	RUN(test_write_needs_only_what_it_touches);
 	RUN(test_write_to_missing_sector);
 	RUN(test_short_image);
+	RUN(test_coco_identifies_dragondos);
+	RUN(test_coco_still_identifies_others);
+	RUN(test_coco_file_operations);
+	RUN(test_coco_protection);
+	RUN(test_coco_copy_through_toolshed);
 	return TEST_REPORT();
 }

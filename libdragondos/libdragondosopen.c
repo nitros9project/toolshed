@@ -46,7 +46,7 @@ error_code _dd_open_image(dragondos_path_id *path, const char *pathlist, int mod
 	memcpy(new_path->imgfile, pathlist, image_length);
 	new_path->imgfile[image_length] = '\0';
 	strcpy(new_path->filename, comma + 1);
-	new_path->israw = new_path->filename[0] == '\0';
+	new_path->israw = new_path->filename[0] == '\0' || strcmp(new_path->filename, "@") == 0;
 	new_path->mode = mode;
 
 	image_mode = FAM_READ | (mode & (FAM_WRITE | DISKIMAGE_IGNORE_WRITE_PROTECT));
@@ -75,6 +75,43 @@ static error_code close_image(dragondos_path_id path, error_code ec)
 
 	_dd_free_path(path);
 	return ec != 0 ? ec : close_ec;
+}
+
+error_code _dragondos_identify(const char *pathname, int *found)
+{
+	dragondos_path_id path;
+	u_char *bitmap;
+
+	*found = 0;
+
+	path = calloc(1, sizeof(*path));
+	if (path == NULL)
+	{
+		return EOS_OM;
+	}
+
+	if (_diskimage_open(&path->disk, pathname, FAM_READ) == 0)
+	{
+		if (_dd_load_geometry(path) == 0 && path->tracks > 20 && _dd_track_sector(path, 0, &bitmap) == 0)
+		{
+			u_int backup = path->directory_lsn - DD_BACKUP_TRACKS_BACK * path->sectors_per_track;
+			u_int i;
+
+			*found = 1;
+			for (i = 0; i < DRAGONDOS_TRACK_SECTORS; i++)
+			{
+				if ((bitmap[(path->directory_lsn + i) / 8] >> ((path->directory_lsn + i) % 8)) & 1 ||
+				    (bitmap[(backup + i) / 8] >> ((backup + i) % 8)) & 1)
+				{
+					*found = 0;
+				}
+			}
+		}
+		_diskimage_close(path->disk);
+	}
+
+	free(path);
+	return 0;
 }
 
 error_code _dragondos_open(dragondos_path_id *path, const char *pathlist, int mode)
