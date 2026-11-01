@@ -69,6 +69,7 @@ ToolShed v2.6.1
   * [ATTR](#attr_dgndos) - Display or change whether files are protected
   * [COPY](#copy_dgndos) - Copy one or more files to a target file or directory
   * [DIR](#dir_dgndos) - Display the contents of a disk's directory
+  * [DSAVE](#dsave_dgndos) - Copy the contents of a disk or directory
   * [DSKINIT](#dskinit_dgndos) - Create a Dragon DOS image
   * [DUMP](#dump_dgndos) - Display the contents of a binary file
   * [FREE](#free_dgndos) - Display the amount of free space on an image
@@ -493,11 +494,14 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 <tr><td>-e</td><td>actually execute commands</td></tr>
 <tr><td>-l</td><td>perform end of line translation on copy</td></tr>
 <tr><td>-r</td><td>force rewrite on copy</td></tr>
+<tr><td>-x=path</td><td>os9 executable to run the commands with, rather than the one the shell finds</td></tr>
 </table>
 
 #### Description
 
 The dsave command recursively copies files from a directory to another device.
+
+dsave runs `os9 copy` and `os9 makdir` to do the copying, and by default the shell finds `os9` as it would any command. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
 
 ---
 
@@ -1025,11 +1029,14 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 <tr><td>-e</td><td>actually execute commands</td></tr>
 <tr><td>-l</td><td>perform end of line translation on copy</td></tr>
 <tr><td>-r</td><td>force rewrite on copy</td></tr>
+<tr><td>-x=path</td><td>decb executable to run the commands with, rather than the one the shell finds</td></tr>
 </table>
 
 #### Description
 
 The dsave command recursively copies files from a directory to another device.
+
+dsave runs `decb copy` and `decb makdir` to do the copying, and by default the shell finds `decb` as it would any command. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
 
 ---
 
@@ -1782,6 +1789,36 @@ Each file is listed with its name, extension, a P if it is protected, and its si
     2 files, 682 sectors free (174592 bytes)
 
 Entries in sectors that can't be read don't stop the rest being listed, but the first error is reported afterwards.
+
+---
+
+<h3 id="dsave_dgndos">DSAVE - Copy the contents of a disk or directory</h3>
+
+#### Syntax and Scope
+
+    dsave {[<opts>]} {[<source>]} <target> {[<opts>]}
+
+This command will work on Dragon DOS disk image files as well as host files.
+
+#### Options
+<table>
+<tr><td>-e</td><td>actually execute commands</td></tr>
+<tr><td>-l</td><td>perform end of line translation on copy</td></tr>
+<tr><td>-r</td><td>force rewrite on copy</td></tr>
+<tr><td>-t</td><td>perform BASIC token translation</td></tr>
+<tr><td>-x=path</td><td>dgndos executable to run the commands with, rather than the one the shell finds</td></tr>
+</table>
+
+#### Description
+
+The dsave command copies each file from a disk or directory to another. It runs `dgndos copy` to do the copying, and by default the shell finds `dgndos` as it would any command. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
+
+Dragon DOS has no directories, so a source directory that holds one is refused when dsave reaches it.
+
+#### Examples
+
+    dgndos dsave -e disk.vdk, saved
+    dgndos dsave -e -x=build/unix/dgndos/dgndos saved disk.vdk,
 
 ---
 

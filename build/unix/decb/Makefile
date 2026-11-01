@@ -1,13 +1,12 @@
 # Makefile for decb
 include ../rules.mak
 
-vpath %.c ../../../decb ../../../os9
+vpath %.c ../../../decb
 
 CFLAGS	+= -I../../../include -Wall -MMD -MP
 
 SRCS = decb_main.c decbattr.c decbcopy.c decbdir.c decbdskini.c decbfree.c decbfstat.c \
-	decbhdbconv.c decbkill.c decblist.c decbrename.c decbdsave.c decbbinbust.c \
-	os9dsave.c
+	decbhdbconv.c decbkill.c decblist.c decbrename.c decbdsave.c decbbinbust.c
 	
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)

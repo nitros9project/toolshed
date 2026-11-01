@@ -125,6 +125,12 @@ error_code _dragondos_open(dragondos_path_id *path, const char *pathlist, int mo
 		return ec;
 	}
 
+	/* The only directory is the whole disk's. */
+	if (!new_path->israw && (mode & FAM_DIR))
+	{
+		return close_image(new_path, EOS_FNA);
+	}
+
 	if (!new_path->israw)
 	{
 		ec = _dd_parse_name(new_path->filename, name);

@@ -12,6 +12,7 @@
 int dgndosattr(int, char **);
 int dgndoscopy(int, char **);
 int dgndosdir(int, char **);
+int dgndosdsave(int, char **);
 int dgndosdskinit(int, char **);
 int dgndosfree(int, char **);
 int dgndosfstat(int, char **);

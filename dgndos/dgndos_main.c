@@ -31,6 +31,7 @@ static struct cmdtbl table[] = {
 	{dgndosattr, "attr"},
 	{dgndoscopy, "copy"},
 	{dgndosdir, "dir"},
+	{dgndosdsave, "dsave"},
 	{dgndosdskinit, "dskinit"},
 	{cocodump, "dump"},
 	{dgndosfree, "free"},

@@ -1983,6 +1983,15 @@ static void test_coco_copy_through_toolshed(void)
 	remove(TEST_IMAGE);
 }
 
+static void test_file_is_not_a_directory(void)
+{
+	dragondos_path_id path;
+
+	ASSERT_CALL(EOS_FNA, _dragondos_open(&path, MAME_DMK ",HW1.BAS", FAM_DIR | FAM_READ));
+	ASSERT_CALL(0, _dragondos_open(&path, MAME_DMK ",", FAM_DIR | FAM_READ));
+	_dragondos_close(path);
+}
+
 int main(void)
 {
 	RUN(test_allocator_matches_rom);
@@ -2037,5 +2046,6 @@ int main(void)
 	RUN(test_coco_file_operations);
 	RUN(test_coco_protection);
 	RUN(test_coco_copy_through_toolshed);
+	RUN(test_file_is_not_a_directory);
 	return TEST_REPORT();
 }

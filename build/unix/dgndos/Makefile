@@ -6,7 +6,7 @@ vpath %.c ../../../dgndos
 CFLAGS	+= -I../../../include -Wall -MMD -MP
 
 SRCS = dgndos_main.c dgndosattr.c dgndoscopy.c dgndosdir.c dgndosdskinit.c dgndosfree.c \
-	dgndosfstat.c dgndoskill.c dgndoslist.c dgndosrename.c
+	dgndosfstat.c dgndoskill.c dgndoslist.c dgndosrename.c dgndosdsave.c
 
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)

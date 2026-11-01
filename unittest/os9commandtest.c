@@ -558,6 +558,60 @@ void test_os9_command_dsave_refuses_disk_images()
 	ASSERT_EQUALS(0, status);
 }
 
+/* -x names the executable, in the commands shown and those run. */
+void test_os9_command_dsave_executable()
+{
+	static char output[4096];
+	FILE *fp;
+	size_t got;
+	int status;
+
+	status = system("rm -rf test_x_src test_x_dst && mkdir test_x_src test_x_dst"
+			" && echo one > test_x_src/one.txt");
+	ASSERT_EQUALS(0, status);
+
+	/* Shown only, under its usual name by default */
+	status = system("../os9/os9 dsave test_x_src test_x_dst > test_x_out.txt 2>&1");
+	ASSERT_EQUALS(0, status);
+	fp = fopen("test_x_out.txt", "rb");
+	got = fread(output, 1, sizeof(output) - 1, fp);
+	fclose(fp);
+	output[got] = 0;
+	ASSERT("it shows the usual name", strncmp(output, "os9 copy 'test_x_src/one.txt' 'test_x_dst/one.txt'", 44) == 0);
+	fp = fopen("test_x_dst/one.txt", "rb");
+	ASSERT("nothing was copied", fp == NULL);
+
+	/* Shown only, under the given name */
+	status = system("../os9/os9 dsave -x=no/such/os9 test_x_src test_x_dst > test_x_out.txt 2>&1");
+	ASSERT_EQUALS(0, status);
+	fp = fopen("test_x_out.txt", "rb");
+	got = fread(output, 1, sizeof(output) - 1, fp);
+	fclose(fp);
+	output[got] = 0;
+	ASSERT("it shows the given name", strncmp(output, "'no/such/os9' copy ", 18) == 0);
+
+	/* An empty search path shows it is not the shell finding it. */
+	status = system("PATH=/nonexistent:/bin:/usr/bin ../os9/os9 dsave -e -x=../os9/os9 test_x_src test_x_dst > /dev/null 2>&1");
+	ASSERT_EQUALS(0, status);
+	fp = fopen("test_x_dst/one.txt", "rb");
+	ASSERT("the file was copied", fp != NULL);
+	got = fread(output, 1, sizeof(output) - 1, fp);
+	fclose(fp);
+	ASSERT_EQUALS(4, got);
+
+	/* One that isn't there fails, and says so in the exit status */
+	status = system("../os9/os9 dsave -e -r -x=no/such/os9 test_x_src test_x_dst > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+	ASSERT_NEQUALS(0, WEXITSTATUS(status));
+
+	/* It needs a path */
+	status = system("../os9/os9 dsave -x test_x_src test_x_dst > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+
+	status = system("rm -rf test_x_src test_x_dst test_x_out.txt");
+	ASSERT_EQUALS(0, status);
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -572,5 +626,6 @@ int main()
 
 	RUN(test_os9_command_copy_refuses_disk_images);
 	RUN(test_os9_command_dsave_refuses_disk_images);
+	RUN(test_os9_command_dsave_executable);
 	return TEST_REPORT();
 }
