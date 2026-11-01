@@ -64,6 +64,7 @@ ToolShed v2.6.1
 * [ar2](#ar2)
 * [dis68](#dis68)
 * [lst2cmt](#lst2cmt) - Create MAME comment file
+* [diskinfo](#diskinfo) - Report the format and track layout of disk images
 
 ---
 
@@ -112,6 +113,10 @@ Carl Kreider is a long time OS-9/6809 user and programmer, and has graciously gi
 ### lst2cmt
 
 This is a tool used to convert lwasm listing files into MAME comment files.
+
+### diskinfo
+
+This is a tool used to report the format and track layout of DMK, SDF, JVC, VDK and raw disk images.
 
 ---
 <h2 id="tutorial">A Tutorial On Disk Images</h2>
@@ -1630,3 +1635,39 @@ This tool allows you to process lwasm's listing files to produce a file MAME can
 3. MAME comments are automatically loaded. By default, the comment file location is next to the MAME executable in a folder called 'comments'. The name of the comment file must be the MAME driver short name and dot 'cmt'. Inside the comment file, the name of the driver must match the driver you are running. Inside the comment file, the name of the cpu must also match the running driver.
 4. MAME does not have comments turned on by default. There is a menu item to turn them off.
 5. MAME display comments very far to the right in the disasembly. You may have to make the window very large to see them.
+
+---
+
+<h2 id="diskinfo">diskinfo</h2>
+
+This is a tool used to report the format and track layout of disk images. It only reads the images.
+
+#### Syntax and Scope
+
+    diskinfo <file> {<file> ...}
+
+#### Description
+
+For each file, diskinfo reports its disk image format, then the sectors on its tracks. Tracks with the same layout are reported together.
+
+    test.dsk is a DMK disk image.
+    Tracks 0 to 16 are 18 sectors (1-18), 256 bytes each.
+    Track 17 is 1 512 byte sector (4).
+    Track 18 is 18 sectors (1-18), 256 bytes each. Sector 3 has a deleted data mark. Sector 17 has a CRC error in its data segment.
+    Tracks 19 to 34 are 18 sectors (1-18), 256 bytes each.
+
+On a two sided image, a run of tracks is reported once if both sides match, and once for each side if not.
+
+    Track 0, side 0, is 10 sectors (1-10), 256 bytes each.
+    Track 0, side 1, is 18 sectors (1-18), 256 bytes each.
+    Tracks 1 to 34, both sides, are 18 sectors (1-18), 256 bytes each.
+
+A file that is not a disk image is reported as such.
+
+    file.txt is not a DMK, SDF, JVC, VDK, nor raw disk image.
+
+#### Notes
+
+1. The exit status is 0 only if every file is a disk image.
+2. Only sectors a floppy controller could find are reported. On DMK and SDF images, these are not: sectors with a bad CRC in their ID field, an ID whose track number is not the physical track, no data field, a field crossing the end of the track, or the number of an earlier sector on the same track. On JVC images with sector attributes, sectors marked "not found" are not reported either.
+3. Any file whose size is a multiple of 256 bytes, including an empty file, is a valid raw disk image.
