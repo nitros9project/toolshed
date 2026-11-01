@@ -6,15 +6,16 @@ include ../rules.mak
 
 vpath %.c ../../../unittest
 
-LDLIBS += -L../libtoolshed -L../libcoco -L../libcecb -L../libdecb -L../libdiskimage \
+LDLIBS += -L../libtoolshed -L../libcoco -L../libcecb -L../libdecb -L../libdragondos -L../libdiskimage \
           -L../librbf -L../libnative -L../libmisc -L../libsys \
-          -ltoolshed -lcoco -lcecb -ldecb -ldiskimage -lrbf -lnative -lmisc -lsys -lm
+          -ltoolshed -lcoco -lcecb -ldecb -ldragondos -ldiskimage -lrbf -lnative -lmisc -lsys -lm
 
 TEST_LIBS = \
     ../libtoolshed/libtoolshed.a \
     ../libcoco/libcoco.a \
     ../libcecb/libcecb.a \
     ../libdecb/libdecb.a \
+    ../libdragondos/libdragondos.a \
     ../libdiskimage/libdiskimage.a \
     ../librbf/librbf.a \
     ../libnative/libnative.a \
@@ -23,7 +24,7 @@ TEST_LIBS = \
 
 
 TESTS = librbftest libdecbtest libcecbtest libtoolshedtest libnativetest libmisctest os9commandtest \
-	decbcommandtest cecbcommandtest libsystest libdiskimagetest diskinfocommandtest
+	decbcommandtest cecbcommandtest libsystest libdiskimagetest diskinfocommandtest libdragondostest dgndoscommandtest
 
 $(TESTS): $(TEST_LIBS)
 
@@ -41,6 +42,8 @@ ifeq (,$(NOTEST))
 	./cecbcommandtest
 	./libdiskimagetest
 	./diskinfocommandtest
+	./libdragondostest
+	./dgndoscommandtest
 endif
 
 clean:

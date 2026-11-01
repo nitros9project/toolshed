@@ -145,6 +145,13 @@ error_code _diskimage_create(const char *pathname, diskimage_format format, u_in
 			     u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
 			     u_int interleave, u_char fill);
 
+/* As _diskimage_create, but each track of a DMK or SDF image starts with an
+   index mark, moving its sectors 67 bytes later.  This is how a disk formatted
+   by Dragon DOS is recorded by MAME.  Other formats have no tracks to differ. */
+error_code _diskimage_create_index_mark(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
+					u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
+					u_int interleave, u_char fill);
+
 /* Open an existing image.  mode is FAM_READ and/or FAM_WRITE, optionally with
    DISKIMAGE_IGNORE_WRITE_PROTECT, which allows writes to a DMK, SDF or VDK
    image whose write protect flag is set.  The flag itself is left as it is,

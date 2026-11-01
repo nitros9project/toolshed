@@ -31,6 +31,10 @@ error_code _coco_readln(coco_path_id path, void *buffer, u_int * size)
 		ec = _decb_readln(path->path.decb, buffer, size);
 		break;
 
+	case DRAGONDOS:
+		ec = _dragondos_readln(path->path.dragondos, buffer, size);
+		break;
+
 	case CECB:
 		ec = _cecb_readln(path->path.cecb, buffer, size);
 		break;

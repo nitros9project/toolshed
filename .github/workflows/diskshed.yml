@@ -182,6 +182,8 @@ jobs:
             -o linuxdeploy.AppImage \
             https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           chmod +x linuxdeploy.AppImage
+          # appimagetool makes .DirIcon from a PNG in the top level, and not an SVG.
+          cp gui/wx/packaging/org.nitros9.diskshed.png AppDir/
           ./linuxdeploy.AppImage --appdir AppDir \
             --desktop-file AppDir/usr/share/applications/org.nitros9.diskshed.desktop \
             --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/org.nitros9.diskshed.svg \

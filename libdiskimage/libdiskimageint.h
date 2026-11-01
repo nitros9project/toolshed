@@ -114,6 +114,7 @@ typedef struct
 	u_int sectors_track0;
 	u_int interleave;
 	u_char fill;
+	int index_mark;		/* tracks of a DMK or SDF image start with an index mark */
 } di_layout;
 
 /* libdiskimagecreate.c */

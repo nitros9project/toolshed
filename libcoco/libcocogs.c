@@ -30,6 +30,30 @@ error_code _coco_gs_pathtype(coco_path_id path, _path_type * disk_type)
 
 
 
+/* Dragon DOS has no permissions, but protecting a file makes it read only.
+   A raw path is the root directory. */
+static error_code dragondos_attributes(dragondos_path_id path, int *attributes)
+{
+	dragondos_file_stat stat;
+	error_code ec;
+
+	*attributes = FAP_READ | FAP_WRITE | FAP_PREAD;
+	if (path->israw)
+	{
+		*attributes |= FAP_DIR;
+		return 0;
+	}
+
+	ec = _dragondos_gs_fd(path, &stat);
+	if (ec == 0 && stat.protected_file)
+	{
+		*attributes &= ~FAP_WRITE;
+	}
+	return ec;
+}
+
+
+
 error_code _coco_gs_attr(coco_path_id path, int *perms)
 {
 	error_code ec = 0;
@@ -49,6 +73,10 @@ error_code _coco_gs_attr(coco_path_id path, int *perms)
 
 	case DECB:
 		ec = EOS_BPNAM;
+		break;
+
+	case DRAGONDOS:
+		ec = dragondos_attributes(path->path.dragondos, perms);
 		break;
 
 	case CECB:
@@ -83,6 +111,10 @@ error_code _coco_gs_eof(coco_path_id path)
 
 	case DECB:
 		ec = _decb_gs_eof(path->path.decb);
+		break;
+
+	case DRAGONDOS:
+		ec = _dragondos_gs_eof(path->path.dragondos);
 		break;
 
 	case CECB:
@@ -211,6 +243,14 @@ error_code _coco_gs_fd(coco_path_id path, coco_file_stat * statbuf)
 		statbuf->group_id = 0;
 		break;
 
+	case DRAGONDOS:
+		ec = dragondos_attributes(path->path.dragondos, &statbuf->attributes);
+		/* Use SOURCE_DATE_EPOCH if set, or system clock as fallback */
+		tp = GetSafeTimestamp();
+		statbuf->create_time = tp;
+		statbuf->last_modified_time = tp;
+		break;
+
 	case CECB:
 		ec = _cecb_gs_fd(path->path.cecb, &cecb_stat);
 		statbuf->file_type = cecb_stat.file_type;
@@ -286,6 +326,10 @@ error_code _coco_gs_size(coco_path_id path, u_int * size)
 		ec = _decb_gs_size(path->path.decb, size);
 		break;
 
+	case DRAGONDOS:
+		ec = _dragondos_gs_size(path->path.dragondos, size);
+		break;
+
 	case CECB:
 		size = 0;
 		fprintf(stderr,
@@ -350,6 +394,10 @@ error_code _coco_gs_pos(coco_path_id path, u_int * pos)
 
 	case DECB:
 		ec = _decb_gs_pos(path->path.decb, pos);
+		break;
+
+	case DRAGONDOS:
+		ec = _dragondos_gs_pos(path->path.dragondos, pos);
 		break;
 
 	case CECB:

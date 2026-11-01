@@ -65,6 +65,17 @@ ToolShed v2.6.1
 * [dis68](#dis68)
 * [lst2cmt](#lst2cmt) - Create MAME comment file
 * [diskinfo](#diskinfo) - Report the format and track layout of disk images
+* [dgndos](#dgndos) - Manipulate Dragon DOS formatted disk images
+  * [ATTR](#attr_dgndos) - Display or change whether files are protected
+  * [COPY](#copy_dgndos) - Copy one or more files to a target file or directory
+  * [DIR](#dir_dgndos) - Display the contents of a disk's directory
+  * [DSKINIT](#dskinit_dgndos) - Create a Dragon DOS image
+  * [DUMP](#dump_dgndos) - Display the contents of a binary file
+  * [FREE](#free_dgndos) - Display the amount of free space on an image
+  * [FSTAT](#fstat_dgndos) - Display detailed information about a file
+  * [KILL](#kill_dgndos) - Delete one or more files
+  * [LIST](#list_dgndos) - Display the contents of a text file
+  * [RENAME](#rename_dgndos) - Give a file a new filename
 
 ---
 
@@ -117,6 +128,10 @@ This is a tool used to convert lwasm listing files into MAME comment files.
 ### diskinfo
 
 This is a tool used to report the format and track layout of DMK, SDF, JVC, VDK and raw disk images.
+
+### dgndos
+
+This is a tool used to manipulate, inspect and copy files on disk images formatted under Dragon DOS.
 
 ---
 <h2 id="tutorial">A Tutorial On Disk Images</h2>
@@ -1671,3 +1686,205 @@ A file that is not a disk image is reported as such.
 1. The exit status is 0 only if every file is a disk image.
 2. Only sectors a floppy controller could find are reported. On DMK and SDF images, these are not: sectors with a bad CRC in their ID field, an ID whose track number is not the physical track, no data field, a field crossing the end of the track, or the number of an earlier sector on the same track. On JVC images with sector attributes, sectors marked "not found" are not reported either.
 3. Any file whose size is a multiple of 256 bytes, including an empty file, is a valid raw disk image.
+
+---
+
+<h2 id="dgndos">dgndos</h2>
+
+The following pages document the commands built into the dgndos tool. Its interface is similar to that of the decb tool.
+
+Issuing the dgndos command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using the subcommand.
+
+Use dgndos to copy files to and from Dragon DOS formatted disk images and your host file system. It works on raw, JVC, VDK, DMK and SDF images, and an image can lack any sectors a command doesn't need. A file on a disk is named `<disk>,<file>`.
+
+Filenames follow the rules of Dragon DOS: up to 8 of A-Z, 0-9 and "-", then optionally "." or "/" and up to 3 more. Lower case is made upper. Extra characters in the first part are ignored, along with all that follows them. Extra characters in the extension are an error.
+
+---
+
+<h3 id="attr_dgndos">ATTR - Display or change whether files are protected</h3>
+
+#### Syntax and Scope
+
+    attr {[<opts>]} {<file> [<...>]} {[<opts>]}
+
+#### Options
+
+    -p        protect the file
+    -u        unprotect the file
+
+#### Description
+
+With no options, each file is reported as protected or not. A protected file can't be written to, renamed or deleted.
+
+---
+
+<h3 id="copy_dgndos">COPY - Copy one or more files to a target file or directory</h3>
+
+#### Syntax and Scope
+
+    copy {[<opts>]} <srcfile> {[<...>]} <target> {[<opts>]}
+
+#### Options
+
+    -l         perform end of line translation
+    -r         rewrite if file exists
+    -t         perform BASIC token translation
+
+#### Description
+
+A target of `<disk>,` or a host directory takes each file under its own name. Allocation follows the algorithm of the Dragon DOS 1.0 ROM.
+
+An existing file on the host that is or looks like a disk image is never replaced, even with -r. The copy is refused, and says why. A file looks like one if it has the extension .dsk, .vdk, .dmk, .sdf, .jvc, .os9, .img or .ima, has the header of a disk image format, or is at least a track long (4608 bytes) and a whole number of sectors. This guards against `dgndos copy file disk.vdk` where `disk.vdk,` was meant. Other host files are replaced without -r.
+
+A file that doesn't fit is removed, and the error reported.
+
+With -t, a file with the header of a saved BASIC program is listed as text, with its lines ending the way the target's system ends them. Anything else is taken to be a program's text, and is tokenized as Dragon BASIC with Dragon DOS would, giving the same file as its SAVE command. Lines must have ascending numbers, and only upper case is recognized as a keyword. Dragon BASIC's tokens differ from those of Color BASIC.
+
+#### Examples
+
+    dgndos copy game.bin disk.vdk,GAME.BIN
+    dgndos copy -l notes.txt readme.txt disk.vdk,
+    dgndos copy disk.vdk,GAME.BIN game.bin
+    dgndos copy -t program.txt disk.vdk,PROGRAM.BAS
+    dgndos copy -t disk.vdk,PROGRAM.BAS program.txt
+
+---
+
+<h3 id="dir_dgndos">DIR - Display the contents of a disk's directory</h3>
+
+#### Syntax and Scope
+
+    dir {[<opts>]} {<disk> [<...>]} {[<opts>]}
+
+#### Description
+
+Each file is listed with its name, extension, a P if it is protected, and its size in bytes.
+
+    Directory of: disk.vdk,
+
+    HW1      BAS  .       41
+    HW2      BAS  P       41
+
+    2 files, 682 sectors free (174592 bytes)
+
+Entries in sectors that can't be read don't stop the rest being listed, but the first error is reported afterwards.
+
+---
+
+<h3 id="dskinit_dgndos">DSKINIT - Create a Dragon DOS image</h3>
+
+#### Syntax and Scope
+
+    dskinit {[<opts>]} <disk> {[<...>]} {[<opts>]}
+
+#### Options
+
+    -t<num>  = tracks, 21 to 80 (default 40)
+    -s<num>  = sides, 1 or 2 (default 1)
+    -f<name> = image format: raw, jvc, vdk, dmk or sdf
+
+#### Description
+
+Without -f, the format comes from the disk's extension, and otherwise it is raw. An existing file is not replaced. Disks are formatted as the DSKINIT command of Dragon DOS does, except that an 80 track single sided disk has all of its sectors free, as SuperDOS makes them. Dragon DOS 1.0 leaves half of such a disk used.
+
+The tracks of a DMK or SDF image are laid out like a disk formatted by Dragon DOS in MAME: each starts with an index mark, and its sectors are numbered 1, 10, 2, 11 and so on around the track.
+
+#### Examples
+
+    dgndos dskinit disk.vdk
+    dgndos dskinit -t80 -s2 -fdmk big.img
+
+---
+
+<h3 id="dump_dgndos">DUMP - Display the contents of a binary file</h3>
+
+#### Syntax and Scope
+
+    dump {[<opts>]} {<file> [<...>]} {[<opts>]}
+
+#### Options
+
+    -a        dump output in assembler format (hex)
+    -b        dump output in assembler format (binary)
+    -c        don't display ASCII character data
+    -e        dump output in C format
+    -t        don't display header
+    -h        don't display header (deprecated, use -t)
+    -l        don't display line label/count
+    -z        decode DECB or Dragon DOS binary
+
+#### Description
+
+This is the same dump command as in the os9 and decb tools. With -z, a file with the header SAVE writes is decoded: its data is shown at its load address, followed by its execution address. Dragon DOS files hold a single block, unlike Disk BASIC's.
+
+---
+
+<h3 id="free_dgndos">FREE - Display the amount of free space on an image</h3>
+
+#### Syntax and Scope
+
+    free {[<opts>]} {<disk> [<...>]} {[<opts>]}
+
+---
+
+<h3 id="fstat_dgndos">FSTAT - Display detailed information about a file</h3>
+
+#### Syntax and Scope
+
+    fstat {[<opts>]} {<file> [<...>]} {[<opts>]}
+
+#### Description
+
+Extents are listed as `[LSN:sectors]`.
+
+A file saved by the SAVE command starts with a 9 byte header, which holds its type, load address, length and exec address. These are shown for a file that has one. Dragon DOS does not record a file's type anywhere else: its directory has no type or ASCII flag.
+
+    File Information for disk.vdk,HW1.BAS
+      Filename           : HW1.BAS
+      Protected          : No
+      File size          : 41 bytes
+      First entry        : 0
+      Extents            : [324:1]
+      Directory entries  : 1
+      File type          : 1 (BASIC program)
+      Load address       : $2401
+      Data length        : 32 bytes
+      Exec address       : $8B8D
+
+Other files show `File header : None`, and `Unreadable` if the image lacks the file's first sector.
+
+---
+
+<h3 id="kill_dgndos">KILL - Delete one or more files</h3>
+
+#### Syntax and Scope
+
+    kill {[<opts>]} {<file> [<...>]} {[<opts>]}
+
+---
+
+<h3 id="list_dgndos">LIST - Display the contents of a text file</h3>
+
+#### Syntax and Scope
+
+    list {[<opts>]} {<file> [<...>]} {[<opts>]}
+
+#### Options
+
+    -t         perform BASIC token translation
+
+#### Description
+
+Carriage returns are shown as the host's line endings. With -t, a saved BASIC program is listed as Dragon BASIC would. A file that isn't one is an error.
+
+---
+
+<h3 id="rename_dgndos">RENAME - Give a file a new filename</h3>
+
+#### Syntax and Scope
+
+    rename {<file> <newfilename>}
+
+#### Examples
+
+    dgndos rename disk.vdk,OLD.BAS NEW.BAS

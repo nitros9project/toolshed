@@ -12,7 +12,7 @@ SRCS = decb_main.c decbattr.c decbcopy.c decbdir.c decbdskini.c decbfree.c decbf
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)
 
-LIBDEPS = ../libtoolshed/libtoolshed.a ../libcoco/libcoco.a ../libnative/libnative.a \
+LIBDEPS = ../libtoolshed/libtoolshed.a ../libcoco/libcoco.a ../libdragondos/libdragondos.a ../libdiskimage/libdiskimage.a ../libnative/libnative.a \
 	../libcecb/libcecb.a ../librbf/librbf.a ../libdecb/libdecb.a ../libmisc/libmisc.a \
 	../libsys/libsys.a
 

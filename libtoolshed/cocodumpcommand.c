@@ -17,7 +17,7 @@ static char const *const helpMessage[] = {
 	"     -t    don't display header\n",
 	"     -h    don't display header (DEPRECATED)\n",
 	"     -l    don't display line label/count\n",
-	"     -z    decode DECB binary\n",
+	"     -z    decode DECB or Dragon DOS binary\n",
 	NULL
 };
 
@@ -57,17 +57,55 @@ static error_code dump_data(coco_path_id path, coco_dump *dump,
 	return 0;
 }
 
+/* A Dragon DOS file is one block, after a 9 byte header.  Its first 5 bytes
+   have been read already, as header. */
+static error_code dump_dragon(coco_path_id path, const coco_dump_options *options,
+			      unsigned char *header)
+{
+	unsigned char rest[256];
+	u_int count, address, length, exec;
+	size_t extra = 0;
+	coco_dump dump;
+	error_code ec = read_bytes(path, header + 5, 4, &count);
+	if (ec && ec != EOS_EOF) return ec;
+	if (count != 4) return EOS_EOF;
+	if (header[8] != 0xaa)
+	{
+		fprintf(stderr, "Expected $AA at the end of a Dragon DOS file header\n");
+		return 1;
+	}
+	address = (header[2] << 8) | header[3];
+	length = (header[4] << 8) | header[5];
+	exec = (header[6] << 8) | header[7];
+	coco_dump_begin(&dump, stdout, options, address);
+	ec = dump_data(path, &dump, length, 1);
+	coco_dump_end(&dump);
+	if (ec) return ec;
+	printf("\nExecution address: $%04X\n", exec);
+	do
+	{
+		ec = read_bytes(path, rest, sizeof(rest), &count);
+		if (ec && ec != EOS_EOF) return ec;
+		extra += count;
+	} while (!ec && count);
+	if (extra) printf("%zu bytes extra at end of file.\n", extra);
+	return 0;
+}
+
 static error_code dump_decb(coco_path_id path, const coco_dump_options *options)
 {
-	unsigned char header[5];
+	unsigned char header[9];
+	int first = 1;
 	for (;;)
 	{
 		u_int count, length, address;
-		error_code ec = read_bytes(path, header, sizeof(header), &count);
+		error_code ec = read_bytes(path, header, 5, &count);
 		coco_dump dump;
 		if (ec && ec != EOS_EOF) return ec;
 		if (count == 0) return 0;
-		if (count != sizeof(header)) return EOS_EOF;
+		if (count != 5) return EOS_EOF;
+		if (first && header[0] == 0x55) return dump_dragon(path, options, header);
+		first = 0;
 		length = (header[1] << 8) | header[2];
 		address = (header[3] << 8) | header[4];
 		if (header[0] == 0xff)
@@ -76,7 +114,7 @@ static error_code dump_decb(coco_path_id path, const coco_dump_options *options)
 			printf("\nExecution address: $%04X\n", address);
 			do
 			{
-				ec = read_bytes(path, header, sizeof(header), &count);
+				ec = read_bytes(path, header, 5, &count);
 				if (ec && ec != EOS_EOF) return ec;
 				extra += count;
 			} while (!ec && count);

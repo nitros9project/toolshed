@@ -33,16 +33,6 @@ const char *functions[128] =
 	NULL, NULL, NULL, NULL, NULL, NULL, NULL
 };
 
-/* Dragon Function tokens */
-const char *d_functions[128] =
-	{ "SGN", "INT", "ABS", "POS", "RND", "SQR", "LOG",
-	"EXP", "SIN", "COS", "TAN", "ATN", "PEEK", "LEN",
-	"STR$", "VAL", "ASC", "CHR$", "EOF", "JOYSTK",
-	"FIX", "HEX$", "LEFT$", "RIGHT$", "MID$", "POINT", "INKEY$", "MEM",
-	"VARPTR", "INSTR", "TIMER", "PPOINT", "STRING$", "USR", "LOF",
-	"FREE", "ERL", "ERR", "HIMEM", "LOC", "FRE$", NULL
-};
-
 /* CoCo command tokens */
 const char *commands[128] = { "FOR", "GO", "REM", "'", "ELSE", "IF",
 	"DATA", "PRINT", "ON", "INPUT", "END", "NEXT",
@@ -65,24 +55,6 @@ const char *commands[128] = { "FOR", "GO", "REM", "'", "ELSE", "IF",
 	"HBUFF", "HPRINT", "ERR", "BRK", "LOCATE", "HSTAT",
 	"HSET", "HRESET", "HDRAW", "CMP", "RGB", "ATTR",
 	NULL, NULL, NULL, NULL, NULL, NULL, NULL
-};
-
-/* Dragon command tokens */
-const char *d_commands[128] =
-	{ "FOR", "GO", "REM", "'", "ELSE", "IF", "DATA", "PRINT",
-	"ON", "INPUT", "END", "NEXT", "DIM", "READ", "LET", "RUN",
-	"RESTORE", "RETURN", "STOP", "POKE", "CONT", "LIST", "CLEAR",
-	"NEW", "DEF", "CLOAD", "CSAVE", "OPEN", "CLOSE", "LLIST",
-	"SET", "RESET", "CLS", "MOTOR", "SOUND", "AUDIO", "EXEC",
-	"SKIPF", "DEL", "EDIT", "TRON", "TROFF", "LINE", "PCLS", "PSET",
-	"PRESET", "SCREEN", "PCLEAR", "COLOR", "CIRCLE", "PAINT",
-	"GET", "PUT", "DRAW", "PCOPY", "PMODE", "PLAY", "DLOAD", "RENUM",
-	"TAB(", "TO", "SUB", "FN", "THEN", "NOT", "STEP", "OFF", "+",
-	"-", "*", "/", "^", "AND", "OR", ">", "=", "<", "USING", "AUTO",
-	"BACKUP", "BEEP", "BOOT", "CHAIN", "COPY", "CREATE", "DIR",
-	"DRIVE", "DSKINIT", "FREAD", "FWRITE", "ERROR", "KILL", "LOAD",
-	"MERGE", "PROTECT", "WAIT", "RENAME", "SAVE", "SREAD", "SWRITE",
-	"VERIFY", "FROM", "FLREAD", "SWAP", NULL
 };
 
 //size_t malloc_size(void *ptr);

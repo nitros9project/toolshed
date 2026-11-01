@@ -23,8 +23,9 @@ extern "C" {
 #include "os9path.h"
 #include "decbpath.h"
 #include "cecbpath.h"
+#include "dragondospath.h"
 
-typedef enum { NATIVE, OS9, DECB, CECB } _path_type;
+typedef enum { NATIVE, OS9, DECB, CECB, DRAGONDOS } _path_type;
 
 
 /* ERROR CODES */
@@ -78,6 +79,7 @@ typedef struct _coco_path_id
 		struct _os9_path_id		*os9;
 		struct _decb_path_id	*decb;
 		struct _cecb_path_id	*cecb;
+		struct _dragondos_path_id	*dragondos;
 	} path;
 } *coco_path_id;
 
@@ -96,6 +98,7 @@ typedef struct coco_dir_entry
 		os9_dir_entry			os9;
 		decb_dir_entry			decb;
 		cecb_dir_entry			cecb;
+		dragondos_dir_entry		dragondos;
 	} dentry;
 } coco_dir_entry;
 

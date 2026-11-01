@@ -132,6 +132,29 @@ static int coco_statfs(const char *path, struct statvfs *stbuf)
 		}
 		break;
 
+	case DRAGONDOS:
+		{
+			coco_path_id p;
+
+			if (_coco_open(&p, buff, FAM_READ) == 0)
+			{
+				if (_dragondos_gs_free(p->path.dragondos, &free_sectors) == 0)
+				{
+					stbuf->f_bsize = 256;	/* file system block size */
+					stbuf->f_frsize = stbuf->f_bsize;	/* fragment size */
+					stbuf->f_blocks = p->path.dragondos->total_sectors;	/* size of fs in f_frsize units */
+					stbuf->f_bfree = free_sectors;	/* # free blocks */
+					stbuf->f_bavail = free_sectors;	/* # free blocks for unprivileged users */
+					stbuf->f_files = DRAGONDOS_MAX_DIR_ENTRIES;	/* # inodes */
+					stbuf->f_fsid = 6809;	/* file system ID */
+					stbuf->f_flag = 0;	/* mount flags */
+					stbuf->f_namemax = 11;	/* maximum filename length */
+				}
+				_coco_close(p);
+			}
+		}
+		break;
+
 	default:
 		break;
 	}
@@ -177,8 +200,8 @@ static int coco_fgetattr(const char *path, struct stat *stbuf,
 
 		coco_file_stat fdbuf;
 
-		/* Disk BASIC check -- strip off S_IFDIR from mode */
-		if (p->type == DECB)
+		/* Disk BASIC and Dragon DOS check -- strip off S_IFDIR from mode */
+		if (p->type == DECB || p->type == DRAGONDOS)
 		{
 			stbuf->st_mode &= ~S_IFDIR;
 			stbuf->st_mode = S_IFREG;
@@ -650,6 +673,17 @@ static int coco_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 						    e.dentry.decb.
 						    file_extension, cstring);
 				filler(buf, (char *) cstring, NULL, 0);
+			}
+			break;
+
+		case DRAGONDOS:
+			{
+				u_char cstring[24];
+
+				if (_coco_ncpy_name(&e, cstring, sizeof(cstring)) == 0)
+				{
+					filler(buf, (char *) cstring, NULL, 0);
+				}
 			}
 			break;
 

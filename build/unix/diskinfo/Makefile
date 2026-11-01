@@ -9,7 +9,7 @@ SRCS = diskinfo.c
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)
 
-LIBDEPS = ../libdiskimage/libdiskimage.a ../libtoolshed/libtoolshed.a ../libcoco/libcoco.a \
+LIBDEPS = ../libtoolshed/libtoolshed.a ../libcoco/libcoco.a ../libdragondos/libdragondos.a ../libdiskimage/libdiskimage.a \
 	../libnative/libnative.a ../libcecb/libcecb.a ../librbf/librbf.a ../libdecb/libdecb.a \
 	../libmisc/libmisc.a ../libsys/libsys.a
 

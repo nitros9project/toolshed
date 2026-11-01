@@ -12,6 +12,17 @@
 #include "cocopath.h"
 
 
+/* Dragon DOS has no permissions, but protecting a file makes it read only. */
+static error_code dragondos_set_attributes(dragondos_path_id path, int attributes)
+{
+	dragondos_file_stat stat;
+
+	stat.protected_file = !(attributes & FAP_WRITE);
+	stat.file_size = 0;
+	return _dragondos_ss_fd(path, &stat);
+}
+
+
 error_code _coco_ss_attr(coco_path_id path, int perms)
 {
 	error_code ec = 0;
@@ -31,6 +42,10 @@ error_code _coco_ss_attr(coco_path_id path, int perms)
 
 	case DECB:
 //                      ec = _decb_ss_attr(path->path.decb, perms);
+		break;
+
+	case DRAGONDOS:
+		ec = dragondos_set_attributes(path->path.dragondos, perms);
 		break;
 
 	case CECB:
@@ -177,6 +192,10 @@ error_code _coco_ss_fd(coco_path_id path, coco_file_stat * statbuf)
 		ec = _decb_ss_fd(path->path.decb, &decb_stat);
 		break;
 
+	case DRAGONDOS:
+		ec = dragondos_set_attributes(path->path.dragondos, statbuf->attributes);
+		break;
+
 	case CECB:
 		fprintf(stderr,
 			"_coco_ss_fd not implemented in libcecb yet.\n");
@@ -209,6 +228,10 @@ error_code _coco_ss_size(coco_path_id path, int size)
 
 	case DECB:
 		ec = _decb_ss_size(path->path.decb, size);
+		break;
+
+	case DRAGONDOS:
+		ec = _dragondos_ss_size(path->path.dragondos, size);
 		break;
 
 	case CECB:

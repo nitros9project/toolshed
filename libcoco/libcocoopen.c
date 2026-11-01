@@ -61,6 +61,10 @@ error_code _coco_create(coco_path_id * path, char *pathlist, int mode,
 				  fstat->file_type, fstat->data_type);
 		break;
 
+	case DRAGONDOS:
+		ec = _dragondos_create(&((*path)->path.dragondos), pathlist, mode);
+		break;
+
 	case CECB:
 		ec = _cecb_create(&((*path)->path.cecb), pathlist, mode,
 				  fstat->file_type, fstat->data_type,
@@ -134,6 +138,10 @@ error_code _coco_open(coco_path_id * path, char *pathlist, int mode)
 		ec = _decb_open(&((*path)->path.decb), pathlist, mode);
 		break;
 
+	case DRAGONDOS:
+		ec = _dragondos_open(&((*path)->path.dragondos), pathlist, mode);
+		break;
+
 	case CECB:
 		ec = _cecb_open(&((*path)->path.cecb), pathlist, mode);
 		break;
@@ -174,6 +182,10 @@ error_code _coco_close(coco_path_id path)
 		ec = _decb_close(path->path.decb);
 		break;
 
+	case DRAGONDOS:
+		ec = _dragondos_close(path->path.dragondos);
+		break;
+
 	case CECB:
 		ec = _cecb_close(path->path.cecb);
 	}
@@ -185,9 +197,25 @@ error_code _coco_close(coco_path_id path)
 
 
 /*
+ * not_os9_type()
+ *
+ * Disk BASIC disks have nothing to identify them, so they are what remains.
+ */
+static _path_type not_os9_type(const char *image)
+{
+	int is_dragondos = 0;
+
+	_dragondos_identify(image, &is_dragondos);
+
+	return is_dragondos ? DRAGONDOS : DECB;
+}
+
+
+/*
  * _coco_identify_image()
  *
- * Determines if the passed <image,path> pathlist is native, OS-9, Disk BASIC or Cassette BASIC.
+ * Determines if the passed <image,path> pathlist is native, OS-9, Disk BASIC, Cassette BASIC
+ * or Dragon DOS.
  */
 error_code _coco_identify_image(char *pathlist, _path_type * type)
 {
@@ -267,7 +295,7 @@ error_code _coco_identify_image(char *pathlist, _path_type * type)
 		else
 		{
 			Lsn0_sect os9_sector = (Lsn0_sect) sector_buffer;
-			int dir_sector_offset;
+			long long dir_sector_offset;
 			int bps = 256;
 			int is_osk = (memcmp(os9_sector->dd_sync, "Cruz", 4) == 0);
 			int spt = int2(os9_sector->dd_spt);
@@ -300,13 +328,13 @@ error_code _coco_identify_image(char *pathlist, _path_type * type)
 					dir_lsn += spt - t0s;
 				}
 
-				dir_sector_offset = dir_lsn * bps;
+				dir_sector_offset = (long long) dir_lsn * bps;
 
-				fseek(fp, dir_sector_offset, SEEK_SET);
+				fseeko(fp, (off_t) dir_sector_offset, SEEK_SET);
 
 				if (fread(sector_buffer, 1, 256, fp) < 256)
 				{
-					*type = DECB;
+					*type = not_os9_type(tmppathlist);
 				}
 				else
 				{
@@ -320,9 +348,9 @@ error_code _coco_identify_image(char *pathlist, _path_type * type)
 					}
 					else
 					{
-						/* 1. This is probably a DECB disk image. */
+						/* 1. This is probably a DECB or Dragon DOS disk image. */
 
-						*type = DECB;
+						*type = not_os9_type(tmppathlist);
 					}
 				}
 			}
