@@ -12,6 +12,9 @@
 
 
 #define MAX_BPS 			256
+/* How far apart Disk BASIC's sectors are on a new DMK or SDF track. */
+#define DSKINI_INTERLEAVE	5
+
 #define MAX_DISKNAME_LEN	9	// the maximum number of characters an HDB-DOS disk name can be
 
 /* Where the sectors of a new disk go: an image's sectors, or a native file. */
@@ -43,6 +46,13 @@ static error_code put_sector(dskini_output *out, const char *sector, int bps)
 error_code _decb_dskini(char *vdisk, int tracks, char *diskName,
 			int hdbdrives, int bps, int skitzo)
 {
+	return _decb_dskini_format(vdisk, DISKIMAGE_UNKNOWN, tracks, diskName, hdbdrives, bps, skitzo);
+}
+
+
+error_code _decb_dskini_format(char *vdisk, diskimage_format image_format, int tracks, char *diskName,
+			       int hdbdrives, int bps, int skitzo)
+{
 	error_code ec = 0;
 	dskini_output out;
 	diskimage_format format = DISKIMAGE_UNKNOWN;
@@ -56,7 +66,45 @@ error_code _decb_dskini(char *vdisk, int tracks, char *diskName,
 
 	memset(&out, 0, sizeof(out));
 
-	/* 1. Open a path to the virtual disk.  Only a raw image holds many drives. */
+	/* Only a raw image holds many drives. */
+
+	if (hdbdrives > 1 && image_format != DISKIMAGE_UNKNOWN && image_format != DISKIMAGE_RAW)
+	{
+		return EOS_BPNAM;
+	}
+
+	/* 1. Make a new disk in the format asked for, or check it is the one that's there. */
+
+	if (image_format != DISKIMAGE_UNKNOWN)
+	{
+		ec = _diskimage_identify(vdisk, &format);
+
+		if (ec == EOS_PNNF)
+		{
+			if (image_format != DISKIMAGE_RAW)
+			{
+				ec = _diskimage_create(vdisk, image_format, 1, tracks, bps, 18, 0, DSKINI_INTERLEAVE, 0xFF);
+
+				if (ec != 0)
+				{
+					return (ec);
+				}
+			}
+		}
+		else if (ec != 0)
+		{
+			return (ec);
+		}
+		else if (format != image_format && !(image_format == DISKIMAGE_JVC && format == DISKIMAGE_RAW))
+		{
+			return EOS_FAE;
+		}
+
+		ec = 0;
+		format = DISKIMAGE_UNKNOWN;
+	}
+
+	/* 2. Open a path to the virtual disk. */
 
 	if (_diskimage_identify(vdisk, &format) == 0 && format != DISKIMAGE_RAW && format != DISKIMAGE_UNKNOWN)
 	{

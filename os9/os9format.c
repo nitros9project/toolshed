@@ -21,6 +21,8 @@ static char const *const helpMessage[] = {
 	"     -bsX = bytes per sector (default = 256)\n",
 	"     -cX  = cluster size\n",
 	"     -e   = format entire disk (make full sized image)\n",
+	"     -fX  = image format: raw, jvc, vdk, dmk or sdf\n",
+	"            (default from the disk's extension, otherwise raw)\n",
 	"     -k   = make OS-9/68K LSN0\n",
 	"     -nX  = disk name\n",
 	"     -q   = quiet; do not report format summary\n",
@@ -67,6 +69,7 @@ int os9format(int argc, char **argv)
 	int formatEntire = 0;	/* format entire disk image */
 	int isDragon = 0;	/* format disk as Dragon, with reserved boot sectors at begining */
 	int isHDD = 0;		/* Is this image for a hard drive */
+	diskimage_format format = DISKIMAGE_UNKNOWN;
 
 	/* if no arguments, show help and return */
 	if (argv[1] == NULL)
@@ -109,6 +112,19 @@ int os9format(int argc, char **argv)
 
 				case 'e':
 					formatEntire = 1;
+					break;
+
+				case 'f':	/* image format */
+					format = _diskimage_format_named(p + 1);
+					if (format == DISKIMAGE_UNKNOWN)
+					{
+						fprintf(stderr,
+							"%s: unknown format '%s'\n",
+							argv[0], p + 1);
+						return (1);
+					}
+					while (*(p + 1) != '\0')
+						p++;
 					break;
 
 				case 'k':
@@ -297,15 +313,36 @@ int os9format(int argc, char **argv)
 		else
 		{
 			unsigned int totalSectors, totalBytes;
+			diskimage_format disk_format = format;
+
+			if (disk_format == DISKIMAGE_UNKNOWN)
+			{
+				disk_format = _diskimage_format_of_extension(argv[i]);
+			}
+			if (disk_format == DISKIMAGE_UNKNOWN)
+			{
+				disk_format = DISKIMAGE_RAW;
+			}
 
 			ec =
-				_os9_format(argv[i], os968k, tracks,
-					    sectorsPerTrack, sectorsTrack0,
-					    heads, bytesPerSector, &clusterSize,
-					    diskName, sectorAllocationSize,
-					    tpi, density, formatEntire,
-					    isDragon, isHDD, interleave,
-					    &totalSectors, &totalBytes);
+				_os9_format_image(argv[i], disk_format, os968k, tracks,
+						  sectorsPerTrack, sectorsTrack0,
+						  heads, bytesPerSector, &clusterSize,
+						  diskName, sectorAllocationSize,
+						  tpi, density, formatEntire,
+						  isDragon, isHDD, interleave,
+						  &totalSectors, &totalBytes);
+
+			if (ec == EOS_FAE)
+			{
+				fprintf(stderr, "%s: '%s' exists, and only a raw image replaces one\n",
+					argv[0], argv[i]);
+			}
+			else if (ec == EOS_IA)
+			{
+				fprintf(stderr, "%s: '%s' can't have this layout in this format\n",
+					argv[0], argv[i]);
+			}
 
 			if (ec == 0)
 			{

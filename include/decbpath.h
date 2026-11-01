@@ -103,6 +103,10 @@ typedef struct
 /* Disk BASIC Prototypes */
 
 error_code _decb_dskini(char *vdisk, int tracks, char *diskName, int hdbdrives, int bps, int skitzo);
+/* As _decb_dskini, making a new disk in this format.  DISKIMAGE_UNKNOWN goes by
+   what an existing disk is, and otherwise makes a raw image.  An existing disk in
+   another format is left alone, and the result is EOS_FAE. */
+error_code _decb_dskini_format(char *vdisk, diskimage_format image_format, int tracks, char *diskName, int hdbdrives, int bps, int skitzo);
 error_code _decb_open(decb_path_id *, char *, int);
 error_code _decb_close(decb_path_id);
 error_code _decb_create(decb_path_id *path, char *pathlist, int mode, int file_type, int data_type);

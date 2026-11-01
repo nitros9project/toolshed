@@ -181,6 +181,9 @@ error_code _os9_delete_directory(char *pathlist);
 error_code _os9_rename( char *pathlist, char *new_name );
 error_code _os9_rename_ex(char *pathlist, char *new_name, os9_dir_entry *dentry);
 error_code _os9_close(os9_path_id);
+/* As _os9_format, making the disk in this format.  Anything but raw makes a new
+   image of the whole disk, and doesn't replace a file that exists. */
+error_code _os9_format_image(char *pathname, diskimage_format format, int os968k, int tracks, int sectorsPerTrack, int sectorsTrack0, int heads, int sectorSize, int *clusterSize, char *diskName, int sectorAllocationSize, int tpi, int density, int formatEntire, int isDragon, int isHDD, int interleave, unsigned int *totalSectors, unsigned int *totalBytes);
 error_code _os9_format(char *pathname, int os968k, int tracks, int sectorsPerTrack, int sectorsTrack0, int heads, int sectorSize, int *clusterSize, char *diskName, int sectorAllocationSize, int tpi, int density, int formatEntire, int isDragon, int isHDD, int interleave, unsigned int *totalSectors, unsigned int *totalBytes);
 
 /* gs.c */

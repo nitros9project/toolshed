@@ -563,6 +563,7 @@ This command is intended to work on the host file system only.
 <tr><td>-bsX</td><td>bytes per sector (default = 256)</td></tr>
 <tr><td>-cX</td><td>cluster size</td></tr>
 <tr><td>-e</td><td>format entire disk (make full sized image)</td></tr>
+<tr><td>-fX</td><td>image format: raw, jvc, vdk, dmk or sdf (default from the disk's extension, otherwise raw)</td></tr>
 <tr><td>-k</td><td>make OS-9/68K LSN0</td></tr>
 <tr><td>-nX</td><td>disk name</td></tr>
 <tr><td>-q</td><td>quiet; do not report format summary</td></tr>
@@ -589,6 +590,8 @@ This command is intended to work on the host file system only.
 </table>
 
 #### Description
+
+Without -f, the format comes from the disk's extension, and otherwise it is raw. A raw image replaces a file that exists, and any other format does not. Those formats always hold the whole disk, with or without -e, and can't be made with every layout: see the limits of each format in diskimage.h.
 
 The format command creates a file on the host file system which itself is an empty RBF disk image. This image ca then be used to hold files and directories.
 
@@ -1053,6 +1056,7 @@ This command is intended to work on the host file system only.
 <tr><td>-3</td><td>35 track disk (default)</td></tr>
 <tr><td>-4</td><td>40 track disk</td></tr>
 <tr><td>-8</td><td>80 track disk</td></tr>
+<tr><td>-f<name></td><td>image format: raw, jvc, vdk, dmk or sdf (default from the disk's extension, otherwise raw)</td></tr>
 <tr><td>-h<num></td><td>create <num> HDB-DOS drives</td></tr>
 <tr><td>-n<name></td><td>HDB-DOS disk name</td></tr>
 <tr><td>-s</td><td>create a "skitzo" disk</td></tr>
@@ -1072,6 +1076,11 @@ To create an empty disk image that will fit neatly onto a 35 track single-sided 
     decb dskini ss80.dsk -8
     For a disk image containing 124 HDB-DOS 35 track single-sided virtual drives:
     decb dskini hdbdrives.dsk -h124
+    For a DMK image, by its extension or by asking for it:
+    decb dskini ss35.dmk
+    decb dskini -fdmk ss35.img
+
+Without -f, the format comes from the disk's extension, and otherwise it is raw. Only a raw image can hold more than one HDB-DOS drive. An existing disk in another format than the one asked for is left alone.
 
 ---
 
@@ -1177,7 +1186,7 @@ fstat display detailed information about a file.
 </table>
 #### Description
 
-This command converts an HDB-DOS disk image into a 512-byte sector compatible one.
+This command converts an HDB-DOS disk image into a 512-byte sector compatible one. The source must be a raw disk image, and an existing target that looks like a disk image is not replaced.
 
 ---
 

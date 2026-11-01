@@ -612,6 +612,103 @@ void test_os9_command_dsave_executable()
 	ASSERT_EQUALS(0, status);
 }
 
+/* Check a format makes the format asked for, and a disk that works. */
+static void check_format_format(const char *arguments, const char *pathname, diskimage_format expected)
+{
+	static u_char text[3000], back[3000];
+	char command[256];
+	char pathlist[128];
+	diskimage_format format = DISKIMAGE_UNKNOWN;
+	os9_path_id p;
+	u_int size = sizeof(text);
+	u_int filesystems;
+	error_code ec;
+	int status, i;
+
+	for (i = 0; i < (int) sizeof(text); i++)
+	{
+		text[i] = (u_char) (i * 7);
+	}
+
+	remove(pathname);
+	snprintf(command, sizeof(command), "../os9/os9 format -q %s %s > /dev/null 2>&1", arguments, pathname);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+
+	ec = _diskimage_identify(pathname, &format);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(expected, format);
+
+	ec = _coco_detect_filesystems(pathname, &filesystems);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(COCO_FS_OS9, filesystems);
+
+	snprintf(pathlist, sizeof(pathlist), "%s,FILE", pathname);
+	ec = _os9_create(&p, pathlist, FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_write(p, text, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _os9_open(&p, pathlist, FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(back);
+	ec = _os9_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(text), size);
+	ASSERT_EQUALS(0, memcmp(text, back, size));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	snprintf(command, sizeof(command), "../os9/os9 dcheck %s > /dev/null 2>&1", pathname);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+	remove(pathname);
+}
+
+void test_os9_command_format_formats()
+{
+	int status;
+
+	/* By extension */
+	check_format_format("", "test_fmt.dmk", DISKIMAGE_DMK);
+	check_format_format("", "test_fmt.SDF", DISKIMAGE_SDF);
+	check_format_format("", "test_fmt.vdk", DISKIMAGE_VDK);
+	check_format_format("-e", "test_fmt.dsk", DISKIMAGE_RAW);
+	/* A JVC image of this layout needs no header, and so is raw. */
+	check_format_format("", "test_fmt.jvc", DISKIMAGE_RAW);
+
+	/* The option wins */
+	check_format_format("-fdmk", "test_fmt.dsk", DISKIMAGE_DMK);
+	check_format_format("-e -fraw", "test_fmt.dmk", DISKIMAGE_RAW);
+
+	/* Other layouts */
+	check_format_format("-ds", "test_fmt.dmk", DISKIMAGE_DMK);
+	check_format_format("-t40 -ds", "test_fmt.vdk", DISKIMAGE_VDK);
+	check_format_format("-sz10", "test_fmt.dmk", DISKIMAGE_DMK);
+	check_format_format("-ds -sz10", "test_fmt.dmk", DISKIMAGE_DMK);
+	check_format_format("-bs512", "test_fmt.dmk", DISKIMAGE_DMK);
+	check_format_format("-st10 -t80 -ds", "test_fmt.jvc", DISKIMAGE_JVC);
+	check_format_format("-dr", "test_fmt.dmk", DISKIMAGE_DMK);
+
+	/* An existing file is not replaced by these formats */
+	remove("test_fmt.dmk");
+	status = system("../os9/os9 format -q test_fmt.dmk > /dev/null 2>&1");
+	ASSERT_EQUALS(0, status);
+	status = system("../os9/os9 format -q test_fmt.dmk > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+	remove("test_fmt.dmk");
+
+	/* A layout the format can't hold, and an unknown format, are refused */
+	status = system("../os9/os9 format -q -sz10 test_fmt.vdk > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+	status = system("../os9/os9 format -q -sd test_fmt.dmk > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+	status = system("../os9/os9 format -q -fxyz test_fmt.dmk > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -627,5 +724,6 @@ int main()
 	RUN(test_os9_command_copy_refuses_disk_images);
 	RUN(test_os9_command_dsave_refuses_disk_images);
 	RUN(test_os9_command_dsave_executable);
+	RUN(test_os9_command_format_formats);
 	return TEST_REPORT();
 }

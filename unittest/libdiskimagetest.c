@@ -2409,6 +2409,17 @@ static void test_create_rejects(void)
 	ASSERT_EQUALS(EOS_PNNF, _diskimage_identify(TEST_IMAGE, (diskimage_format[]){DISKIMAGE_UNKNOWN}));
 }
 
+static void test_format_names(void)
+{
+	ASSERT_EQUALS(DISKIMAGE_RAW, _diskimage_format_named("raw"));
+	ASSERT_EQUALS(DISKIMAGE_DMK, _diskimage_format_named("DMK"));
+	ASSERT_EQUALS(DISKIMAGE_UNKNOWN, _diskimage_format_named("dsk"));
+	ASSERT_EQUALS(DISKIMAGE_SDF, _diskimage_format_of_extension("a/b.sdf"));
+	ASSERT_EQUALS(DISKIMAGE_VDK, _diskimage_format_of_extension("x.y.VDK"));
+	ASSERT_EQUALS(DISKIMAGE_UNKNOWN, _diskimage_format_of_extension("x.dsk"));
+	ASSERT_EQUALS(DISKIMAGE_UNKNOWN, _diskimage_format_of_extension("x"));
+}
+
 int main(void)
 {
 	RUN(test_identify_missing_file);
@@ -2489,5 +2500,6 @@ int main(void)
 	RUN(test_set_write_protect);
 	RUN(test_create_rejects);
 
+	RUN(test_format_names);
 	return TEST_REPORT();
 }

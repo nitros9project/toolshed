@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 
 #include "libdiskimageint.h"
@@ -73,6 +74,41 @@ static diskimage_format detect_format(const u_char *header, long long file_size,
 	}
 
 	return DISKIMAGE_UNKNOWN;
+}
+
+
+diskimage_format _diskimage_format_named(const char *name)
+{
+	static const struct
+	{
+		const char *name;
+		diskimage_format format;
+	} names[] = {
+		{"raw", DISKIMAGE_RAW},
+		{"jvc", DISKIMAGE_JVC},
+		{"vdk", DISKIMAGE_VDK},
+		{"dmk", DISKIMAGE_DMK},
+		{"sdf", DISKIMAGE_SDF}
+	};
+	size_t i;
+
+	for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+	{
+		if (strcasecmp(name, names[i].name) == 0)
+		{
+			return names[i].format;
+		}
+	}
+
+	return DISKIMAGE_UNKNOWN;
+}
+
+
+diskimage_format _diskimage_format_of_extension(const char *pathname)
+{
+	const char *dot = strrchr(pathname, '.');
+
+	return dot == NULL ? DISKIMAGE_UNKNOWN : _diskimage_format_named(dot + 1);
 }
 
 

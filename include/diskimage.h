@@ -105,6 +105,13 @@ typedef struct
 	long long stream_offset;	/* where the sector begins in the stream */
 } diskimage_sector_info;
 
+/* The format with a name: raw, jvc, vdk, dmk or sdf, in either case.  Any other
+   name is DISKIMAGE_UNKNOWN. */
+diskimage_format _diskimage_format_named(const char *name);
+
+/* The format a pathname's extension names, or DISKIMAGE_UNKNOWN if none. */
+diskimage_format _diskimage_format_of_extension(const char *pathname);
+
 /* Report a file's format.  An unrecognized file is not an error: its
    format is DISKIMAGE_UNKNOWN. */
 error_code _diskimage_identify(const char *pathname, diskimage_format *format);
