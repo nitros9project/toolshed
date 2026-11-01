@@ -163,7 +163,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ libwxgtk3.2-dev
+          sudo apt-get install -y cmake ninja-build g++ libwxgtk3.2-dev librsvg2-bin
       - name: Configure and build
         run: |
           cmake -S gui/wx -B build/diskshed -G Ninja \
@@ -177,6 +177,10 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
           DESTDIR="$PWD/AppDir" cmake --install build/diskshed
+          # appimagetool requires a raster icon for .DirIcon.
+          rsvg-convert --width 256 --height 256 \
+            --output AppDir/org.nitros9.diskshed.png \
+            AppDir/usr/share/icons/hicolor/scalable/apps/org.nitros9.diskshed.svg
           curl -L --fail --retry 3 \
             -o linuxdeploy.AppImage \
             https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
@@ -185,7 +189,7 @@ jobs:
           cp gui/wx/packaging/org.nitros9.diskshed.png AppDir/
           ./linuxdeploy.AppImage --appdir AppDir \
             --desktop-file AppDir/usr/share/applications/org.nitros9.diskshed.desktop \
-            --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/org.nitros9.diskshed.svg \
+            --icon-file AppDir/org.nitros9.diskshed.png \
             --output appimage
           mkdir -p dist
           mv DiskShed-*.AppImage "dist/DiskShed-${DISKSHED_VERSION}-linux-x86_64.AppImage"
