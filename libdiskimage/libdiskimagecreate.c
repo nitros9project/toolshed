@@ -5,6 +5,10 @@
  * starting at 1 and placed on the track according to the interleave.  The
  * track layout matches the images in unittest/testdata, which were made by
  * MAME, including the $00 that starts each track.
+ *
+ * A track can instead start with an index mark, the layout of a disk
+ * formatted by Dragon DOS as MAME records it.  The sectors are recorded the
+ * same way, only later on the track.
  ********************************************************************/
 #include <errno.h>
 #include <stdlib.h>
@@ -18,6 +22,9 @@
 #define MFM_GAP2		22
 #define MFM_GAP3		24
 #define MFM_GAP3_MIN		10
+#define MFM_GAP4A		54	/* with the $00 that starts the track */
+#define MFM_INDEX_SYNC_ZEROS	9
+#define MFM_INDEX_FIELD		4	/* 3 $C2 and the mark */
 #define MFM_ID_SYNC_ZEROS	8
 #define MFM_DATA_SYNC_ZEROS	12
 #define MFM_ID_FIELD		7	/* mark, 4 ID bytes, CRC */
@@ -49,9 +56,10 @@ error_code di_file_write(FILE *fd, const void *buffer, size_t size)
 
 /* Return the gap to leave after each sector on a track, or -1 if the
    sectors do not fit. */
-static int mfm_gap3(u_int sectors, u_int sector_size)
+static int mfm_gap3(u_int sectors, const di_layout *layout)
 {
-	int gap = (int)((DI_MFM_TRACK_SIZE - MFM_GAP1) / sectors) - (int)(MFM_SECTOR_OVERHEAD + sector_size);
+	int start = MFM_GAP1 + (layout->index_mark ? MFM_GAP4A + MFM_INDEX_SYNC_ZEROS + MFM_INDEX_FIELD : 0);
+	int gap = (int)((DI_MFM_TRACK_SIZE - start) / sectors) - (int)(MFM_SECTOR_OVERHEAD + layout->sector_size);
 
 	if (gap < MFM_GAP3_MIN)
 	{
@@ -94,7 +102,7 @@ static void sector_order(u_int sectors, u_int interleave, u_char *order)
 int di_mfm_track(const di_layout *layout, u_int cylinder, u_int side, u_char *raw, int *id_pos, int *data_pos)
 {
 	u_int sectors = (cylinder == 0 && side == 0) ? layout->sectors_track0 : layout->sectors_per_track;
-	int gap3 = mfm_gap3(sectors, layout->sector_size);
+	int gap3 = mfm_gap3(sectors, layout);
 	u_char field[1 + DI_MAX_SECTOR_SIZE];
 	u_char order[DI_MAX_TRACK_IDS];
 	u_char *p = raw;
@@ -104,6 +112,13 @@ int di_mfm_track(const di_layout *layout, u_int cylinder, u_int side, u_char *ra
 	sector_order(sectors, layout->interleave, order);
 	memset(raw, MFM_GAP_BYTE, DI_MFM_TRACK_SIZE);
 	raw[0] = 0x00;
+	if (layout->index_mark)
+	{
+		p += MFM_GAP4A;
+		p = put_bytes(p, 0x00, MFM_INDEX_SYNC_ZEROS);
+		p = put_bytes(p, 0xC2, 3);
+		*p++ = 0xFC;
+	}
 	p += MFM_GAP1;
 
 	field[0] = 0xFB;
@@ -281,8 +296,8 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 		if (layout->cylinders > max_cylinders ||
 		    (layout->interleave > 1 && layout->interleave >= layout->sectors_per_track) ||
 		    layout->sectors_per_track > max_sectors || layout->sectors_track0 > max_sectors ||
-		    mfm_gap3(layout->sectors_per_track, layout->sector_size) < 0 ||
-		    mfm_gap3(layout->sectors_track0, layout->sector_size) < 0)
+		    mfm_gap3(layout->sectors_per_track, layout) < 0 ||
+		    mfm_gap3(layout->sectors_track0, layout) < 0)
 		{
 			return EOS_IA;
 		}
@@ -297,9 +312,9 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 }
 
 
-error_code _diskimage_create(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
-			     u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
-			     u_int interleave, u_char fill)
+static error_code create_image(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
+			       u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
+			       u_int interleave, u_char fill, int index_mark)
 {
 	di_layout layout;
 	struct stat st;
@@ -319,6 +334,7 @@ error_code _diskimage_create(const char *pathname, diskimage_format format, u_in
 	layout.sectors_track0 = sectors_track0 ? sectors_track0 : sectors_per_track;
 	layout.interleave = interleave ? interleave : 1;
 	layout.fill = fill;
+	layout.index_mark = index_mark;
 	for (layout.size_code = 0; layout.size_code < 4; layout.size_code++)
 	{
 		if (sector_size == 128U << layout.size_code)
@@ -378,4 +394,22 @@ error_code _diskimage_create(const char *pathname, diskimage_format format, u_in
 	}
 
 	return ec;
+}
+
+
+error_code _diskimage_create(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
+			     u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
+			     u_int interleave, u_char fill)
+{
+	return create_image(pathname, format, sides, tracks, sector_size, sectors_per_track,
+			    sectors_track0, interleave, fill, 0);
+}
+
+
+error_code _diskimage_create_index_mark(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
+					u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
+					u_int interleave, u_char fill)
+{
+	return create_image(pathname, format, sides, tracks, sector_size, sectors_per_track,
+			    sectors_track0, interleave, fill, 1);
 }

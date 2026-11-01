@@ -17,6 +17,22 @@
 #define MAME_IMAGE "../../../unittest/testdata/dragondos mame.vdk"
 #define VDK_HEADER 12
 
+/* A blank 40 track disk formatted by Dragon DOS 1.0 running in MAME. */
+#define MAME_DMK "../../../unittest/testdata/dragondos mame.dmk"
+#define DMK_HEADER 16
+#define DMK_TRACK_HEADER 128
+#define DMK_TRACK_LENGTH 6378
+#define SDF_HEADER 512
+#define SDF_TRACK_HEADER 256
+#define SDF_TRACK_RECORD 6656
+#define SDF_TRACK_DATA 6250
+#define BACKUP_TRACK 16
+#define DIRECTORY_TRACK 20
+/* In the track of the MAME image: the end of the first sector's data and CRC,
+   and how far apart sectors are. */
+#define FIRST_SECTOR_END 541
+#define SECTOR_SPACING 338
+
 #define SS_DIRECTORY 360
 #define DS_DIRECTORY 720
 
@@ -443,6 +459,75 @@ static void test_dskinit_bitmaps(void)
 	check_bitmap(DISKIMAGE_RAW, 40, 2, 1440 - 36, DS_DIRECTORY * 256L);
 	check_bitmap(DISKIMAGE_RAW, 80, 2, 2880 - 36, DS_DIRECTORY * 256L);
 	check_bitmap(DISKIMAGE_RAW, 35, 1, 630 - 36, SS_DIRECTORY * 256L);
+}
+
+/* Read the MAME image.  When the disk controller wrote a sector, it left $FF
+   in the gap after it.  Formatted disks have no such byte, so it is removed. */
+static long read_mame_dmk(u_char *buffer)
+{
+	static const int rewritten[] = {BACKUP_TRACK, DIRECTORY_TRACK};
+	long size = read_file(MAME_DMK, buffer, sizeof(image));
+	int t, i;
+
+	for (t = 0; size > 0 && t < 2; t++)
+	{
+		u_char *track = buffer + DMK_HEADER + (long)rewritten[t] * DMK_TRACK_LENGTH;
+
+		for (i = 0; i < DRAGONDOS_TRACK_SECTORS; i++)
+		{
+			if (track[FIRST_SECTOR_END + i * SECTOR_SPACING] != 0xFF)
+			{
+				return -1;
+			}
+			track[FIRST_SECTOR_END + i * SECTOR_SPACING] = 0x4E;
+		}
+	}
+	return size;
+}
+
+static void test_dskinit_dmk_matches_mame(void)
+{
+	long size = read_mame_dmk(other);
+	long i;
+
+	ASSERT("test image must be readable", size > 0);
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
+	ASSERT_EQUALS(size, read_file(TEST_IMAGE, image, sizeof(image)));
+	for (i = 0; i < size; i++)
+	{
+		ASSERT_EQUALS(other[i], image[i]);
+	}
+	remove(TEST_IMAGE);
+}
+
+/* An SDF track holds what a DMK track does, and its table finds the sectors. */
+static void test_dskinit_sdf_matches_mame(void)
+{
+	long size = read_mame_dmk(other);
+	int t, i;
+
+	ASSERT("test image must be readable", size > 0);
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_SDF, 40, 1));
+	ASSERT_EQUALS(SDF_HEADER + 40L * SDF_TRACK_RECORD, read_file(TEST_IMAGE, image, sizeof(image)));
+	for (t = 0; t < 40; t++)
+	{
+		const u_char *record = image + SDF_HEADER + (long)t * SDF_TRACK_RECORD;
+		const u_char *track = other + DMK_HEADER + (long)t * DMK_TRACK_LENGTH;
+
+		ASSERT_MEM_EQUALS(track + DMK_TRACK_HEADER, record + SDF_TRACK_HEADER, SDF_TRACK_DATA);
+		ASSERT_EQUALS(DRAGONDOS_TRACK_SECTORS, record[0]);
+		for (i = 0; i < DRAGONDOS_TRACK_SECTORS; i++)
+		{
+			const u_char *entry = record + 8 + i * 8;
+			int id_position = (track[i * 2] | (track[i * 2 + 1] << 8)) & 0x3FFF;
+
+			ASSERT_EQUALS(id_position - DMK_TRACK_HEADER + SDF_TRACK_HEADER + 1, entry[0] | (entry[1] << 8));
+			ASSERT_EQUALS(track[id_position + 3], entry[6]);
+		}
+	}
+	remove(TEST_IMAGE);
 }
 
 static void test_dskinit_arguments(void)
@@ -1907,6 +1992,8 @@ int main(void)
 	RUN(test_read_mame_disk);
 	RUN(test_reproduce_mame_disk);
 	RUN(test_dskinit_bitmaps);
+	RUN(test_dskinit_dmk_matches_mame);
+	RUN(test_dskinit_sdf_matches_mame);
 	RUN(test_dskinit_arguments);
 	RUN(test_all_formats);
 	RUN(test_double_sided_placement);

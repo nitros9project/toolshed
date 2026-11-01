@@ -1787,6 +1787,8 @@ Entries in sectors that can't be read don't stop the rest being listed, but the 
 
 Without -f, the format comes from the disk's extension, and otherwise it is raw. An existing file is not replaced. Disks are formatted as the DSKINIT command of Dragon DOS does, except that an 80 track single sided disk has all of its sectors free, as SuperDOS makes them. Dragon DOS 1.0 leaves half of such a disk used.
 
+The tracks of a DMK or SDF image are laid out like a disk formatted by Dragon DOS in MAME: each starts with an index mark, and its sectors are numbered 1, 10, 2, 11 and so on around the track.
+
 #### Examples
 
     dgndos dskinit disk.vdk
@@ -1799,6 +1801,17 @@ Without -f, the format comes from the disk's extension, and otherwise it is raw.
 #### Syntax and Scope
 
     dump {[<opts>]} {<file> [<...>]} {[<opts>]}
+
+#### Options
+
+    -a        dump output in assembler format (hex)
+    -b        dump output in assembler format (binary)
+    -c        don't display ASCII character data
+    -e        dump output in C format
+    -t        don't display header
+    -h        don't display header (deprecated, use -t)
+    -l        don't display line label/count
+    -z        decode DECB or Dragon DOS binary
 
 #### Description
 

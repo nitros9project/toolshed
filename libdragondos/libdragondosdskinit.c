@@ -23,8 +23,8 @@ error_code _dragondos_dskinit(const char *pathname, diskimage_format format, u_i
 		return EOS_IA;
 	}
 
-	ec = _diskimage_create(pathname, format, sides, tracks, DRAGONDOS_SECTOR_SIZE, DRAGONDOS_TRACK_SECTORS,
-			       0, DSKINIT_INTERLEAVE, DSKINIT_FILL);
+	ec = _diskimage_create_index_mark(pathname, format, sides, tracks, DRAGONDOS_SECTOR_SIZE, DRAGONDOS_TRACK_SECTORS,
+					  0, DSKINIT_INTERLEAVE, DSKINIT_FILL);
 	if (ec != 0)
 	{
 		return ec;
