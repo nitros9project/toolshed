@@ -235,6 +235,17 @@ error_code _dd_file_size(dragondos_path_id path, u_int *size)
 	return 0;
 }
 
+error_code _dragondos_gs_size_entry(dragondos_path_id path, u_int index, u_int *size)
+{
+	u_int entry_index = path->entry_index;
+	error_code ec;
+
+	path->entry_index = index;
+	ec = _dd_file_size(path, size);
+	path->entry_index = entry_index;
+	return ec;
+}
+
 error_code _dd_sector_lsn(dragondos_path_id path, u_int file_sector, u_int *lsn)
 {
 	return walk_file(path, 1, file_sector, lsn, NULL, NULL);

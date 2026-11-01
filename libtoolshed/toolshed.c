@@ -21,6 +21,9 @@ const char *EOS_PADROM_str = "file is larger than pad size";
 const char *EOS_WT_str = "attempt to read an incompatible media";
 const char *EOS_MF_str = "memory full";
 const char *EOS_CRC_str = "CRC error";
+const char *EOS_SECT_str = "sector not found";
+const char *EOS_WP_str = "disk image is write protected";
+const char *EOS_READ_str = "error reading from file";
 const char *EOS_UNKN_str = "unknown error";
 const char *EOS_IA_str = "illegal filename";
 const char *EOS_IC_str = "illegal change to directory file";
@@ -113,6 +116,18 @@ const char *TSReportError(error_code te)
 
 	case EOS_SN:
 		return EOS_SN_str;
+		break;
+
+	case EOS_SECT:
+		return EOS_SECT_str;
+		break;
+
+	case EOS_WP:
+		return EOS_WP_str;
+		break;
+
+	case EOS_READ:
+		return EOS_READ_str;
 		break;
 
 	default:

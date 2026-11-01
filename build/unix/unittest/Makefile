@@ -24,7 +24,7 @@ TEST_LIBS = \
 
 
 TESTS = librbftest libdecbtest libcecbtest libtoolshedtest libnativetest libmisctest os9commandtest \
-	decbcommandtest cecbcommandtest libsystest libdiskimagetest diskinfocommandtest libdragondostest
+	decbcommandtest cecbcommandtest libsystest libdiskimagetest diskinfocommandtest libdragondostest dgndoscommandtest
 
 $(TESTS): $(TEST_LIBS)
 
@@ -43,6 +43,7 @@ ifeq (,$(NOTEST))
 	./libdiskimagetest
 	./diskinfocommandtest
 	./libdragondostest
+	./dgndoscommandtest
 endif
 
 clean:

@@ -171,6 +171,10 @@ error_code _dragondos_ncpy_name(const dragondos_dir_entry *entry, char *name, si
 
 error_code _dragondos_gs_size(dragondos_path_id path, u_int *size);
 error_code _dragondos_gs_pos(dragondos_path_id path, u_int *pos);
+
+/* Get the size of the file whose first directory entry is index. */
+error_code _dragondos_gs_size_entry(dragondos_path_id path, u_int index, u_int *size);
+
 error_code _dragondos_gs_eof(dragondos_path_id path);
 error_code _dragondos_gs_fd(dragondos_path_id path, dragondos_file_stat *stat);
 error_code _dragondos_gs_free(dragondos_path_id path, u_int *sectors);
