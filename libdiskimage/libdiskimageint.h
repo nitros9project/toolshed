@@ -16,7 +16,6 @@
 
 #define DI_RAW_SECTOR_SIZE	256
 #define DI_RAW_SECTORS_PER_TRACK	18
-#define DI_RAW_FILL		0xFF
 #define DI_RAW_MAX_SECTORS	0x1000000	/* limit of a 3 byte LSN */
 #define DI_MAX_SECTOR_SIZE	1024
 #define DI_MAX_TRACK_IDS	256

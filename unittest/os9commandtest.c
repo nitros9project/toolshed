@@ -13,6 +13,9 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
+/* Enough for the 40 track images of the gap tests */
+#define GAP_IMAGE_MAX	(40 * 18 * 256)
+
 void test_os9_command_format()
 {
 	error_code ec;
@@ -837,6 +840,197 @@ void test_os9_gen_on_images_with_tracks()
 	check_os9_gen("test_gen.sdf");
 }
 
+static long read_file(const char *pathname, u_char *buffer, size_t size)
+{
+	FILE *fp = fopen(pathname, "rb");
+	long got;
+
+	if (fp == NULL)
+	{
+		return -1;
+	}
+	got = (long) fread(buffer, 1, size, fp);
+	fclose(fp);
+
+	return got;
+}
+
+/* How many bytes in a range are not the value. */
+static long count_other(const u_char *buffer, long start, long end, u_char value)
+{
+	long count = 0;
+	long i;
+
+	for (i = start; i < end; i++)
+	{
+		count += buffer[i] != value;
+	}
+
+	return count;
+}
+
+static void format_gap_image(const char *arguments, const char *image, u_char *before, long *before_size)
+{
+	char command[256];
+	int status;
+
+	remove(image);
+	snprintf(command, sizeof(command), "../os9/os9 format -q %s %s > /dev/null 2>&1", arguments, image);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+	*before_size = read_file(image, before, GAP_IMAGE_MAX);
+}
+
+/* The rest of a sector of a new end of file is $FF, but the sectors skipped
+   to get there are zero, and a sector already in a gap keeps its zeros. */
+void test_os9_raw_extend_of_quick_format()
+{
+	static u_char before[GAP_IMAGE_MAX], after[GAP_IMAGE_MAX];
+	const char *image = "test_gap.dsk";
+	u_char data[32];
+	os9_path_id p;
+	long before_size, after_size;
+	error_code ec;
+
+	format_gap_image("-t40", image, before, &before_size);
+	ASSERT_EQUALS(11 * 256, before_size);
+	memset(data, 0x5C, sizeof(data));
+
+	ec = _os9_open(&p, "test_gap.dsk,@", FAM_READ | FAM_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_lsn_put(p, 100, 16, data, sizeof(data));
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_lsn_put(p, 50, 16, data, sizeof(data));
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_lsn_put(p, 101, 16, data, sizeof(data));
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	after_size = read_file(image, after, sizeof(after));
+	ASSERT_EQUALS(102 * 256, after_size);
+	ASSERT_MEM_EQUALS(before, after, before_size);
+
+	/* Past the old end, as far as the sector written back into the gap */
+	ASSERT_EQUALS(0, count_other(after, before_size, 50 * 256 + 16, 0x00));
+	ASSERT_EQUALS(0, count_other(after, 50 * 256 + 16, 50 * 256 + 48, 0x5C));
+	ASSERT_EQUALS(0, count_other(after, 50 * 256 + 48, 100 * 256, 0x00));
+
+	/* The last sectors, past a gap and with none */
+	ASSERT_EQUALS(0, count_other(after, 100 * 256, 100 * 256 + 16, 0xFF));
+	ASSERT_EQUALS(0, count_other(after, 100 * 256 + 16, 100 * 256 + 48, 0x5C));
+	ASSERT_EQUALS(0, count_other(after, 100 * 256 + 48, 101 * 256 + 16, 0xFF));
+	ASSERT_EQUALS(0, count_other(after, 101 * 256 + 16, 101 * 256 + 48, 0x5C));
+	ASSERT_EQUALS(0, count_other(after, 101 * 256 + 48, 102 * 256, 0xFF));
+	remove(image);
+}
+
+/* Neither file fills its last sector, to see what pads each of them. */
+#define GAP_BOOT_SIZE	2100
+#define GAP_TRACK_SIZE	4500
+#define GAP_TRACK_LSN	(34 * 18)
+
+static void write_gen_files(void)
+{
+	static char boot[GAP_BOOT_SIZE], track[GAP_TRACK_SIZE];
+	FILE *fp;
+
+	memset(boot, 0x87, sizeof(boot));
+	memset(track, 0x4F, sizeof(track));
+	fp = fopen("test_gap_boot.bin", "wb");
+	fwrite(boot, 1, sizeof(boot), fp);
+	fclose(fp);
+	fp = fopen("test_gap_track.bin", "wb");
+	fwrite(track, 1, sizeof(track), fp);
+	fclose(fp);
+}
+
+static void run_gen(const char *image)
+{
+	char command[256];
+	int status;
+
+	snprintf(command, sizeof(command),
+		 "../os9/os9 gen -b=test_gap_boot.bin -t=test_gap_track.bin %s > /dev/null 2>&1", image);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+}
+
+/* gen writes the kernel track before OS9Boot, so on a quick format it first
+   extends the image to track 34. */
+void test_os9_gen_on_quick_format()
+{
+	static u_char before[GAP_IMAGE_MAX], after[GAP_IMAGE_MAX];
+	const char *image = "test_gap.dsk";
+	const long track = GAP_TRACK_LSN * 256L;
+	long before_size, after_size, boot, boot_end;
+	int i;
+
+	write_gen_files();
+	format_gap_image("-t40", image, before, &before_size);
+	run_gen(image);
+
+	after_size = read_file(image, after, sizeof(after));
+	ASSERT_EQUALS((GAP_TRACK_LSN + 18) * 256L, after_size);
+
+	/* What was there is kept, but for the sectors gen has to change. */
+	ASSERT_MEM_EQUALS(before + 0x1F, after + 0x1F, 256 - 0x1F);
+	for (i = 0; i < 256; i++)
+	{
+		ASSERT_EQUALS(before[256 + i], after[256 + i] & before[256 + i]);
+	}
+	ASSERT_MEM_EQUALS(before + 3 * 256, after + 3 * 256, 64);
+	ASSERT_EQUALS(0, count_other(after, 4 * 256, before_size, 0x00));
+
+	/* OS9Boot lands in the gap, whose zeros stay after its last byte. */
+	boot = int3(((lsn0_sect *) after)->dd_bt) * 256L;
+	boot_end = boot + GAP_BOOT_SIZE;
+	ASSERT_NEQUALS(0, boot);
+	ASSERT_EQUALS(GAP_BOOT_SIZE, int2(((lsn0_sect *) after)->dd_bsz));
+	ASSERT_EQUALS(0, count_other(after, boot, boot_end, 0x87));
+	ASSERT_EQUALS(0, count_other(after, boot_end, track, 0x00));
+
+	/* The kernel track is the end of the image, and $FF pads its last sector. */
+	ASSERT_EQUALS(0, count_other(after, track, track + GAP_TRACK_SIZE, 0x4F));
+	ASSERT_EQUALS(0, count_other(after, track + GAP_TRACK_SIZE, after_size, 0xFF));
+
+	remove(image);
+	remove("test_gap_boot.bin");
+	remove("test_gap_track.bin");
+}
+
+/* A fully formatted image has no gap: gen changes only what it writes. */
+void test_os9_gen_on_full_format()
+{
+	static u_char before[GAP_IMAGE_MAX], after[GAP_IMAGE_MAX];
+	const char *image = "test_gap.dsk";
+	const long track = GAP_TRACK_LSN * 256L;
+	long before_size, after_size, boot, boot_end;
+
+	write_gen_files();
+	format_gap_image("-e -t40", image, before, &before_size);
+	ASSERT_EQUALS(40 * 18 * 256L, before_size);
+	run_gen(image);
+
+	after_size = read_file(image, after, sizeof(after));
+	ASSERT_EQUALS(before_size, after_size);
+
+	/* Past the root directory, all but OS9Boot, its descriptor before it,
+	   and the kernel track stays as formatted. */
+	boot = int3(((lsn0_sect *) after)->dd_bt) * 256L;
+	boot_end = boot + GAP_BOOT_SIZE;
+	ASSERT_EQUALS(0, count_other(after, boot, boot_end, 0x87));
+	ASSERT_MEM_EQUALS(before + 4 * 256, after + 4 * 256, boot - 256 - 4 * 256);
+	ASSERT_MEM_EQUALS(before + boot_end, after + boot_end, track - boot_end);
+	ASSERT_EQUALS(0, count_other(after, track, track + GAP_TRACK_SIZE, 0x4F));
+	ASSERT_MEM_EQUALS(before + track + GAP_TRACK_SIZE, after + track + GAP_TRACK_SIZE,
+			  after_size - track - GAP_TRACK_SIZE);
+
+	remove(image);
+	remove("test_gap_boot.bin");
+	remove("test_gap_track.bin");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -855,5 +1049,8 @@ int main()
 	RUN(test_os9_command_format_formats);
 	RUN(test_os9_commands_on_images_with_tracks);
 	RUN(test_os9_gen_on_images_with_tracks);
+	RUN(test_os9_raw_extend_of_quick_format);
+	RUN(test_os9_gen_on_quick_format);
+	RUN(test_os9_gen_on_full_format);
 	return TEST_REPORT();
 }

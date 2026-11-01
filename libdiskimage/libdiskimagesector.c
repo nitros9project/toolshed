@@ -68,14 +68,15 @@ error_code di_index_read(diskimage_id disk, long long index, void *buffer)
 }
 
 
-/* Fill any sectors between the end of a raw image and index, including
-   the unused slots of a short track 0. */
+/* Zero any sectors between the end of a raw image and index, including
+   the unused slots of a short track 0.  Seeking past the end of the file
+   left them zero before images went through this library. */
 static error_code raw_extend(diskimage_id disk, long long index)
 {
 	u_char fill[DI_RAW_SECTOR_SIZE];
 	long long target = di_linear_slot(disk, index);
 
-	memset(fill, DI_RAW_FILL, sizeof(fill));
+	memset(fill, 0x00, sizeof(fill));
 	while (disk->raw_slots < target)
 	{
 		error_code ec = di_write_at(disk, disk->raw_slots * DI_RAW_SECTOR_SIZE, fill, sizeof(fill));

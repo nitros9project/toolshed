@@ -73,6 +73,20 @@ static long read_image(void)
 	return size;
 }
 
+/* How many bytes of the image in a range are not the value. */
+static long count_other(long start, long end, u_char value)
+{
+	long count = 0;
+	long i;
+
+	for (i = start; i < end; i++)
+	{
+		count += image[i] != value;
+	}
+
+	return count;
+}
+
 static void put(u_char *track, int *pos, u_char byte, int step, int count)
 {
 	int i;
@@ -444,7 +458,7 @@ static void test_raw_extend_by_sector(void)
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
 	fill_pattern(out, 256, 1);
 
-	/* Track 1 sector 2 is logical sector 19: 3..18 become fill. */
+	/* Track 1 sector 2 is logical sector 19: 2..18 become zero. */
 	ASSERT_CALL(0, _diskimage_write_sector(disk, 1, 0, 2, out, 256));
 	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
 	ASSERT_CALL(0, _diskimage_read_sector(disk, 1, 0, 2, out, &size));
@@ -454,9 +468,33 @@ static void test_raw_extend_by_sector(void)
 	ASSERT_EQUALS(2, g.cylinders);
 	ASSERT_EQUALS(0, g.uniform);
 	ASSERT_EQUALS(20 * 256, read_image());
-	ASSERT_EQUALS(0xFF, image[2 * 256]);
-	ASSERT_EQUALS(0xFF, image[19 * 256 - 1]);
+	ASSERT_EQUALS(0, count_other(0, 256, 1));
+	ASSERT_EQUALS(0, count_other(256, 2 * 256, 2));
+	ASSERT_EQUALS(0, count_other(2 * 256, 19 * 256, 0x00));
 	ASSERT_EQUALS(1, image[19 * 256]);
+	remove(TEST_IMAGE);
+}
+
+/* Only a gap is zeroed: an image with the sector already has nothing to fill. */
+static void test_raw_write_without_gap_adds_no_zeros(void)
+{
+	diskimage_id disk;
+	u_char out[256];
+
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_RAW, 1, 2, 256, 18, 0, 0, 0xFF));
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
+	memset(out, 0x5C, sizeof(out));
+
+	/* One inside the image, and one just past its end. */
+	ASSERT_CALL(0, _diskimage_write_sector(disk, 1, 0, 2, out, 256));
+	ASSERT_CALL(0, _diskimage_write_sector(disk, 2, 0, 1, out, 256));
+	_diskimage_close(disk);
+
+	ASSERT_EQUALS(37 * 256, read_image());
+	ASSERT_EQUALS(0, count_other(0, 19 * 256, 0xFF));
+	ASSERT_EQUALS(0, count_other(19 * 256, 20 * 256, 0x5C));
+	ASSERT_EQUALS(0, count_other(20 * 256, 36 * 256, 0xFF));
+	ASSERT_EQUALS(0, count_other(36 * 256, 37 * 256, 0x5C));
 	remove(TEST_IMAGE);
 }
 
@@ -1433,7 +1471,7 @@ static void test_raw_short_track0_short_file(void)
 	ASSERT_EQUALS(10, g.sectors_track0);
 	ASSERT_EQUALS(1, g.cylinders);
 
-	/* Writing the next sector goes past the unused slots, which are filled. */
+	/* Writing the next sector goes past the unused slots, which are zeroed. */
 	memset(out, 0x5C, sizeof(out));
 	ASSERT_CALL(0, _diskimage_write_sector(disk, 1, 0, 2, out, 256));
 	ASSERT_CALL(EOS_SECT, _diskimage_write_sector(disk, 0, 0, 11, out, 256));
@@ -1444,8 +1482,7 @@ static void test_raw_short_track0_short_file(void)
 
 	ASSERT_EQUALS(20 * 256, read_image());
 	ASSERT_EQUALS(11, image[10 * 256]);
-	ASSERT_EQUALS(0xFF, image[11 * 256]);
-	ASSERT_EQUALS(0xFF, image[19 * 256 - 1]);
+	ASSERT_EQUALS(0, count_other(11 * 256, 19 * 256, 0x00));
 	ASSERT_EQUALS(0x5C, image[19 * 256]);
 	remove(TEST_IMAGE);
 }
@@ -2240,6 +2277,7 @@ int main(void)
 	RUN(test_raw_geometry);
 	RUN(test_raw_read_write_sector);
 	RUN(test_raw_extend_by_sector);
+	RUN(test_raw_write_without_gap_adds_no_zeros);
 
 	RUN(test_jvc_header_geometry);
 	RUN(test_jvc_short_header_uses_defaults);
