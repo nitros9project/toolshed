@@ -72,10 +72,10 @@ static long get_image_byte_size(os9_path_id path)
 {
 	struct stat st;
 
-	if (path->fd == NULL)
+	if (path->imgfile == NULL)
 		return (-1);
 
-	if (fstat(fileno(path->fd), &st) != 0)
+	if (stat(path->imgfile, &st) != 0)
 		return (-1);
 
 	return ((long) st.st_size);
@@ -856,7 +856,7 @@ int os9reveal(int argc, char *argv[])
 	/* Likewise a missing LSN0/bitmap (e.g. _os9_open succeeded on a
 	 * badly damaged image without fully populating these) would
 	 * crash reveal() on the first dereference. */
-	if (path->lsn0 == NULL || path->bitmap == NULL)
+	if (path->lsn0 == NULL || path->bitmap == NULL || path->bitmap_ec != 0)
 	{
 		fprintf(stderr,
 			"%s: '%s' didn't yield a usable LSN0/bitmap --\n"

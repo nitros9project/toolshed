@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <cocotypes.h>
 #include <cococonv.h>
+#include <diskimage.h>
 #ifndef WIN32
 #include <dirent.h>
 #endif
@@ -128,13 +129,18 @@ typedef struct _os9_path_id
 	char		*pathlist;	/* pointer to pathlist */
 	unsigned int	pl_fd_lsn;	/* pathlist's FD LSN */
 	unsigned int	filepos;	/* file position */
-	FILE		*fd;		/* file path pointer */
+	diskimage_id	disk;		/* the image file */
+	int		raw_image;	/* the image file is a raw image */
 	lsn0_sect	*lsn0;		/* copy of LSN0 */
 	u_char		*bitmap;	/* bitmap */
+	u_char		*saved_bitmap;	/* bitmap as read, to tell if it changed */
+	error_code	bitmap_ec;	/* why the bitmap could not be read */
 	unsigned int	spc;		/* sectors per cluster */
 	unsigned int	bps;		/* bytes per sector */
 	unsigned int	spt;		/* sectors per track */
 	unsigned int	t0s;		/* sectors per track on track zero */
+	unsigned int	sides;		/* sides of a disk image with tracks */
+	unsigned int	first_sector;	/* number of a track's first sector */
 	int		cs;		/* cluster size in bytes */
 	int		bitmap_bytes;
 	int		israw;		/* raw flag */
@@ -152,7 +158,9 @@ error_code _os9_read(os9_path_id, void *, u_int *);
 error_code _os9_readdir(os9_path_id, os9_dir_entry *);
 error_code _os9_ncpy_name( os9_dir_entry e, u_char *name, size_t len );
 error_code _os9_seek(os9_path_id, int, int);
-int _os9_lsn_fseek(os9_path_id seek_path, int lsn);
+error_code _os9_identify(const char *pathname, int *found);
+error_code _os9_lsn_get(os9_path_id path, int lsn, u_int offset, void *buffer, u_int size);
+error_code _os9_lsn_put(os9_path_id path, int lsn, u_int offset, const void *buffer, u_int size);
 u_int _os9_lsn_read(os9_path_id path, int lsn, u_int offset, void *buffer, u_int size);
 u_int _os9_lsn_write(os9_path_id path, int lsn, u_int offset, const void *buffer, u_int size);
 error_code _os9_allbit(u_char *bitmap, int firstbit, int numbits);

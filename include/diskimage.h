@@ -161,6 +161,10 @@ error_code _diskimage_open(diskimage_id *disk, const char *pathname, int mode);
 /* Close an image and any of its streams still open. */
 error_code _diskimage_close(diskimage_id disk);
 
+/* Set or clear the write protect flag of a DMK, SDF or VDK image.  Raw and JVC
+   images have no such flag, so for them the result is EOS_IA. */
+error_code _diskimage_set_write_protect(const char *pathname, int write_protect);
+
 error_code _diskimage_query_geometry(diskimage_id disk, diskimage_geometry *geometry);
 
 /* Describe a logical sector, by its position (from zero) in the ordering

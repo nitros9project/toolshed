@@ -14,6 +14,7 @@ extern "C" {
 #include <sys/stat.h>
 #include <cocotypes.h>
 #include <cococonv.h>
+#include <diskimage.h>
 
 #ifndef WIN32
 #include <dirent.h>
@@ -72,12 +73,15 @@ typedef struct _decb_path_id
 	char			*imgfile;		/* pointer to image file */
 	char			*filename;		/* pointer to filename */
 	int				drive;			/* drive number */
+	int				has_drive;		/* pathlist has a drive number or offset */
 	decb_dir_entry  dir_entry;
 	unsigned int	this_directory_entry_index;
 	unsigned int	directory_entry_index;
 	u_char			FAT[256];
+	u_char			saved_FAT[256];	/* FAT as read, to tell if it changed */
+	error_code		fat_ec;		/* why the FAT could not be read */
 	unsigned int	filepos;		/* file position */
-	FILE			*fd;			/* file path pointer */
+	diskimage_id	disk;			/* the image file */
 	int				israw;			/* no file I/O possible, just get/set sector and granule */
 	long int		disk_offset;	/* offset for drive number */
 	long int		hdbdos_offset;	/* offset for HDB-DOS */
@@ -111,8 +115,13 @@ error_code _decb_readdir(decb_path_id path, decb_dir_entry *de);
 error_code _decb_ncpy_name(decb_dir_entry e, u_char *name, size_t len);
 error_code _decb_writedir(decb_path_id path, decb_dir_entry *de);
 error_code _decb_seekdir(decb_path_id path, int entry, int mode);
-error_code _decb_seeksector(decb_path_id path, int track, int sector);
-error_code _decb_seekgranule(decb_path_id path, int granule);
+error_code _decb_open_image(decb_path_id path);
+error_code _decb_close_image(decb_path_id path);
+void _decb_load_fat(decb_path_id path);
+error_code _decb_slot_read(decb_path_id path, long long slot, void *buffer);
+error_code _decb_slot_write(decb_path_id path, long long slot, const void *buffer);
+error_code _decb_raw_read(decb_path_id path, void *buffer, u_int *size);
+error_code _decb_raw_write(decb_path_id path, const void *buffer, u_int *size);
 error_code _decb_rename(char *pathlist, char *newname);
 error_code _decb_rename_ex(char *pathlist, char *new_name, decb_dir_entry *dirent);
 error_code _decb_gs_size(decb_path_id path, u_int *size);

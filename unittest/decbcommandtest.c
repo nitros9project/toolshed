@@ -331,6 +331,47 @@ void test_decb_command_attr_no_comma_spec()
 	remove("no_comma.dsk");
 }
 
+/* A raw path is the whole disk, by either copy routine. */
+void test_decb_command_copy_raw_path()
+{
+	static u_char image[161280], copy[161280];
+	char buffer[4096];
+	FILE *fp;
+	error_code ec;
+	size_t size;
+
+	remove("test_raw.dsk");
+	remove("test_raw.bin");
+
+	ec = system("../decb/decb dskini test_raw.dsk > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+
+	fp = fopen("test_raw.dsk", "rb");
+	size = fread(image, 1, sizeof(image), fp);
+	fclose(fp);
+	ASSERT_EQUALS(sizeof(image), size);
+
+	ec = system("../decb/decb copy test_raw.dsk, test_raw.bin > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+	fp = fopen("test_raw.bin", "rb");
+	size = fread(copy, 1, sizeof(copy), fp);
+	fclose(fp);
+	ASSERT_EQUALS(sizeof(copy), size);
+	ASSERT_EQUALS(0, memcmp(image, copy, sizeof(image)));
+	remove("test_raw.bin");
+
+	ec = TSCopyFile("test_raw.dsk,", "test_raw.bin", 0, 1, 0, 0, buffer, sizeof(buffer));
+	ASSERT_EQUALS(0, ec);
+	fp = fopen("test_raw.bin", "rb");
+	size = fread(copy, 1, sizeof(copy), fp);
+	fclose(fp);
+	ASSERT_EQUALS(sizeof(copy), size);
+	ASSERT_EQUALS(0, memcmp(image, copy, sizeof(image)));
+
+	remove("test_raw.dsk");
+	remove("test_raw.bin");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -341,6 +382,7 @@ int main()
 	RUN(test_decb_command_copy_empty_metadata);
 	RUN(test_decb_command_copy_token_metadata);
 	RUN(test_decb_command_attr_no_comma_spec);
+	RUN(test_decb_command_copy_raw_path);
 	
 	return TEST_REPORT();
 }

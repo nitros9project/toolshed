@@ -23,7 +23,7 @@ error_code _decb_ss_fd(decb_path_id path, decb_file_stat * stat)
 	path->dir_entry.ascii_flag = stat->data_type;
 
 	_decb_seekdir(path, path->this_directory_entry_index, SEEK_SET);
-	_decb_writedir(path, &path->dir_entry);
+	ec = _decb_writedir(path, &path->dir_entry);
 
 
 	return ec;
@@ -80,22 +80,7 @@ error_code _decb_ss_size(decb_path_id path, int size)
 error_code _decb_ss_sector(decb_path_id path, int track, int sector,
 			   char *buffer)
 {
-	error_code ec = 0;
-
-
-	/* 1. Seek to the track and sector. */
-
-	_decb_seeksector(path, track, sector);
-
-
-	/* 2. Write the buffer to the sector. */
-
-	fwrite(buffer, 1, 256, path->fd);
-
-
-	/* 3. Return status. */
-
-	return ec;
+	return _decb_slot_write(path, path->disk_offset / 256 + (long long) track * 18 + (sector - 1), buffer);
 }
 
 
@@ -103,29 +88,24 @@ error_code _decb_ss_sector(decb_path_id path, int track, int sector,
 error_code _decb_ss_granule(decb_path_id path, int granule, char *buffer)
 {
 	error_code ec = 0;
+	long long slot = path->disk_offset / 256 + (long long) granule * 9;
+	int step = path->hdbdos_offset > 0 ? 2 : 1;	/* skip unused 1/2 of sector */
+	int count;
 
 
-	/* 1. Seek to granule. */
+	/* 1. Account for directory (2 granules) */
 
-	_decb_seekgranule(path, granule);
+	if (granule > 33)
+	{
+		slot += 18;
+	}
 
 
 	/* 2. Write buffer to granule. */
 
-	if (path->hdbdos_offset > 0)
+	for (count = 0; count < 9 && ec == 0; count++)
 	{
-		int count;
-
-		for (count = 0; count < 2304; count += 256)
-		{
-			fwrite(&buffer[count], 1, 256, path->fd);
-			/* skip unused 1/2 of sector */
-			fseek(path->fd, 256, SEEK_CUR);
-		}
-	}
-	else
-	{
-		fwrite(buffer, 1, 2304, path->fd);
+		ec = _decb_slot_write(path, slot + (long long) count * step, buffer + count * 256);
 	}
 
 

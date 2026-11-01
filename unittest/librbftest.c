@@ -9,6 +9,296 @@
 #include "tinytest.h"
 #include <toolshed.h>
 
+
+/* Change a sector of a single sided, double density DMK image in a file. */
+#define DMK_HEADER_SIZE 16
+#define DMK_POINTERS 64
+
+static long dmk_find_id(FILE *fp, int cylinder, int sector)
+{
+	u_char header[DMK_HEADER_SIZE];
+	long track;
+	long found = -1;
+	int i;
+
+	fseek(fp, 0, SEEK_SET);
+	fread(header, 1, sizeof(header), fp);
+	track = DMK_HEADER_SIZE + (long) cylinder * (header[2] | (header[3] << 8));
+
+	for (i = 0; i < DMK_POINTERS && found < 0; i++)
+	{
+		u_char pointer[2], id[5];
+		long offset;
+
+		fseek(fp, track + i * 2, SEEK_SET);
+		fread(pointer, 1, sizeof(pointer), fp);
+		offset = (pointer[0] | (pointer[1] << 8)) & 0x3FFF;
+		if (offset == 0)
+		{
+			continue;
+		}
+		fseek(fp, track + offset, SEEK_SET);
+		fread(id, 1, sizeof(id), fp);
+		if (id[0] == 0xFE && id[1] == cylinder && id[3] == sector)
+		{
+			found = track + offset;
+		}
+	}
+
+	return found;
+}
+
+/* A sector whose ID records the wrong track cannot be found. */
+static void dmk_remove_sector(const char *pathname, int cylinder, int sector)
+{
+	FILE *fp = fopen(pathname, "r+b");
+	u_char wrong = 0xEE;
+	long id = dmk_find_id(fp, cylinder, sector);
+
+	ASSERT("the sector to remove exists", id >= 0);
+	fseek(fp, id + 1, SEEK_SET);
+	fwrite(&wrong, 1, 1, fp);
+	fclose(fp);
+}
+
+/* Change a byte of a sector's data, without changing its CRC. */
+static void dmk_damage_sector(const char *pathname, int cylinder, int sector)
+{
+	FILE *fp = fopen(pathname, "r+b");
+	long id = dmk_find_id(fp, cylinder, sector);
+	long position;
+	u_char byte = 0;
+
+	ASSERT("the sector to damage exists", id >= 0);
+	for (position = id + 7; position < id + 80 && byte != 0xFB; position++)
+	{
+		fseek(fp, position, SEEK_SET);
+		fread(&byte, 1, 1, fp);
+	}
+	ASSERT_EQUALS(0xFB, byte);
+	fseek(fp, position, SEEK_SET);
+	fread(&byte, 1, 1, fp);
+	byte ^= 0xFF;
+	fseek(fp, position, SEEK_SET);
+	fwrite(&byte, 1, 1, fp);
+	fclose(fp);
+}
+
+#define OS9_DMK "test_os9.dmk"
+#define OS9_MAME_DMK "../../../unittest/testdata/os9 mame.dmk"
+#define DMK_SPT 18
+
+static void copy_file(const char *from, const char *to)
+{
+	char buffer[4096];
+	size_t got;
+	FILE *in = fopen(from, "rb");
+	FILE *out = fopen(to, "wb");
+
+	ASSERT("the fixture exists", in != NULL);
+	while ((got = fread(buffer, 1, sizeof(buffer), in)) > 0)
+	{
+		fwrite(buffer, 1, got, out);
+	}
+	fclose(in);
+	fclose(out);
+}
+
+static void lsn_address(int lsn, int *cylinder, int *sector)
+{
+	*cylinder = lsn / DMK_SPT;
+	*sector = lsn % DMK_SPT + 1;
+}
+
+/* Write a new file on the image, and report where its first data sector is. */
+static void os9_write_file(const char *pathlist, const u_char *data, u_int size, int *data_lsn)
+{
+	os9_path_id p;
+	fd_stats fd;
+	error_code ec;
+	u_int count = size;
+
+	ec = _os9_create(&p, (char *) pathlist, FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_write(p, (void *) data, &count);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(size, count);
+	ec = _os9_gs_fd(p, sizeof(fd), &fd);
+	ASSERT_EQUALS(0, ec);
+	*data_lsn = int3(fd.fd_seg[0].lsn);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+}
+
+void test_os9_dmk_read_write()
+{
+	u_char data[3000], back[3000];
+	os9_path_id p;
+	error_code ec;
+	u_int size = sizeof(back);
+	diskimage_format format;
+	_path_type type;
+	int data_lsn, i;
+
+	for (i = 0; i < (int) sizeof(data); i++)
+	{
+		data[i] = (u_char) (i * 5);
+	}
+	copy_file(OS9_MAME_DMK, OS9_DMK);
+
+	ec = _coco_identify_image(OS9_DMK ",", &type);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(OS9, type);
+
+	os9_write_file(OS9_DMK ",FILE", data, sizeof(data), &data_lsn);
+
+	ec = _diskimage_identify(OS9_DMK, &format);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(DISKIMAGE_DMK, format);
+
+	ec = _os9_open(&p, OS9_DMK ",FILE", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(data), size);
+	ASSERT_EQUALS(0, memcmp(data, back, sizeof(data)));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _os9_makdir(OS9_DMK ",DIR");
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_delete(OS9_DMK ",FILE");
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_open(&p, OS9_DMK ",FILE", FAM_READ);
+	ASSERT_EQUALS(EOS_PNNF, ec);
+	remove(OS9_DMK);
+}
+
+void test_os9_only_needed_sectors_are_errors()
+{
+	u_char first[1024], second[1024], back[1024];
+	os9_path_id p;
+	error_code ec;
+	u_int size = sizeof(back);
+	int first_lsn, second_lsn, cylinder, sector, i;
+
+	for (i = 0; i < (int) sizeof(first); i++)
+	{
+		first[i] = (u_char) i;
+		second[i] = (u_char) (i * 9);
+	}
+	copy_file(OS9_MAME_DMK, OS9_DMK);
+	os9_write_file(OS9_DMK ",FIRST", first, sizeof(first), &first_lsn);
+	os9_write_file(OS9_DMK ",SECOND", second, sizeof(second), &second_lsn);
+	ASSERT("the second file comes later on the disk", second_lsn > first_lsn);
+
+	/* A sector of one file fails that file, and moves no other sector. */
+	lsn_address(first_lsn, &cylinder, &sector);
+	dmk_remove_sector(OS9_DMK, cylinder, sector);
+
+	ec = _os9_open(&p, OS9_DMK ",SECOND", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(0, memcmp(second, back, sizeof(second)));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _os9_open(&p, OS9_DMK ",FIRST", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(back);
+	ec = _os9_read(p, back, &size);
+	ASSERT_EQUALS(EOS_SECT, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	/* Without the bitmap, files still read, but none can be allocated. */
+	dmk_remove_sector(OS9_DMK, 0, 2);
+
+	ec = _os9_open(&p, OS9_DMK ",SECOND", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(EOS_SECT, p->bitmap_ec);
+	size = sizeof(back);
+	ec = _os9_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _os9_create(&p, OS9_DMK ",NEW", FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(EOS_SECT, ec);
+	ec = _os9_delete(OS9_DMK ",SECOND");
+	ASSERT_EQUALS(EOS_SECT, ec);
+
+	/* Without LSN0 there is nothing to go on. */
+	dmk_remove_sector(OS9_DMK, 0, 1);
+	ec = _os9_open(&p, OS9_DMK ",SECOND", FAM_READ);
+	ASSERT_EQUALS(EOS_SECT, ec);
+	remove(OS9_DMK);
+}
+
+void test_os9_bad_crc_is_read()
+{
+	u_char data[100], back[100];
+	os9_path_id p;
+	error_code ec;
+	u_int size = sizeof(back);
+	int data_lsn, cylinder, sector, i;
+
+	for (i = 0; i < (int) sizeof(data); i++)
+	{
+		data[i] = (u_char) i;
+	}
+	copy_file(OS9_MAME_DMK, OS9_DMK);
+	os9_write_file(OS9_DMK ",FILE", data, sizeof(data), &data_lsn);
+
+	lsn_address(data_lsn, &cylinder, &sector);
+	dmk_damage_sector(OS9_DMK, cylinder, sector);
+
+	ec = _os9_open(&p, OS9_DMK ",FILE", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(data), size);
+	ASSERT_EQUALS((u_char) (data[0] ^ 0xFF), back[0]);
+	ASSERT_EQUALS(0, memcmp(data + 1, back + 1, sizeof(data) - 1));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+	remove(OS9_DMK);
+}
+
+void test_os9_write_protect()
+{
+	u_char data[16] = { 0 }, back[16];
+	os9_path_id p;
+	error_code ec;
+	u_int size = sizeof(back);
+	int data_lsn;
+
+	copy_file(OS9_MAME_DMK, OS9_DMK);
+	os9_write_file(OS9_DMK ",FILE", data, sizeof(data), &data_lsn);
+	ec = _diskimage_set_write_protect(OS9_DMK, 1);
+	ASSERT_EQUALS(0, ec);
+
+	/* Reading is still fine, and a path that could write closes cleanly. */
+	ec = _os9_open(&p, OS9_DMK ",FILE", FAM_READ | FAM_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _os9_create(&p, OS9_DMK ",NEW", FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(EOS_WP, ec);
+	ec = _os9_delete(OS9_DMK ",FILE");
+	ASSERT_EQUALS(EOS_WP, ec);
+
+	ec = _diskimage_set_write_protect(OS9_DMK, 0);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_delete(OS9_DMK ",FILE");
+	ASSERT_EQUALS(0, ec);
+	remove(OS9_DMK);
+}
+
 void test_os9_format()
 {
 	error_code ec;
@@ -648,9 +938,7 @@ void test_os9_allocation_bitmap_boundaries()
 				 * cluster sizes start with an empty segment list. */
 				ASSERT_EQUALS(256, read_lsn(p, p->pl_fd_lsn, &fd));
 				memset(fd.fd_seg, 0, sizeof(fd.fd_seg));
-				_os9_lsn_fseek(p, p->pl_fd_lsn);
-				size = fwrite(&fd, 1, sizeof(fd), p->fd);
-				ASSERT_EQUALS(sizeof(fd), size);
+				ASSERT_EQUALS(0, _os9_lsn_put(p, p->pl_fd_lsn, 0, &fd, sizeof(fd)));
 
 				/* Leave only four free clusters before the boundary and
 				 * sixteen after it. The file descriptor already exists.
@@ -1156,6 +1444,10 @@ int main()
 	remove("test.dsk");
 	remove("test_alloc.dsk");
 
+	RUN(test_os9_dmk_read_write);
+	RUN(test_os9_only_needed_sectors_are_errors);
+	RUN(test_os9_bad_crc_is_read);
+	RUN(test_os9_write_protect);
 	RUN(test_os9_format);
 	RUN(test_os9_create);
 	RUN(test_os9_read);

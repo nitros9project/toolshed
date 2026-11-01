@@ -9,6 +9,320 @@
 #include "tinytest.h"
 #include <toolshed.h>
 
+
+/* Change a sector of a single sided, double density DMK image in a file. */
+#define DMK_HEADER_SIZE 16
+#define DMK_POINTERS 64
+
+static long dmk_find_id(FILE *fp, int cylinder, int sector)
+{
+	u_char header[DMK_HEADER_SIZE];
+	long track;
+	long found = -1;
+	int i;
+
+	fseek(fp, 0, SEEK_SET);
+	fread(header, 1, sizeof(header), fp);
+	track = DMK_HEADER_SIZE + (long) cylinder * (header[2] | (header[3] << 8));
+
+	for (i = 0; i < DMK_POINTERS && found < 0; i++)
+	{
+		u_char pointer[2], id[5];
+		long offset;
+
+		fseek(fp, track + i * 2, SEEK_SET);
+		fread(pointer, 1, sizeof(pointer), fp);
+		offset = (pointer[0] | (pointer[1] << 8)) & 0x3FFF;
+		if (offset == 0)
+		{
+			continue;
+		}
+		fseek(fp, track + offset, SEEK_SET);
+		fread(id, 1, sizeof(id), fp);
+		if (id[0] == 0xFE && id[1] == cylinder && id[3] == sector)
+		{
+			found = track + offset;
+		}
+	}
+
+	return found;
+}
+
+/* A sector whose ID records the wrong track cannot be found. */
+static void dmk_remove_sector(const char *pathname, int cylinder, int sector)
+{
+	FILE *fp = fopen(pathname, "r+b");
+	u_char wrong = 0xEE;
+	long id = dmk_find_id(fp, cylinder, sector);
+
+	ASSERT("the sector to remove exists", id >= 0);
+	fseek(fp, id + 1, SEEK_SET);
+	fwrite(&wrong, 1, 1, fp);
+	fclose(fp);
+}
+
+/* Change a byte of a sector's data, without changing its CRC. */
+static void dmk_damage_sector(const char *pathname, int cylinder, int sector)
+{
+	FILE *fp = fopen(pathname, "r+b");
+	long id = dmk_find_id(fp, cylinder, sector);
+	long position;
+	u_char byte = 0;
+
+	ASSERT("the sector to damage exists", id >= 0);
+	for (position = id + 7; position < id + 80 && byte != 0xFB; position++)
+	{
+		fseek(fp, position, SEEK_SET);
+		fread(&byte, 1, 1, fp);
+	}
+	ASSERT_EQUALS(0xFB, byte);
+	fseek(fp, position, SEEK_SET);
+	fread(&byte, 1, 1, fp);
+	byte ^= 0xFF;
+	fseek(fp, position, SEEK_SET);
+	fwrite(&byte, 1, 1, fp);
+	fclose(fp);
+}
+
+#define DECB_DMK "test_decb.dmk"
+
+/* An initialized DMK image with one file, whose first granule is known. */
+static void decb_dmk_with_file(u_char *data, u_int size)
+{
+	decb_path_id p;
+	error_code ec;
+	u_int count = size;
+
+	remove(DECB_DMK);
+	ec = _diskimage_create(DECB_DMK, DISKIMAGE_DMK, 1, 35, 256, 18, 0, 0, 0xFF);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_dskini(DECB_DMK, 35, NULL, 1, 256, 0);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _decb_create(&p, DECB_DMK ",FILE.TXT", FAM_WRITE, 0, 0);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_write(p, data, &count);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(size, count);
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+}
+
+/* A granule's first sector, on the disk's track and sector numbers. */
+static void granule_address(int granule, int *track, int *sector)
+{
+	*track = granule / 2 + (granule > 33 ? 1 : 0);
+	*sector = (granule % 2) * 9 + 1;
+}
+
+void test_decb_dmk_read_write()
+{
+	u_char data[3000], back[3000];
+	decb_path_id p;
+	error_code ec;
+	u_int size = sizeof(back);
+	diskimage_format format;
+	_path_type type;
+	int i;
+
+	for (i = 0; i < (int) sizeof(data); i++)
+	{
+		data[i] = (u_char) (i * 7);
+	}
+	decb_dmk_with_file(data, sizeof(data));
+
+	/* It is still a DMK image, and is found to be a Disk BASIC one. */
+	ec = _diskimage_identify(DECB_DMK, &format);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(DISKIMAGE_DMK, format);
+	ec = _coco_identify_image(DECB_DMK ",", &type);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(DECB, type);
+
+	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(data), size);
+	ASSERT_EQUALS(0, memcmp(data, back, sizeof(data)));
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _decb_kill(DECB_DMK ",FILE.TXT");
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
+	ASSERT_EQUALS(EOS_PNNF, ec);
+	remove(DECB_DMK);
+}
+
+void test_decb_colon_needs_raw_image()
+{
+	u_char data[16] = { 0 };
+	decb_path_id p;
+	error_code ec;
+
+	decb_dmk_with_file(data, sizeof(data));
+
+	ec = _decb_open(&p, DECB_DMK ",FILE.TXT:0", FAM_READ);
+	ASSERT_EQUALS(EOS_BPNAM, ec);
+	ec = _decb_open(&p, DECB_DMK ",:1", FAM_READ);
+	ASSERT_EQUALS(EOS_BPNAM, ec);
+	ec = _decb_create(&p, DECB_DMK ",NEW.TXT:1", FAM_WRITE, 0, 0);
+	ASSERT_EQUALS(EOS_BPNAM, ec);
+	ec = _decb_dskini(DECB_DMK, 35, NULL, 2, 256, 0);
+	ASSERT_EQUALS(EOS_BPNAM, ec);
+	remove(DECB_DMK);
+
+	/* A raw image holds as many drives as it likes. */
+	remove("test_drives.dsk");
+	ec = _decb_dskini("test_drives.dsk", 35, NULL, 2, 256, 0);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_create(&p, "test_drives.dsk,NEW.TXT:1", FAM_WRITE, 0, 0);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_open(&p, "test_drives.dsk,NEW.TXT:1", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_open(&p, "test_drives.dsk,NEW.TXT:0", FAM_READ);
+	ASSERT_EQUALS(EOS_PNNF, ec);
+	remove("test_drives.dsk");
+}
+
+void test_decb_only_needed_sectors_are_errors()
+{
+	u_char data[3000], back[3000];
+	decb_path_id p;
+	decb_dir_entry entry;
+	error_code ec;
+	u_int size = sizeof(back);
+	int first_granule, track, sector, i;
+
+	for (i = 0; i < (int) sizeof(data); i++)
+	{
+		data[i] = (u_char) (i * 3);
+	}
+	decb_dmk_with_file(data, sizeof(data));
+
+	/* A sector nothing uses changes nothing, and no later sector moves. */
+	dmk_remove_sector(DECB_DMK, 1, 5);
+	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	first_granule = p->dir_entry.first_granule;
+	ec = _decb_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(0, memcmp(data, back, sizeof(data)));
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	/* A sector of the file fails only reading the file. */
+	granule_address(first_granule, &track, &sector);
+	dmk_remove_sector(DECB_DMK, track, sector + 2);
+	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(back);
+	ec = _decb_read(p, back, &size);
+	ASSERT_EQUALS(EOS_SECT, ec);
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	/* Without a FAT the directory still reads, but not file sizes. */
+	dmk_remove_sector(DECB_DMK, 17, 2);
+	ec = _decb_open(&p, DECB_DMK ",", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_readdir(p, &entry);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(0, memcmp(entry.filename, "FILE    ", 8));
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_gs_size(p, &size);
+	ASSERT_EQUALS(EOS_SECT, ec);
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_create(&p, DECB_DMK ",NEW.TXT", FAM_WRITE, 0, 0);
+	ASSERT_EQUALS(EOS_SECT, ec);
+
+	/* A file found before a missing directory sector does not need it, but
+	   looking for one that is not there does. */
+	dmk_remove_sector(DECB_DMK, 17, 4);
+	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_open(&p, DECB_DMK ",NOFILE.TXT", FAM_READ);
+	ASSERT_EQUALS(EOS_SECT, ec);
+	remove(DECB_DMK);
+}
+
+void test_decb_bad_crc_is_read()
+{
+	u_char data[100], back[100];
+	decb_path_id p;
+	error_code ec;
+	u_int size = sizeof(back);
+	int track, sector, i;
+
+	for (i = 0; i < (int) sizeof(data); i++)
+	{
+		data[i] = (u_char) i;
+	}
+	decb_dmk_with_file(data, sizeof(data));
+
+	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	granule_address(p->dir_entry.first_granule, &track, &sector);
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+	dmk_damage_sector(DECB_DMK, track, sector);
+
+	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(data), size);
+	ASSERT_EQUALS((u_char) (data[0] ^ 0xFF), back[0]);
+	ASSERT_EQUALS(0, memcmp(data + 1, back + 1, sizeof(data) - 1));
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+	remove(DECB_DMK);
+}
+
+void test_decb_write_protect()
+{
+	u_char data[16] = { 0 }, back[16];
+	decb_path_id p;
+	error_code ec;
+	u_int size = sizeof(back);
+
+	decb_dmk_with_file(data, sizeof(data));
+	ec = _diskimage_set_write_protect(DECB_DMK, 1);
+	ASSERT_EQUALS(0, ec);
+
+	/* Reading is still fine, and a path that could write closes cleanly. */
+	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ | FAM_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _decb_create(&p, DECB_DMK ",NEW.TXT", FAM_WRITE, 0, 0);
+	ASSERT_EQUALS(EOS_WP, ec);
+	ec = _decb_kill(DECB_DMK ",FILE.TXT");
+	ASSERT_EQUALS(EOS_WP, ec);
+	ec = _decb_dskini(DECB_DMK, 35, NULL, 1, 256, 0);
+	ASSERT_EQUALS(EOS_WP, ec);
+
+	ec = _diskimage_set_write_protect(DECB_DMK, 0);
+	ASSERT_EQUALS(0, ec);
+	ec = _decb_kill(DECB_DMK ",FILE.TXT");
+	ASSERT_EQUALS(0, ec);
+	remove(DECB_DMK);
+}
+
 void test_decb_dskini()
 {
 	error_code ec;
@@ -648,6 +962,11 @@ int main()
 {
 	remove("test.dsk");
 	remove("filldisk.dsk");
+	RUN(test_decb_dmk_read_write);
+	RUN(test_decb_colon_needs_raw_image);
+	RUN(test_decb_only_needed_sectors_are_errors);
+	RUN(test_decb_bad_crc_is_read);
+	RUN(test_decb_write_protect);
 	RUN(test_decb_dskini);
 	RUN(test_decb_create);
 	RUN(test_decb_read);

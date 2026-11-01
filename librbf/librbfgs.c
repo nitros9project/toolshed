@@ -35,14 +35,16 @@ error_code _os9_gs_attr(os9_path_id path, int *perms)
 error_code _os9_gs_eof(os9_path_id path)
 {
 	error_code ec = 0;
-	fd_stats fdbuf;
+	u_int size;
 
 
-	ec = _os9_gs_fd(path, sizeof(fd_stats), &fdbuf);
+	/* A raw path's size is the disk's; it has no file descriptor. */
+
+	ec = _os9_gs_size(path, &size);
 
 	if (ec == 0)
 	{
-		if (path->filepos >= int4(fdbuf.fd_siz))
+		if (path->filepos >= size)
 		{
 			ec = EOS_EOF;
 		}
@@ -60,11 +62,6 @@ error_code _os9_gs_fd(os9_path_id path, int count, fd_stats * fdbuf)
 	int size;
 
 
-	/* Seek to FD LSN of pathlist */
-
-	_os9_lsn_fseek(path, path->pl_fd_lsn);
-
-
 	/* Read the file descriptor sector */
 
 	size = sizeof(fd_stats);
@@ -74,7 +71,7 @@ error_code _os9_gs_fd(os9_path_id path, int count, fd_stats * fdbuf)
 		size = count;
 	}
 
-	fread(fdbuf, 1, size, path->fd);
+	ec = _os9_lsn_get(path, path->pl_fd_lsn, 0, fdbuf, size);
 
 
 	return ec;

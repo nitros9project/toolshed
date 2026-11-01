@@ -393,6 +393,39 @@ static void test_usage(void)
 	ASSERT("unknown option named", strstr(errors, "-x") != NULL);
 }
 
+static void test_set_write_protect(void)
+{
+	diskimage_geometry geometry;
+	diskimage_id disk;
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_DMK, 1, 2, 256, 18, 0, 0, 0xFF));
+
+	ASSERT_CALL(0, run_diskinfo("-p " TEST_IMAGE));
+	ASSERT("reported as protected", strstr(output, "is now write protected.") != NULL);
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &geometry));
+	ASSERT_EQUALS(1, geometry.write_protected);
+	_diskimage_close(disk);
+
+	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE));
+	ASSERT("the report says so", strstr(output, "It is write protected.\n") != NULL);
+
+	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE " -u"));
+	ASSERT("reported as not protected", strstr(output, "no longer write protected.") != NULL);
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &geometry));
+	ASSERT_EQUALS(0, geometry.write_protected);
+	_diskimage_close(disk);
+	remove(TEST_IMAGE);
+
+	/* A raw image has no flag to set. */
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_RAW, 1, 2, 256, 18, 0, 0, 0xFF));
+	ASSERT_NEQUALS(0, run_diskinfo("-p " TEST_IMAGE));
+	ASSERT("no flag reported", strstr(errors, "no write protect flag") != NULL);
+	remove(TEST_IMAGE);
+}
+
 int main(void)
 {
 	RUN(test_dmk_report);
@@ -406,6 +439,7 @@ int main(void)
 	RUN(test_several_files);
 	RUN(test_one_bad_file_sets_status);
 	RUN(test_usage);
+	RUN(test_set_write_protect);
 
 	return TEST_REPORT();
 }

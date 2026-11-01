@@ -216,7 +216,7 @@ will display the extended directory on the current directory of the host file sy
 
 <h3 id="de_hdb_dos">Support for HDB-DOS</h3>
 
-Toolshed supports specialized path symbols for HDB-DOS hard disk images.
+Toolshed supports specialized path symbols for HDB-DOS hard disk images. A pathlist with a drive number or offset, and `decb dskini -h` with more than one drive, require a raw disk image; on any other image they fail.
 
 The colon allows you to select which disk image is active:
 
@@ -1655,11 +1655,13 @@ This tool allows you to process lwasm's listing files to produce a file MAME can
 
 <h2 id="diskinfo">diskinfo</h2>
 
-This is a tool used to report the format and track layout of disk images. It only reads the images.
+This is a tool used to report the format and track layout of disk images, and to set or clear their write protect flag.
 
 #### Syntax and Scope
 
-    diskinfo <file> {<file> ...}
+    diskinfo {[<opts>]} <file> {<file> ...}
+    -p  set the write protect flag of a DMK, SDF or VDK image
+    -u  clear the write protect flag of a DMK, SDF or VDK image
 
 #### Description
 
@@ -1678,6 +1680,8 @@ On a two sided image, a run of tracks is reported once if both sides match, and 
     Tracks 1 to 34, both sides, are 18 sectors (1-18), 256 bytes each.
 
 A file that is not a disk image is reported as such.
+
+With -p or -u, diskinfo changes the write protect flag instead of reporting the layout. Raw and JVC images have no such flag. os9, decb and dgndos can read a write protected image, but cannot change it.
 
     file.txt is not a DMK, SDF, JVC, VDK, nor raw disk image.
 

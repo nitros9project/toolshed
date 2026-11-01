@@ -2300,6 +2300,69 @@ static void test_create_vdk(void)
 	remove(TEST_IMAGE);
 }
 
+/* An image open twice sees what the other open added, and does not overwrite it. */
+static void test_raw_growth_seen_by_other_open(void)
+{
+	diskimage_id first, second;
+	u_char data[256], back[256];
+	u_int size = sizeof(back);
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_RAW, 1, 1, 256, 18, 0, 0, 0xFF));
+	ASSERT_CALL(0, _diskimage_open(&first, TEST_IMAGE, RW));
+	ASSERT_CALL(0, _diskimage_open(&second, TEST_IMAGE, RW));
+
+	fill_pattern(data, sizeof(data), 0x11);
+	ASSERT_CALL(0, _diskimage_write_sector(first, 3, 0, 5, data, sizeof(data)));
+	ASSERT_CALL(0, _diskimage_read_sector(second, 3, 0, 5, back, &size));
+	ASSERT_EQUALS(0, memcmp(data, back, sizeof(data)));
+
+	/* Writing past the new end must keep the sector already added. */
+	ASSERT_CALL(0, _diskimage_write_sector(second, 4, 0, 1, data, sizeof(data)));
+	size = sizeof(back);
+	ASSERT_CALL(0, _diskimage_read_sector(first, 3, 0, 5, back, &size));
+	ASSERT_EQUALS(0, memcmp(data, back, sizeof(data)));
+
+	_diskimage_close(first);
+	_diskimage_close(second);
+	remove(TEST_IMAGE);
+}
+
+static void check_set_write_protect(diskimage_format format)
+{
+	diskimage_geometry geometry;
+	diskimage_id disk;
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, format, 1, 2, 256, 18, 0, 0, 0xFF));
+
+	ASSERT_CALL(0, _diskimage_set_write_protect(TEST_IMAGE, 1));
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &geometry));
+	ASSERT_EQUALS(format, geometry.format);
+	ASSERT_EQUALS(1, geometry.write_protected);
+	_diskimage_close(disk);
+
+	ASSERT_CALL(0, _diskimage_set_write_protect(TEST_IMAGE, 0));
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &geometry));
+	ASSERT_EQUALS(0, geometry.write_protected);
+	_diskimage_close(disk);
+	remove(TEST_IMAGE);
+}
+
+static void test_set_write_protect(void)
+{
+	check_set_write_protect(DISKIMAGE_DMK);
+	check_set_write_protect(DISKIMAGE_SDF);
+	check_set_write_protect(DISKIMAGE_VDK);
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_RAW, 1, 2, 256, 18, 0, 0, 0xFF));
+	ASSERT_CALL(EOS_IA, _diskimage_set_write_protect(TEST_IMAGE, 1));
+	remove(TEST_IMAGE);
+}
+
 static void test_create_keeps_existing_file(void)
 {
 	write_image(build_linear(NULL, 0, 2, 256));
@@ -2422,6 +2485,8 @@ int main(void)
 	RUN(test_create_vdk);
 	RUN(test_create_fill_like_marks);
 	RUN(test_create_keeps_existing_file);
+	RUN(test_raw_growth_seen_by_other_open);
+	RUN(test_set_write_protect);
 	RUN(test_create_rejects);
 
 	return TEST_REPORT();

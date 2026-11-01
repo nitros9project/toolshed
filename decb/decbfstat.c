@@ -110,6 +110,18 @@ static int do_fstat(char **argv, char *p)
 		}
 	}
 
+	if (path->fat_ec != 0)
+	{
+		ec = path->fat_ec;
+
+		fprintf(stderr, "%s: error %d reading the FAT of '%s'\n",
+			argv[0], ec, p);
+
+		_decb_close(path);
+
+		return ec;
+	}
+
 
 	/* 2. Read the directory entry. */
 

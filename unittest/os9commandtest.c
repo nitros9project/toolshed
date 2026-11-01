@@ -9,6 +9,8 @@
 #include "tinytest.h"
 #include <toolshed.h>
 #include <utime.h>
+#include <time.h>
+#include <unistd.h>
 
 void test_os9_command_format()
 {
@@ -358,6 +360,109 @@ void test_os9_command_no_comma_spec()
 	remove("no_comma.dsk");
 }
 
+static long file_contents(const char *pathname, u_char *buffer, long size)
+{
+	FILE *fp = fopen(pathname, "rb");
+	long got;
+
+	if (fp == NULL)
+	{
+		return -1;
+	}
+	got = (long) fread(buffer, 1, size, fp);
+	fclose(fp);
+
+	return got;
+}
+
+/* A raw path is the whole disk, and has no file descriptor to take details from. */
+void test_os9_command_copy_raw_path()
+{
+	static u_char image[161280], copy[161280];
+	struct stat st;
+	time_t started = time(NULL);
+	error_code ec;
+	long size;
+
+	remove("test_raw.dsk");
+	remove("test_raw.bin");
+
+	ec = system("../os9/os9 format -q -e -t35 -st18 test_raw.dsk > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+
+	ec = system("../os9/os9 copy test_raw.dsk,@ test_raw.bin > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+
+	ASSERT_EQUALS(0, stat("test_raw.bin", &st));
+	ASSERT("the owner can read the copy", (st.st_mode & S_IRUSR) != 0);
+	ASSERT("the copy has no date from the disk", st.st_mtime >= started - 2);
+
+	size = file_contents("test_raw.dsk", image, sizeof(image));
+	ASSERT_EQUALS(161280, size);
+	size = file_contents("test_raw.bin", copy, sizeof(copy));
+	ASSERT_EQUALS(161280, size);
+	ASSERT_EQUALS(0, memcmp(image, copy, sizeof(image)));
+
+	/* The disk says it is longer than the file: a sector it needs is missing. */
+	ASSERT_EQUALS(0, truncate("test_raw.dsk", 100 * 256));
+	remove("test_raw.bin");
+	ec = system("../os9/os9 copy test_raw.dsk,@ test_raw.bin > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, ec);
+
+	remove("test_raw.dsk");
+	remove("test_raw.bin");
+}
+
+/* -l only changes line endings between native files and disk images. */
+void test_os9_command_copy_eol_same_type()
+{
+	static const u_char text[] = "one\rtwo\r";
+	u_char back[sizeof(text)];
+	os9_path_id p;
+	error_code ec;
+	u_int size = sizeof(text) - 1;
+	long got;
+
+	remove("test_eol.dsk");
+	remove("test_eol.txt");
+	remove("test_eol2.txt");
+
+	ec = system("../os9/os9 format -q -e -t35 -st18 test_eol.dsk > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_create(&p, "test_eol.dsk,A", FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_write(p, (void *) text, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	/* Disk image to disk image */
+	ec = system("../os9/os9 copy -l test_eol.dsk,A test_eol.dsk,B > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_open(&p, "test_eol.dsk,B", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(back);
+	ec = _os9_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(text) - 1, size);
+	ASSERT_EQUALS(0, memcmp(text, back, size));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	/* Native file to native file */
+	ec = system("printf 'one\\ntwo\\n' > test_eol.txt");
+	ASSERT_EQUALS(0, ec);
+	ec = system("../os9/os9 copy -l test_eol.txt test_eol2.txt > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+	got = file_contents("test_eol2.txt", back, sizeof(back));
+	ASSERT_EQUALS(8, got);
+	ASSERT_EQUALS(0, memcmp("one\ntwo\n", back, got));
+
+	remove("test_eol.dsk");
+	remove("test_eol.txt");
+	remove("test_eol2.txt");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -367,6 +472,8 @@ int main()
 	RUN(test_os9_command_format_rejects_bad_t0s);
 	RUN(test_os9_command_root_past_short_t0);
 	RUN(test_os9_command_no_comma_spec);
+	RUN(test_os9_command_copy_raw_path);
+	RUN(test_os9_command_copy_eol_same_type);
 
 	return TEST_REPORT();
 }

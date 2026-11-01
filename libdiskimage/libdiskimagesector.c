@@ -220,6 +220,21 @@ error_code di_index_write(diskimage_id disk, long long index, const void *buffer
 }
 
 
+/* Another open of the same file may have grown it. */
+static void raw_refresh(diskimage_id disk)
+{
+	if (fseeko(disk->fd, 0, SEEK_END) == 0)
+	{
+		long long slots = (long long)ftello(disk->fd) / DI_RAW_SECTOR_SIZE;
+
+		if (slots > disk->raw_slots)
+		{
+			di_raw_set_slots(disk, slots);
+		}
+	}
+}
+
+
 /* Find a sector's logical index.  Sectors a raw image could hold are
    found even if they are past its end. */
 static error_code locate(diskimage_id disk, u_int cylinder, u_int side, u_int sector, long long *index)
@@ -238,6 +253,10 @@ static error_code locate(diskimage_id disk, u_int cylinder, u_int side, u_int se
 				return EOS_SECT;
 			}
 			*index -= disk->raw_missing;
+		}
+		if (*index >= disk->total_sectors)
+		{
+			raw_refresh(disk);
 		}
 	}
 	else if (disk->linear)

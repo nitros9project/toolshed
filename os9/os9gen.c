@@ -279,6 +279,17 @@ static int do_os9gen(char **argv, char *device, char *bootfile,
 			return (1);
 		}
 
+		if (opath->path.os9->bitmap_ec != 0)
+		{
+			ec = opath->path.os9->bitmap_ec;
+
+			fprintf(stderr, "Error %d reading the allocation map\n", ec);
+
+			_coco_close(opath);
+
+			return ec;
+		}
+
 		u_int sectorSize = opath->path.os9->bps;
 		u_int clusterSize = int2(opath->path.os9->lsn0->dd_bit);
 

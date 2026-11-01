@@ -54,6 +54,12 @@ typedef struct
 	long long id_end;
 } di_track_id;
 
+/* Where each format records write protection */
+#define DI_DMK_WRITE_PROTECT_OFFSET	0
+#define DI_SDF_WRITE_PROTECT_OFFSET	6
+#define DI_VDK_FLAGS_OFFSET		10
+#define DI_VDK_FLAG_WRITE_PROTECT	0x01
+
 struct _diskimage_path
 {
 	FILE *fd;
@@ -126,6 +132,7 @@ void di_raw_stamp_lsn0(u_char *sector, const di_layout *layout, long long total)
 unsigned short di_crc16(unsigned short crc, const u_char *data, size_t size);
 error_code di_read_at(diskimage_id disk, long long offset, void *buffer, size_t size);
 error_code di_write_at(diskimage_id disk, long long offset, const void *buffer, size_t size);
+void di_raw_set_slots(diskimage_id disk, long long slots);
 error_code di_table_append(diskimage_id disk, const di_sector *sector);
 error_code di_table_add_track(diskimage_id disk, di_track_id *ids, int count);
 long long di_table_find(diskimage_id disk, u_int cylinder, u_int side, u_int id);

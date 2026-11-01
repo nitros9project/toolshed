@@ -33,6 +33,7 @@ error_code _decb_rename_ex(char *pathlist, char *new_name,
 	char nfilename[8], nextension[3];
 	decb_path_id path;
 	char *old_name;
+	error_code read_ec;
 
 	/* 1. Test if path is native. */
 	if ((old_name = strchr(pathlist, ',')) == NULL)
@@ -77,7 +78,7 @@ error_code _decb_rename_ex(char *pathlist, char *new_name,
 	ec = EOS_BPNAM;
 
 	/* See if another file in this directory has the same name as our destination */
-	while (_decb_readdir(path, dirent) == 0)
+	while ((read_ec = _decb_readdir(path, dirent)) == 0)
 	{
 		if (!strncmp((char *) dirent->filename, nfilename, 8)
 		    && !strncmp((char *) dirent->file_extension, nextension,
@@ -89,18 +90,18 @@ error_code _decb_rename_ex(char *pathlist, char *new_name,
 		}
 	}
 
-	if (ec == EOS_FAE)
+	if (ec == EOS_FAE || read_ec != EOS_PNNF)
 	{
 		_decb_close(path);
 
-		return ec;
+		return ec == EOS_FAE ? ec : read_ec;
 	}
 
 	_decb_seekdir(path, 0, SEEK_SET);
 
 	/* Start reading directory file and search for match */
 
-	while (_decb_readdir(path, dirent) == 0)
+	while ((read_ec = _decb_readdir(path, dirent)) == 0)
 	{
 		if (!strncmp((char *) dirent->filename, filename, 8)
 		    && !strncmp((char *) dirent->file_extension, extension,
@@ -118,7 +119,19 @@ error_code _decb_rename_ex(char *pathlist, char *new_name,
 		}
 	}
 
-	_decb_close(path);
+	if (read_ec != 0 && read_ec != EOS_PNNF)
+	{
+		ec = read_ec;
+	}
+
+	{
+		error_code close_ec = _decb_close(path);
+
+		if (ec == 0)
+		{
+			ec = close_ec;
+		}
+	}
 
 	return ec;
 }

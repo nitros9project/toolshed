@@ -155,7 +155,11 @@ static int do_dir(char **argv, char *p)
 
 	/* 5. Read and print each directory entry */
 
-	while ((ec = _decb_readdir(path, &de)) == 0)
+	/* Sizes of the files come from the FAT. */
+
+	ec = path->fat_ec;
+
+	while (ec == 0 && (ec = _decb_readdir(path, &de)) == 0)
 	{
 		char asciiflag;
 		int granule_size = 1, i;

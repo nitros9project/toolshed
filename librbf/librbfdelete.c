@@ -15,7 +15,7 @@
 #include "util.h"
 
 
-u_char DecrementLinkCount(os9_path_id path, int fd_lsn);
+static error_code DecrementLinkCount(os9_path_id path, int fd_lsn, u_char *links);
 static int _os9_freefile(os9_path_id path, int fd_lsn);
 
 
@@ -216,16 +216,37 @@ error_code _os9_delete(char *pathlist)
 
 		if (!strcasecmp(fname, filename))
 		{
+			u_char links;
+
+			/* Clusters are released in the bitmap. */
+
+			if (parent_path->bitmap_ec != 0)
+			{
+				ec = parent_path->bitmap_ec;
+				break;
+			}
+
 			/* Decrement link count in file descriptor */
 
-			if (DecrementLinkCount(parent_path, int3(dentry.lsn))
-			    < 1)
+			ec = DecrementLinkCount(parent_path, int3(dentry.lsn), &links);
+
+			if (ec != 0)
+			{
+				break;
+			}
+
+			if (links < 1)
 			{
 				/* Only deallocate file if link count is zero */
 
 				/* Deallocate any bits used by the file */
 
 				ec = _os9_freefile(parent_path, int3(dentry.lsn));
+
+				if (ec != 0)
+				{
+					break;
+				}
 
 				/* Deallocate the bit used for the file descriptor */
 
@@ -261,9 +282,17 @@ error_code _os9_delete(char *pathlist)
 	}
 
 	free(filename);
-	_os9_close(parent_path);
 
-	if (deleted == 0)
+	{
+		error_code close_ec = _os9_close(parent_path);
+
+		if (ec == 0)
+		{
+			ec = close_ec;
+		}
+	}
+
+	if (ec == 0 && deleted == 0)
 	{
 		ec = EOS_PNNF;
 	}
@@ -274,22 +303,19 @@ error_code _os9_delete(char *pathlist)
 
 
 
-u_char DecrementLinkCount(os9_path_id path, int fd_lsn)
+static error_code DecrementLinkCount(os9_path_id path, int fd_lsn, u_char *links)
 {
 	fd_stats fdbuf;
-	u_char result;
+	error_code ec = _os9_lsn_get(path, fd_lsn, 0, &fdbuf, sizeof(fd_stats));
 
+	if (ec != 0)
+	{
+		return ec;
+	}
 
-	_os9_lsn_fseek(path, fd_lsn);
-	fread(&fdbuf, 1, sizeof(fd_stats), path->fd);
+	*links = fdbuf.fd_lnk = fdbuf.fd_lnk - 1;
 
-	result = fdbuf.fd_lnk = fdbuf.fd_lnk - 1;
-
-	_os9_lsn_fseek(path, fd_lsn);
-	fwrite(&fdbuf, 1, sizeof(fd_stats), path->fd);
-
-
-	return result;
+	return _os9_lsn_put(path, fd_lsn, 0, &fdbuf, sizeof(fd_stats));
 }
 
 
@@ -303,8 +329,12 @@ static int _os9_freefile(os9_path_id path, int fd_lsn)
 
 
 	/* Read through the parent path; the target may not be readable. */
-	_os9_lsn_fseek(path, fd_lsn);
-	fread(&fdbuf, 1, sizeof(fd_stats), path->fd);
+	ec = _os9_lsn_get(path, fd_lsn, 0, &fdbuf, sizeof(fd_stats));
+
+	if (ec != 0)
+	{
+		return ec;
+	}
 
 	seg = fdbuf.fd_seg;
 

@@ -40,9 +40,6 @@ error_code _os9_ss_fd(os9_path_id path, int count, fd_stats * fdbuf)
 	int size;
 
 	{
-		/* seek to FD LSN of pathlist */
-		_os9_lsn_fseek(path, path->pl_fd_lsn);
-
 		/* write the file descriptor sector */
 		size = sizeof(fd_stats);
 		if (count < size)
@@ -50,7 +47,7 @@ error_code _os9_ss_fd(os9_path_id path, int count, fd_stats * fdbuf)
 			size = count;
 		}
 
-		fwrite(fdbuf, 1, size, path->fd);
+		ec = _os9_lsn_put(path, path->pl_fd_lsn, 0, fdbuf, size);
 	}
 
 	return (ec);

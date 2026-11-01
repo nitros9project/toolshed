@@ -10,7 +10,6 @@
 #include "decbpath.h"
 
 
-static error_code _raw_write(decb_path_id path, void *buffer, u_int * size);
 static error_code extend_fat_chain(decb_path_id path, int current_size,
 				   int new_size);
 error_code find_free_granule(decb_path_id path, int *granule, int next_to);
@@ -36,13 +35,20 @@ error_code _decb_write(decb_path_id path, void *buffer, u_int * size)
 
 	if (path->israw == 1)
 	{
-		ec = _raw_write(path, buffer, size);
+		return _decb_raw_write(path, buffer, size);
 	}
 
 
 	/* 3. Get the file's current size. */
 
-	_decb_gs_size(path, &current_size);
+	ec = _decb_gs_size(path, &current_size);
+
+	if (ec != 0)
+	{
+		*size = 0;
+
+		return ec;
+	}
 
 
 	/* 4. If our file position is greater than the file size, return error. */
@@ -110,7 +116,14 @@ error_code _decb_write(decb_path_id path, void *buffer, u_int * size)
 		int bytes_in_last_granule = 2304;
 
 
-		_decb_gs_granule(path, curr_granule, granule_buffer);
+		ec = _decb_gs_granule(path, curr_granule, granule_buffer);
+
+		if (ec != 0)
+		{
+			*size -= bytes_left;
+
+			return ec;
+		}
 
 		if (path->FAT[curr_granule] >= 0xC0)
 		{
@@ -133,7 +146,14 @@ error_code _decb_write(decb_path_id path, void *buffer, u_int * size)
 
 		memcpy(granule_buffer + offset_in_granule, buffer,
 		       write_size);
-		_decb_ss_granule(path, curr_granule, granule_buffer);
+		ec = _decb_ss_granule(path, curr_granule, granule_buffer);
+
+		if (ec != 0)
+		{
+			*size -= bytes_left;
+
+			return ec;
+		}
 
 
 		bytes_left -= write_size;
@@ -150,22 +170,7 @@ error_code _decb_write(decb_path_id path, void *buffer, u_int * size)
 
 	_decb_seekdir(path, path->this_directory_entry_index, SEEK_SET);
 
-	_decb_writedir(path, &path->dir_entry);
-
-
-	return ec;
-}
-
-
-
-static error_code _raw_write(decb_path_id path, void *buffer, u_int * size)
-{
-	error_code ec = 0;
-	size_t ret_size;
-
-
-	ret_size = fwrite(buffer, 1, *size, path->fd);
-	*size = ret_size;
+	ec = _decb_writedir(path, &path->dir_entry);
 
 
 	return ec;
