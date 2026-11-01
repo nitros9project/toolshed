@@ -1,7 +1,7 @@
 /********************************************************************
  * diskimage.h - Common access to floppy disk image files
  *
- * Supported formats are DMK, JVC, SDF and raw images (an unadorned
+ * Supported formats are DMK, JVC, SDF, VDK and raw images (an unadorned
  * array of 256 byte sectors, 18 sectors per track).  A JVC image with
  * no header is byte for byte a raw image, and is reported as raw.
  *
@@ -65,8 +65,12 @@ typedef enum
 	DISKIMAGE_RAW,
 	DISKIMAGE_JVC,
 	DISKIMAGE_DMK,
-	DISKIMAGE_SDF
+	DISKIMAGE_SDF,
+	DISKIMAGE_VDK
 } diskimage_format;
+
+/* _diskimage_open mode flag, beyond the FAM_ flags */
+#define DISKIMAGE_IGNORE_WRITE_PROTECT	0x0400
 
 typedef struct _diskimage_path *diskimage_id;
 typedef struct _diskimage_stream *diskimage_stream_id;
@@ -116,14 +120,16 @@ error_code _diskimage_identify(const char *pathname, diskimage_format *format);
    0 and 1 both mean in order.  It must be less than sectors_per_track, unless
    it is 1.  A position already taken moves on to the next free one.  It only
    changes the order on the track: sectors are still addressed by number, and
-   the stream still follows ascending numbers.  Raw and JVC images do not
-   record an order, so they ignore it.
+   the stream still follows ascending numbers.  Raw, JVC and VDK images do
+   not record an order, so they ignore it.
 
    The result is EOS_IA if the format cannot represent the request:
      raw      256 byte sectors, 18 sectors per track, and no more than
               that on track 0
      JVC      no different track 0, at most 255 sectors per track, and
               sector data must total a multiple of 256 bytes
+     VDK      256 byte sectors, 18 sectors per track, no different track 0,
+              at most 255 tracks
      DMK/SDF  double density sectors that fit in a 6250 byte track;
               DMK has at most 255 tracks and 64 sectors per track,
               SDF at most 80 tracks and 31 sectors per track
@@ -139,7 +145,10 @@ error_code _diskimage_create(const char *pathname, diskimage_format format, u_in
 			     u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
 			     u_int interleave, u_char fill);
 
-/* Open an existing image.  mode is FAM_READ and/or FAM_WRITE. */
+/* Open an existing image.  mode is FAM_READ and/or FAM_WRITE, optionally with
+   DISKIMAGE_IGNORE_WRITE_PROTECT, which allows writes to a DMK, SDF or VDK
+   image whose write protect flag is set.  The flag itself is left as it is,
+   and is still reported by _diskimage_query_geometry. */
 error_code _diskimage_open(diskimage_id *disk, const char *pathname, int mode);
 
 /* Close an image and any of its streams still open. */

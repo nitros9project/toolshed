@@ -23,7 +23,7 @@ TEST_LIBS = \
 
 
 TESTS = librbftest libdecbtest libcecbtest libtoolshedtest libnativetest libmisctest os9commandtest \
-	decbcommandtest cecbcommandtest libsystest libdiskimagetest
+	decbcommandtest cecbcommandtest libsystest libdiskimagetest diskinfocommandtest
 
 $(TESTS): $(TEST_LIBS)
 
@@ -40,6 +40,7 @@ ifeq (,$(NOTEST))
 	./decbcommandtest
 	./cecbcommandtest
 	./libdiskimagetest
+	./diskinfocommandtest
 endif
 
 clean:

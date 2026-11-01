@@ -9,6 +9,12 @@
 #define SDF_DATA_BAD_CRC_HIGH	0x80
 
 
+int di_write_blocked(diskimage_id disk)
+{
+	return disk->write_protected && !(disk->mode & DISKIMAGE_IGNORE_WRITE_PROTECT);
+}
+
+
 u_int di_index_size(diskimage_id disk, long long index)
 {
 	return disk->linear ? disk->sector_size : disk->table[index].size;
@@ -148,7 +154,7 @@ error_code di_index_write(diskimage_id disk, long long index, const void *buffer
 	{
 		return EOS_BMODE;
 	}
-	if (disk->write_protected)
+	if (di_write_blocked(disk))
 	{
 		return EOS_WP;
 	}

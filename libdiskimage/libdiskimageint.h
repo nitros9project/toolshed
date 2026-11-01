@@ -143,7 +143,12 @@ error_code di_sdf_create(FILE *fd, const di_layout *layout);
 int di_jvc_parse(const u_char *header, long long file_size, di_jvc_header *jvc);
 error_code di_jvc_load(diskimage_id disk, const di_jvc_header *jvc);
 
+/* libdiskimagevdk.c */
+int di_vdk_probe(const u_char *header, long long file_size);
+void di_vdk_load(diskimage_id disk, const u_char *header, long long file_size);
+
 /* libdiskimagesector.c */
+int di_write_blocked(diskimage_id disk);
 u_int di_index_size(diskimage_id disk, long long index);
 long long di_linear_slot(diskimage_id disk, long long index);
 error_code di_index_read(diskimage_id disk, long long index, void *buffer);

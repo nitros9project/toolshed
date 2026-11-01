@@ -1821,10 +1821,10 @@ static void test_create_sdf_interleave(void)
 	check_create_interleave(DISKIMAGE_SDF);
 }
 
-/* Raw and JVC have no order to record, so the files come out the same. */
+/* Raw, JVC and VDK have no order to record, so the files come out the same. */
 static void test_create_interleave_ignored_without_order(void)
 {
-	static const diskimage_format formats[] = {DISKIMAGE_RAW, DISKIMAGE_JVC};
+	static const diskimage_format formats[] = {DISKIMAGE_RAW, DISKIMAGE_JVC, DISKIMAGE_VDK};
 	static u_char plain[64 * 1024];
 	size_t i;
 	long size;
@@ -1992,6 +1992,314 @@ static void test_create_fill_like_marks(void)
 	}
 }
 
+/* VDK */
+
+/* A VDK image with sectors holding their index + 1, and no flags set. */
+static long build_vdk(int header_size, int tracks, int sides, int sectors_per_track)
+{
+	long size = build_linear(NULL, 0, tracks * sides * sectors_per_track, 256);
+
+	memmove(&image[header_size], image, size);
+	memset(image, 0, header_size);
+	image[0] = 'd';
+	image[1] = 'k';
+	image[2] = (u_char)header_size;
+	image[3] = (u_char)(header_size >> 8);
+	image[4] = 0x10;
+	image[5] = 0x10;
+	image[8] = (u_char)tracks;
+	image[9] = (u_char)sides;
+	return header_size + size;
+}
+
+static void test_vdk_geometry_and_sectors(void)
+{
+	diskimage_id disk;
+	diskimage_geometry g;
+	diskimage_sector_info info;
+	diskimage_stream_id stream;
+	u_char buffer[256];
+	u_int size = sizeof(buffer);
+
+	/* 3 tracks on 2 sides: 108 sectors. */
+	write_image(build_vdk(12, 3, 2, 18));
+	ASSERT_EQUALS(DISKIMAGE_VDK, identify());
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
+	ASSERT_EQUALS(DISKIMAGE_VDK, g.format);
+	ASSERT_EQUALS(3, g.cylinders);
+	ASSERT_EQUALS(2, g.sides);
+	ASSERT_EQUALS(18, g.sectors_per_track);
+	ASSERT_EQUALS(18, g.sectors_track0);
+	ASSERT_EQUALS(256, g.sector_size);
+	ASSERT_EQUALS(1, g.first_sector);
+	ASSERT_EQUALS(108, g.total_sectors);
+	ASSERT_EQUALS(108 * 256, g.stream_size);
+	ASSERT_EQUALS(1, g.uniform);
+	ASSERT_EQUALS(0, g.write_protected);
+	ASSERT_EQUALS(0, g.extendable);
+
+	/* Track 1, side 1, sector 2 follows 3 whole tracks: index 55. */
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 1, 1, 2, buffer, &size));
+	ASSERT_EQUALS(56, buffer[0]);
+	ASSERT_EQUALS(56, buffer[255]);
+	ASSERT_CALL(EOS_SECT, _diskimage_read_sector(disk, 3, 0, 1, buffer, &size));
+	ASSERT_CALL(EOS_SECT, _diskimage_read_sector(disk, 0, 2, 1, buffer, &size));
+	ASSERT_CALL(EOS_SECT, _diskimage_read_sector(disk, 0, 0, 0, buffer, &size));
+	ASSERT_CALL(EOS_SECT, _diskimage_read_sector(disk, 0, 0, 19, buffer, &size));
+
+	ASSERT_CALL(0, _diskimage_query_sector(disk, 55, &info));
+	ASSERT_EQUALS(1, info.cylinder);
+	ASSERT_EQUALS(1, info.side);
+	ASSERT_EQUALS(2, info.sector);
+
+	/* The stream starts after the header. */
+	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
+	ASSERT_CALL(0, _diskimage_stream_seek(stream, 255, SEEK_SET));
+	size = 2;
+	ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &size));
+	ASSERT_EQUALS(1, buffer[0]);
+	ASSERT_EQUALS(2, buffer[1]);
+	_diskimage_close(disk);
+	remove(TEST_IMAGE);
+}
+
+/* The header size field decides where sectors start, and the flags and
+   any extension bytes are left alone by writes. */
+static void test_vdk_long_header_and_flags_kept(void)
+{
+	diskimage_id disk;
+	diskimage_stream_id stream;
+	u_char buffer[256], out[256];
+	u_int size = sizeof(buffer);
+	u_int count = 10;
+	long length = build_vdk(44, 2, 1, 18);
+
+	image[10] = 0xA4;
+	image[11] = 0x28;
+	memcpy(&image[12], "NAME", 4);
+	write_image(length);
+
+	ASSERT_EQUALS(DISKIMAGE_VDK, identify());
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 2, buffer, &size));
+	ASSERT_EQUALS(2, buffer[0]);
+
+	memset(out, 0x7E, sizeof(out));
+	ASSERT_CALL(0, _diskimage_write_sector(disk, 0, 0, 1, out, 256));
+
+	/* VDK images do not grow. */
+	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
+	ASSERT_CALL(0, _diskimage_stream_seek(stream, -4, SEEK_END));
+	ASSERT_CALL(EOS_DF, _diskimage_stream_write(stream, out, &count));
+	ASSERT_EQUALS(4, count);
+	ASSERT_CALL(EOS_SECT, _diskimage_write_sector(disk, 2, 0, 1, out, 256));
+	ASSERT_CALL(EOS_IA, _diskimage_write_sector(disk, 0, 0, 1, out, 128));
+	_diskimage_close(disk);
+
+	ASSERT_EQUALS(length, read_image());
+	ASSERT_EQUALS(0xA4, image[10]);
+	ASSERT_EQUALS(0x28, image[11]);
+	ASSERT_MEM_EQUALS("NAME", &image[12], 4);
+	ASSERT_EQUALS(0x7E, image[44]);
+	ASSERT_EQUALS(0x7E, image[44 + 255]);
+	ASSERT_EQUALS(2, image[44 + 256]);
+	ASSERT_EQUALS(0x7E, image[length - 1]);
+	remove(TEST_IMAGE);
+}
+
+/* With no field for it, sectors per track come from the file size. */
+static void test_vdk_other_sectors_per_track(void)
+{
+	diskimage_id disk;
+	diskimage_geometry g;
+	u_char buffer[256];
+	u_int size = sizeof(buffer);
+
+	write_image(build_vdk(12, 2, 1, 10));
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
+	ASSERT_EQUALS(10, g.sectors_per_track);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 1, 0, 1, buffer, &size));
+	ASSERT_EQUALS(11, buffer[0]);
+	ASSERT_CALL(EOS_SECT, _diskimage_read_sector(disk, 0, 0, 11, buffer, &size));
+	_diskimage_close(disk);
+	remove(TEST_IMAGE);
+}
+
+static void test_vdk_rejects(void)
+{
+	long length;
+
+	/* Not whole tracks, as a compressed or truncated file would be. */
+	length = build_vdk(12, 2, 1, 18);
+	write_image(length - 256);
+	ASSERT_EQUALS(DISKIMAGE_UNKNOWN, identify());
+
+	/* Header fields that cannot be right. */
+	length = build_vdk(12, 2, 1, 18);
+	image[9] = 3;
+	write_image(length);
+	ASSERT_EQUALS(DISKIMAGE_UNKNOWN, identify());
+
+	length = build_vdk(12, 2, 1, 18);
+	image[9] = 0;
+	write_image(length);
+	ASSERT_EQUALS(DISKIMAGE_UNKNOWN, identify());
+
+	length = build_vdk(12, 2, 1, 18);
+	image[8] = 0;
+	write_image(length);
+	ASSERT_EQUALS(DISKIMAGE_UNKNOWN, identify());
+
+	length = build_vdk(12, 2, 1, 18);
+	image[2] = 11;
+	write_image(length);
+	ASSERT_EQUALS(DISKIMAGE_UNKNOWN, identify());
+
+	/* No sectors at all. */
+	build_vdk(12, 2, 1, 18);
+	write_image(12);
+	ASSERT_EQUALS(DISKIMAGE_UNKNOWN, identify());
+
+	/* The magic bytes are required, and a raw disk may start with data
+	   that merely resembles them. */
+	length = build_vdk(12, 2, 1, 18);
+	image[1] = 'K';
+	write_image(length);
+	ASSERT_EQUALS(DISKIMAGE_UNKNOWN, identify());
+	length = build_linear(NULL, 0, 18, 256);
+	memcpy(image, "dk", 2);
+	write_image(length);
+	ASSERT_EQUALS(DISKIMAGE_RAW, identify());
+	remove(TEST_IMAGE);
+}
+
+/* Write protect, and the override, work the same in each format. */
+static void build_vdk_protectable(u_char protect, const test_sector *sectors, int count)
+{
+	(void)sectors;
+	(void)count;
+	long length = build_vdk(12, 2, 1, 18);
+
+	/* Only bit 0 protects, so the other flags are set without it. */
+	image[10] = protect ? 0x01 : 0xFE;
+	write_image(length);
+}
+
+static void check_write_protect_override(image_builder build, int flag_offset, u_char flag_value)
+{
+	static const test_sector sectors[] = {
+		{0, 0, 1, 1, 0, 0x11, 0, -1},
+		{1, 0, 1, 1, 0, 0x11, 0, -1},
+	};
+	diskimage_id disk;
+	diskimage_geometry g;
+	diskimage_stream_id stream;
+	u_char buffer[256], out[256];
+	u_int size;
+
+	fill_pattern(out, 256, 9);
+
+	/* Protected: sectors and streams both refuse, and the file is unchanged. */
+	build(0xFF, sectors, 2);
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
+	ASSERT_EQUALS(1, g.write_protected);
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 1, buffer, &size));
+	ASSERT_CALL(EOS_WP, _diskimage_write_sector(disk, 0, 0, 1, out, 256));
+	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
+	size = 256;
+	ASSERT_CALL(EOS_WP, _diskimage_stream_write(stream, out, &size));
+	ASSERT_EQUALS(0, size);
+	_diskimage_close(disk);
+
+	/* The override writes through both, and still reports the flag. */
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW | DISKIMAGE_IGNORE_WRITE_PROTECT));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
+	ASSERT_EQUALS(1, g.write_protected);
+	ASSERT_CALL(0, _diskimage_write_sector(disk, 0, 0, 1, out, 256));
+	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
+	ASSERT_CALL(0, _diskimage_stream_seek(stream, 256, SEEK_SET));
+	size = 256;
+	ASSERT_CALL(0, _diskimage_stream_write(stream, out, &size));
+	ASSERT_EQUALS(256, size);
+	_diskimage_close(disk);
+
+	/* The flag on disk is untouched, and protects the next open as before. */
+	read_image();
+	ASSERT_EQUALS(flag_value, image[flag_offset]);
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 1, buffer, &size));
+	ASSERT_MEM_EQUALS(out, buffer, 256);
+	ASSERT_CALL(EOS_WP, _diskimage_write_sector(disk, 0, 0, 1, out, 256));
+	_diskimage_close(disk);
+
+	/* The override does not stand in for opening with write access. */
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ | DISKIMAGE_IGNORE_WRITE_PROTECT));
+	ASSERT_CALL(EOS_BMODE, _diskimage_write_sector(disk, 0, 0, 1, out, 256));
+	_diskimage_close(disk);
+	ASSERT_CALL(EOS_BMODE, _diskimage_open(&disk, TEST_IMAGE, DISKIMAGE_IGNORE_WRITE_PROTECT));
+
+	/* Not protected: no override is needed. */
+	build(0, sectors, 2);
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
+	ASSERT_EQUALS(0, g.write_protected);
+	ASSERT_CALL(0, _diskimage_write_sector(disk, 0, 0, 1, out, 256));
+	_diskimage_close(disk);
+	remove(TEST_IMAGE);
+}
+
+static void test_dmk_write_protect_override(void)
+{
+	check_write_protect_override(build_dmk_2t, 0, 0xFF);
+}
+
+static void test_sdf_write_protect_override(void)
+{
+	check_write_protect_override(build_sdf_2t, 6, 0xFF);
+}
+
+static void test_vdk_write_protect_override(void)
+{
+	check_write_protect_override(build_vdk_protectable, 10, 0x01);
+}
+
+static void test_create_vdk(void)
+{
+	static const u_char header[12] = {'d', 'k', 12, 0, 0x10, 0x10, 'S', 1, 35, 2, 0, 0};
+	long expected = 12 + 35L * 2 * 18 * 256;
+	long i;
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_VDK, 2, 35, 256, 18, 0, 1, 0xE5));
+	ASSERT_EQUALS(DISKIMAGE_VDK, identify());
+	ASSERT_EQUALS(expected, read_image());
+	ASSERT_MEM_EQUALS(header, image, 12);
+	for (i = 12; i < expected; i++)
+	{
+		if (image[i] != 0xE5)
+		{
+			break;
+		}
+	}
+	ASSERT_EQUALS(expected, i);
+	check_created(35 * 2 * 18, 256, 0xE5);
+	remove(TEST_IMAGE);
+
+	/* Only the shape every reader assumes. */
+	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_VDK, 1, 35, 512, 18, 0, 1, 0xE5));
+	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_VDK, 1, 35, 256, 16, 0, 1, 0xE5));
+	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_VDK, 1, 35, 256, 18, 10, 1, 0xE5));
+	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_VDK, 1, 256, 256, 18, 0, 1, 0xE5));
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_VDK, 1, 255, 256, 18, 0, 1, 0xE5));
+	ASSERT_EQUALS(DISKIMAGE_VDK, identify());
+	remove(TEST_IMAGE);
+}
+
 static void test_create_keeps_existing_file(void)
 {
 	write_image(build_linear(NULL, 0, 2, 256));
@@ -2104,6 +2412,14 @@ int main(void)
 	RUN(test_create_sdf_matches_testdata);
 	RUN(test_dmk_testdata_reads);
 	RUN(test_sdf_testdata_reads);
+	RUN(test_vdk_geometry_and_sectors);
+	RUN(test_vdk_long_header_and_flags_kept);
+	RUN(test_vdk_other_sectors_per_track);
+	RUN(test_vdk_rejects);
+	RUN(test_dmk_write_protect_override);
+	RUN(test_sdf_write_protect_override);
+	RUN(test_vdk_write_protect_override);
+	RUN(test_create_vdk);
 	RUN(test_create_fill_like_marks);
 	RUN(test_create_keeps_existing_file);
 	RUN(test_create_rejects);

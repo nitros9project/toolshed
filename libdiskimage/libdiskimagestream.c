@@ -167,7 +167,7 @@ error_code _diskimage_stream_write(diskimage_stream_id stream, const void *buffe
 	{
 		return EOS_BMODE;
 	}
-	if (disk->write_protected)
+	if (di_write_blocked(disk))
 	{
 		return EOS_WP;
 	}

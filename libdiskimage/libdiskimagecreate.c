@@ -34,6 +34,11 @@
 #define JVC_DEFAULT_SPT		18
 #define JVC_DEFAULT_SIDES	1
 #define JVC_DEFAULT_SIZE_CODE	1
+#define VDK_MAX_CYLINDERS	255
+#define VDK_HEADER_SIZE		12
+#define VDK_VERSION		0x10
+#define VDK_SOURCE_ID		'S'	/* ToolShed */
+#define VDK_SOURCE_VERSION	1
 
 
 error_code di_file_write(FILE *fd, const void *buffer, size_t size)
@@ -218,6 +223,18 @@ static error_code create_jvc(FILE *fd, const di_layout *layout, long long sector
 }
 
 
+static error_code create_vdk(FILE *fd, const di_layout *layout, long long sectors)
+{
+	u_char header[VDK_HEADER_SIZE] = {'d', 'k', VDK_HEADER_SIZE, 0, VDK_VERSION, VDK_VERSION,
+					  VDK_SOURCE_ID, VDK_SOURCE_VERSION};
+
+	header[8] = (u_char)layout->cylinders;
+	header[9] = (u_char)layout->sides;
+
+	return write_linear(fd, header, sizeof(header), sectors, layout);
+}
+
+
 /* Check what a format can represent. */
 static error_code check_layout(diskimage_format format, const di_layout *layout, long long total)
 {
@@ -239,6 +256,17 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 		if (layout->sectors_per_track > JVC_MAX_SECTORS ||
 		    layout->sectors_track0 != layout->sectors_per_track ||
 		    total * layout->sector_size % 256 != 0)
+		{
+			return EOS_IA;
+		}
+		break;
+
+	case DISKIMAGE_VDK:
+		/* The header cannot record any other shape, so readers assume this. */
+		if (layout->cylinders > VDK_MAX_CYLINDERS ||
+		    layout->sector_size != DI_RAW_SECTOR_SIZE ||
+		    layout->sectors_per_track != DI_RAW_SECTORS_PER_TRACK ||
+		    layout->sectors_track0 != layout->sectors_per_track)
 		{
 			return EOS_IA;
 		}
@@ -328,6 +356,9 @@ error_code _diskimage_create(const char *pathname, diskimage_format format, u_in
 		break;
 	case DISKIMAGE_JVC:
 		ec = create_jvc(fd, &layout, total);
+		break;
+	case DISKIMAGE_VDK:
+		ec = create_vdk(fd, &layout, total);
 		break;
 	case DISKIMAGE_DMK:
 		ec = di_dmk_create(fd, &layout);

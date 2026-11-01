@@ -48,7 +48,7 @@ static error_code open_file(const char *pathname, const char *fopen_mode, FILE *
 }
 
 
-/* SDF and DMK sizes also fit JVC and raw images, so they are tried first. */
+/* SDF, DMK and VDK sizes also fit JVC and raw images, so they are tried first. */
 static diskimage_format detect_format(const u_char *header, long long file_size, di_jvc_header *jvc)
 {
 	if (di_sdf_probe(header, file_size))
@@ -58,6 +58,10 @@ static diskimage_format detect_format(const u_char *header, long long file_size,
 	if (di_dmk_probe(header, file_size))
 	{
 		return DISKIMAGE_DMK;
+	}
+	if (di_vdk_probe(header, file_size))
+	{
+		return DISKIMAGE_VDK;
 	}
 	if (file_size % 256 == 0)
 	{
@@ -225,6 +229,9 @@ error_code _diskimage_open(diskimage_id *disk, const char *pathname, int mode)
 		break;
 	case DISKIMAGE_JVC:
 		ec = di_jvc_load(new_disk, &jvc);
+		break;
+	case DISKIMAGE_VDK:
+		di_vdk_load(new_disk, header, file_size);
 		break;
 	case DISKIMAGE_RAW:
 		ec = load_raw(new_disk, file_size);
