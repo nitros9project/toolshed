@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <strings.h>
+#include <sys/stat.h>
 
 #include "cococonv.h"
 #include "cocosys.h"
@@ -325,6 +327,165 @@ error_code _coco_identify_image(char *pathlist, _path_type * type)
 
 	return ec;
 }
+
+/*
+ * _coco_detect_filesystems()
+ *
+ * Determine which filesystems a disk image could hold, from a pathname or an
+ * <image,path> pathlist.  What is found is only what could be there: a disk
+ * can hold several filesystems, and Disk BASIC has nothing to identify it. A
+ * file that is not a disk image holds none.
+ */
+error_code _coco_detect_filesystems(const char *pathlist, u_int *filesystems)
+{
+	diskimage_format format;
+	const char *comma = strchr(pathlist, ',');
+	char *image;
+	error_code ec;
+
+	*filesystems = 0;
+
+	image = strdup(pathlist);
+	if (image == NULL)
+	{
+		return EOS_OM;
+	}
+	if (comma != NULL)
+	{
+		image[comma - pathlist] = '\0';
+	}
+
+	ec = _diskimage_identify(image, &format);
+	if (ec == 0 && format != DISKIMAGE_UNKNOWN)
+	{
+		int found = 0;
+
+		if (_os9_identify(image, &found) == 0 && found)
+		{
+			*filesystems |= COCO_FS_OS9;
+		}
+		if (_decb_identify(image, &found) == 0 && found)
+		{
+			*filesystems |= COCO_FS_DECB;
+		}
+		if (_dragondos_identify(image, &found) == 0 && found)
+		{
+			*filesystems |= COCO_FS_DRAGONDOS;
+		}
+	}
+
+	free(image);
+
+	return ec;
+}
+
+
+/*
+ * _coco_filesystem_names()
+ *
+ * Name filesystems, separated by commas.
+ */
+void _coco_filesystem_names(u_int filesystems, char *text, size_t size)
+{
+	snprintf(text, size, "%s%s%s%s%s",
+		 (filesystems & COCO_FS_OS9) ? "OS-9" : "",
+		 (filesystems & COCO_FS_OS9) && (filesystems & ~COCO_FS_OS9) ? ", " : "",
+		 (filesystems & COCO_FS_DECB) ? "Disk BASIC" : "",
+		 (filesystems & COCO_FS_DECB) && (filesystems & COCO_FS_DRAGONDOS) ? ", " : "",
+		 (filesystems & COCO_FS_DRAGONDOS) ? "Dragon DOS" : "");
+}
+
+
+/*
+ * _coco_print_other_filesystems()
+ *
+ * Finish a directory listing of one filesystem by naming any others the
+ * image could hold.
+ */
+void _coco_print_other_filesystems(const char *pathlist, u_int current)
+{
+	u_int filesystems;
+
+	if (_coco_detect_filesystems(pathlist, &filesystems) == 0 && (filesystems & ~current) != 0)
+	{
+		char names[64];
+
+		_coco_filesystem_names(filesystems & ~current, names, sizeof(names));
+		printf("\nOther possible filesystems: %s\n", names);
+	}
+}
+
+
+/* Say why an existing host file might be a disk image, or NULL if it doesn't
+   seem to be.  Raw images have nothing to identify them but a size in whole
+   sectors, which small files often have by chance, so at least a track is
+   needed.  An image cut shorter than that goes unnoticed. */
+static const char *disk_image_suspicion(const char *pathname)
+{
+	static const char *const extensions[] = { ".dsk", ".vdk", ".dmk", ".sdf", ".jvc", ".os9", ".img", ".ima", NULL };
+	const long min_suspect_size = 18 * 256;
+	const char *dot = strrchr(pathname, '.');
+	struct stat existing;
+	diskimage_format format = DISKIMAGE_UNKNOWN;
+	int i;
+
+	if (stat(pathname, &existing) != 0 || S_ISDIR(existing.st_mode))
+	{
+		return NULL;
+	}
+
+	for (i = 0; dot != NULL && extensions[i] != NULL; i++)
+	{
+		if (strcasecmp(dot, extensions[i]) == 0)
+		{
+			return "by its name";
+		}
+	}
+
+	if (_diskimage_identify(pathname, &format) != 0)
+	{
+		return NULL;
+	}
+
+	switch (format)
+	{
+	case DISKIMAGE_DMK:
+		return "it has a DMK header";
+	case DISKIMAGE_SDF:
+		return "it has an SDF header";
+	case DISKIMAGE_VDK:
+		return "it has a VDK header";
+	case DISKIMAGE_JVC:
+		return existing.st_size >= min_suspect_size ? "it has a JVC header" : NULL;
+	case DISKIMAGE_RAW:
+		return existing.st_size >= min_suspect_size ? "its size is a whole number of sectors" : NULL;
+	default:
+		return NULL;
+	}
+}
+
+
+/*
+ * _coco_refuse_disk_image_target()
+ *
+ * -r doesn't change this: forgetting a comma mustn't cost a whole disk.
+ */
+int _coco_refuse_disk_image_target(const char *command, const char *destination)
+{
+	const char *reason = strchr(destination, ',') == NULL ? disk_image_suspicion(destination) : NULL;
+
+	if (reason == NULL)
+	{
+		return 0;
+	}
+
+	fprintf(stderr, "%s: won't overwrite '%s': it looks like a disk image (%s). "
+		"To copy into it, use '%s,'. To replace it, delete it first.\n",
+		command, destination, reason, destination);
+
+	return 1;
+}
+
 
 #define BLOCKSIZE 256
 

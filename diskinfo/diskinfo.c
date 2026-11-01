@@ -311,6 +311,7 @@ static int report_file(const char *pathname)
 {
 	diskimage_geometry geometry;
 	diskimage_id disk;
+	u_int filesystems;
 	error_code ec = _diskimage_open(&disk, pathname, FAM_READ);
 
 	if (ec == EOS_WT)
@@ -331,6 +332,13 @@ static int report_file(const char *pathname)
 		if (geometry.write_protected)
 		{
 			printf("It is write protected.\n");
+		}
+		if (_coco_detect_filesystems(pathname, &filesystems) == 0 && filesystems != 0)
+		{
+			char names[64];
+
+			_coco_filesystem_names(filesystems, names, sizeof(names));
+			printf("Possible filesystems: %s\n", names);
 		}
 		ec = report_tracks(disk, &geometry);
 	}

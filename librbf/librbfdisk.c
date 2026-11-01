@@ -81,6 +81,10 @@ static error_code read_address(os9_path_id path, const sector_address *address, 
 	u_int size = MAX_SECTOR_SIZE;
 	error_code ec = _diskimage_read_sector(path->disk, address->cylinder, address->side, address->sector, sector, &size);
 
+	if (ec == EOS_CRC && path->quiet)
+	{
+		ec = 0;
+	}
 	if (ec == EOS_CRC)
 	{
 		fprintf(stderr, "Warning: bad CRC in cylinder %u side %u sector %u of %s\n",

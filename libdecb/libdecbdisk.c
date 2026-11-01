@@ -198,3 +198,159 @@ error_code _decb_raw_write(decb_path_id path, const void *buffer, u_int *size)
 
 	return ec;
 }
+
+
+/* Read a sector of drive 0.  Damaged data can still be recognized. */
+static int identify_sector(diskimage_id disk, u_int sector, u_char *buffer)
+{
+	u_int size = 256;
+	error_code ec = _diskimage_read_sector(disk, 17, 0, sector, buffer, &size);
+
+	return (ec == 0 || ec == EOS_CRC) && size == 256;
+}
+
+
+/* A chain of granules must end, in a value that says how much of its last
+   granule is used. */
+static int chain_is_valid(const u_char *fat, u_int granules, u_int first)
+{
+	u_int granule = first;
+	u_int count;
+
+	for (count = 0; count <= granules; count++)
+	{
+		if (granule >= granules)
+		{
+			return 0;
+		}
+		if (fat[granule] >= 0xC0)
+		{
+			return fat[granule] <= 0xC9;
+		}
+		granule = fat[granule];
+	}
+
+	return 0;
+}
+
+
+/* A directory entry's name is printable, and its type bytes are known ones. */
+static int entry_is_valid(const decb_dir_entry *entry, const u_char *fat, u_int granules)
+{
+	int i;
+
+	for (i = 0; i < 8; i++)
+	{
+		if (entry->filename[i] < 0x20 || entry->filename[i] > 0x7E)
+		{
+			return 0;
+		}
+	}
+	for (i = 0; i < 3; i++)
+	{
+		if (entry->file_extension[i] < 0x20 || entry->file_extension[i] > 0x7E)
+		{
+			return 0;
+		}
+	}
+
+	return entry->file_type <= 3 && (entry->ascii_flag == 0x00 || entry->ascii_flag == 0xFF) &&
+		chain_is_valid(fat, granules, entry->first_granule);
+}
+
+
+/*
+ * _decb_identify()
+ *
+ * Determine if an image could be a Disk BASIC disk.  Nothing marks one, so it
+ * must have a FAT and directory on track 17 with nothing wrong in them.  A
+ * track of only $FF is an unused track rather than an empty directory.
+ */
+error_code _decb_identify(const char *pathname, int *found)
+{
+	diskimage_geometry geometry;
+	diskimage_id disk;
+	u_char fat[256];
+	u_char sector[256];
+	u_int granules, i, number;
+	int used = 0;
+	int free_only = 1;
+	int skitzo = 1;
+	int all_ff = 1;
+	int valid = 1;
+	int ended = 0;
+	error_code ec;
+
+	*found = 0;
+
+	ec = _diskimage_open(&disk, pathname, FAM_READ);
+	if (ec != 0)
+	{
+		return ec;
+	}
+
+	ec = _diskimage_query_geometry(disk, &geometry);
+	if (ec != 0 || geometry.cylinders < 18 || !identify_sector(disk, 2, fat))
+	{
+		_diskimage_close(disk);
+		return ec;
+	}
+
+	/* Every track but the directory's has two granules. */
+	granules = (geometry.cylinders - 1) * 2;
+	if (granules > 156)
+	{
+		granules = 156;
+	}
+
+	for (i = 0; i < sizeof(fat); i++)
+	{
+		all_ff = all_ff && fat[i] == 0xFF;
+	}
+	for (i = 0; i < granules; i++)
+	{
+		if (!(fat[i] < granules || (fat[i] >= 0xC0 && fat[i] <= 0xC9) || fat[i] == 0xFF))
+		{
+			valid = 0;
+		}
+		free_only = free_only && fat[i] == 0xFF;
+		skitzo = skitzo && fat[i] == (i < 34 ? 0x00 : 0xFF);
+	}
+
+	/* A missing directory sector says nothing either way. */
+	for (number = 3; number <= 11 && valid && !ended; number++)
+	{
+		if (!identify_sector(disk, number, sector))
+		{
+			continue;
+		}
+		for (i = 0; i < 256 && valid && !ended; i += sizeof(decb_dir_entry))
+		{
+			const decb_dir_entry *entry = (const decb_dir_entry *) &sector[i];
+
+			if (entry->filename[0] == 0xFF)
+			{
+				ended = 1;
+			}
+			else
+			{
+				used = 1;
+				if (entry->filename[0] != 0)
+				{
+					valid = entry_is_valid(entry, fat, granules);
+				}
+			}
+		}
+	}
+
+	/* With no files, nothing can have put anything in the FAT. */
+	if (!used && (all_ff || !(free_only || skitzo)))
+	{
+		valid = 0;
+	}
+
+	*found = valid;
+	_diskimage_close(disk);
+
+	return 0;
+}

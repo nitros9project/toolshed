@@ -372,6 +372,70 @@ void test_decb_command_copy_raw_path()
 	remove("test_raw.bin");
 }
 
+/* A copy never replaces a host file that looks like a disk image, even with -r. */
+void test_decb_command_copy_refuses_disk_images()
+{
+	static const char *const commands[] = {
+		"../decb/decb copy test_guard_src.txt %s > /dev/null 2> test_guard_err.txt",
+		"../decb/decb copy -r test_guard_src.txt %s > /dev/null 2> test_guard_err.txt",
+	};
+	static const char *const targets[] = { "test_guard.dsk", "test_guard.bin" };
+	static char before[4608], after[4608], message[512];
+	FILE *fp;
+	size_t i, got;
+	int t, status;
+
+	fp = fopen("test_guard_src.txt", "wb");
+	fputs("replacement\n", fp);
+	fclose(fp);
+
+	for (t = 0; t < 2; t++)
+	{
+		char command[256];
+
+		/* One looks like an image by name, the other by its size. */
+		memset(before, 0x5A, sizeof(before));
+		fp = fopen(targets[t], "wb");
+		fwrite(before, 1, sizeof(before), fp);
+		fclose(fp);
+
+		for (i = 0; i < sizeof(commands) / sizeof(commands[0]); i++)
+		{
+			snprintf(command, sizeof(command), commands[i], targets[t]);
+			status = system(command);
+			ASSERT_NEQUALS(0, status);
+
+			fp = fopen("test_guard_err.txt", "rb");
+			got = fread(message, 1, sizeof(message) - 1, fp);
+			fclose(fp);
+			message[got] = 0;
+			ASSERT("it says why", strstr(message, "looks like a disk image") != NULL);
+
+			fp = fopen(targets[t], "rb");
+			got = fread(after, 1, sizeof(after), fp);
+			fclose(fp);
+			ASSERT_EQUALS(sizeof(before), got);
+			ASSERT_EQUALS(0, memcmp(before, after, sizeof(before)));
+		}
+		remove(targets[t]);
+	}
+
+	/* Other files are still written. */
+	fp = fopen("test_guard.txt", "wb");
+	fputs("old\n", fp);
+	fclose(fp);
+	status = system("../decb/decb copy -r test_guard_src.txt test_guard.txt > /dev/null 2>&1");
+	ASSERT_EQUALS(0, status);
+	fp = fopen("test_guard.txt", "rb");
+	got = fread(after, 1, sizeof(after), fp);
+	fclose(fp);
+	ASSERT_EQUALS(12, got);
+
+	remove("test_guard.txt");
+	remove("test_guard_src.txt");
+	remove("test_guard_err.txt");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -384,5 +448,6 @@ int main()
 	RUN(test_decb_command_attr_no_comma_spec);
 	RUN(test_decb_command_copy_raw_path);
 	
+	RUN(test_decb_command_copy_refuses_disk_images);
 	return TEST_REPORT();
 }

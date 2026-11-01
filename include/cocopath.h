@@ -156,6 +156,19 @@ error_code _coco_ss_size(coco_path_id path, int size);
 
 error_code _coco_identify_image(char *pathlist, _path_type *type);
 
+/* Filesystems a disk image could hold.  A disk can hold more than one. */
+#define COCO_FS_OS9		0x01
+#define COCO_FS_DECB		0x02
+#define COCO_FS_DRAGONDOS	0x04
+
+error_code _coco_detect_filesystems(const char *pathlist, u_int *filesystems);
+void _coco_filesystem_names(u_int filesystems, char *text, size_t size);
+void _coco_print_other_filesystems(const char *pathlist, u_int current);
+
+/* Say so and return 1 if a copy to this destination would replace a host file
+   that looks like a disk image.  Copy commands refuse these, even with -r. */
+int _coco_refuse_disk_image_target(const char *command, const char *destination);
+
 #ifdef __cplusplus
 }
 #endif

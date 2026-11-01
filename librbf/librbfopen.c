@@ -1045,7 +1045,10 @@ static error_code load_lsn0(os9_path_id path)
 
 	if (ec == EOS_CRC)
 	{
-		fprintf(stderr, "Warning: bad CRC in LSN0 of %s\n", path->imgfile);
+		if (!path->quiet)
+		{
+			fprintf(stderr, "Warning: bad CRC in LSN0 of %s\n", path->imgfile);
+		}
 		ec = 0;
 	}
 
@@ -1126,6 +1129,7 @@ error_code _os9_identify(const char *pathname, int *found)
 	}
 
 	path->imgfile = strdup(pathname);
+	path->quiet = 1;
 	ec = open_image(path);
 
 	if (ec != 0)

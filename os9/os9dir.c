@@ -106,6 +106,8 @@ int os9dir(int argc, char *argv[])
 				argv[0], ec, p);
 			return (ec);
 		}
+
+		_coco_print_other_filesystems(p, COCO_FS_OS9);
 	}
 
 	return (0);

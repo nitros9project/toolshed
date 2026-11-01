@@ -10,7 +10,6 @@
 #include "dgndos.h"
 
 
-#define MIN_SUSPECT_SIZE (DRAGONDOS_TRACK_SECTORS * DRAGONDOS_SECTOR_SIZE)
 
 
 /* Help message */
@@ -56,54 +55,6 @@ static char *get_filename(char *path)
 		return b + 1;
 	}
 	return a == NULL ? path : a + 1;
-}
-
-
-/* Say why an existing host file might be a disk image, or NULL if it doesn't
-   seem to be.  Raw images have nothing to identify them but a size in whole
-   sectors, which small files often have by chance, so at least a track is
-   needed.  An image cut shorter than that goes unnoticed. */
-static const char *disk_image_suspicion(const char *pathname)
-{
-	static const char *const extensions[] = { ".dsk", ".vdk", ".dmk", ".sdf", ".jvc", ".os9", ".img", ".ima", NULL };
-	const char *dot = strrchr(pathname, '.');
-	struct stat existing;
-	diskimage_format format = DISKIMAGE_UNKNOWN;
-	int i;
-
-	if (stat(pathname, &existing) != 0 || S_ISDIR(existing.st_mode))
-	{
-		return NULL;
-	}
-
-	for (i = 0; dot != NULL && extensions[i] != NULL; i++)
-	{
-		if (strcasecmp(dot, extensions[i]) == 0)
-		{
-			return "by its name";
-		}
-	}
-
-	if (_diskimage_identify(pathname, &format) != 0)
-	{
-		return NULL;
-	}
-
-	switch (format)
-	{
-	case DISKIMAGE_DMK:
-		return "it has a DMK header";
-	case DISKIMAGE_SDF:
-		return "it has an SDF header";
-	case DISKIMAGE_VDK:
-		return "it has a VDK header";
-	case DISKIMAGE_JVC:
-		return existing.st_size >= MIN_SUSPECT_SIZE ? "it has a JVC header" : NULL;
-	case DISKIMAGE_RAW:
-		return existing.st_size >= MIN_SUSPECT_SIZE ? "its size is a whole number of sectors" : NULL;
-	default:
-		return NULL;
-	}
 }
 
 
@@ -183,7 +134,6 @@ static error_code copy_file(char *source, char *target, int target_is_directory,
 {
 	static char buffer[32768];
 	char destination[1024];
-	const char *reason;
 	int length;
 	error_code ec;
 
@@ -202,11 +152,8 @@ static error_code copy_file(char *source, char *target, int target_is_directory,
 		return EOS_BPNAM;
 	}
 
-	/* -r doesn't change this: forgetting a comma mustn't cost a whole disk. */
-	reason = strchr(destination, ',') == NULL ? disk_image_suspicion(destination) : NULL;
-	if (reason != NULL)
+	if (_coco_refuse_disk_image_target("copy", destination))
 	{
-		fprintf(stderr, "copy: won't overwrite '%s': it looks like a disk image (%s)\n", destination, reason);
 		return DGNDOS_USAGE_ERROR;
 	}
 

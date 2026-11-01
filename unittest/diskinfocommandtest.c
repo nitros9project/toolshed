@@ -426,6 +426,15 @@ static void test_set_write_protect(void)
 	remove(TEST_IMAGE);
 }
 
+static void test_possible_filesystems(void)
+{
+	ASSERT_CALL(0, run_diskinfo("\"../../../unittest/testdata/os9 mame.dmk\""));
+	ASSERT("OS-9 is named", strstr(output, "is a DMK disk image.\nPossible filesystems: OS-9\nTracks") != NULL);
+
+	ASSERT_CALL(0, run_diskinfo("\"../../../unittest/testdata/dragondos mame.vdk\""));
+	ASSERT("Dragon DOS is named", strstr(output, "Possible filesystems: Dragon DOS\n") != NULL);
+}
+
 int main(void)
 {
 	RUN(test_dmk_report);
@@ -441,5 +450,6 @@ int main(void)
 	RUN(test_usage);
 	RUN(test_set_write_protect);
 
+	RUN(test_possible_filesystems);
 	return TEST_REPORT();
 }

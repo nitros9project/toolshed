@@ -11,6 +11,7 @@
 #include <utime.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 void test_os9_command_format()
 {
@@ -463,6 +464,100 @@ void test_os9_command_copy_eol_same_type()
 	remove("test_eol2.txt");
 }
 
+/* A copy never replaces a host file that looks like a disk image, even with -r. */
+void test_os9_command_copy_refuses_disk_images()
+{
+	static const char *const commands[] = {
+		"../os9/os9 copy test_guard_src.txt %s > /dev/null 2> test_guard_err.txt",
+		"../os9/os9 copy -r test_guard_src.txt %s > /dev/null 2> test_guard_err.txt",
+	};
+	static const char *const targets[] = { "test_guard.dsk", "test_guard.bin" };
+	static char before[4608], after[4608], message[512];
+	FILE *fp;
+	size_t i, got;
+	int t, status;
+
+	fp = fopen("test_guard_src.txt", "wb");
+	fputs("replacement\n", fp);
+	fclose(fp);
+
+	for (t = 0; t < 2; t++)
+	{
+		char command[256];
+
+		/* One looks like an image by name, the other by its size. */
+		memset(before, 0x5A, sizeof(before));
+		fp = fopen(targets[t], "wb");
+		fwrite(before, 1, sizeof(before), fp);
+		fclose(fp);
+
+		for (i = 0; i < sizeof(commands) / sizeof(commands[0]); i++)
+		{
+			snprintf(command, sizeof(command), commands[i], targets[t]);
+			status = system(command);
+			ASSERT_NEQUALS(0, status);
+
+			fp = fopen("test_guard_err.txt", "rb");
+			got = fread(message, 1, sizeof(message) - 1, fp);
+			fclose(fp);
+			message[got] = 0;
+			ASSERT("it says why", strstr(message, "looks like a disk image") != NULL);
+
+			fp = fopen(targets[t], "rb");
+			got = fread(after, 1, sizeof(after), fp);
+			fclose(fp);
+			ASSERT_EQUALS(sizeof(before), got);
+			ASSERT_EQUALS(0, memcmp(before, after, sizeof(before)));
+		}
+		remove(targets[t]);
+	}
+
+	/* Other files are still written. */
+	fp = fopen("test_guard.txt", "wb");
+	fputs("old\n", fp);
+	fclose(fp);
+	status = system("../os9/os9 copy -r test_guard_src.txt test_guard.txt > /dev/null 2>&1");
+	ASSERT_EQUALS(0, status);
+	fp = fopen("test_guard.txt", "rb");
+	got = fread(after, 1, sizeof(after), fp);
+	fclose(fp);
+	ASSERT_EQUALS(12, got);
+
+	remove("test_guard.txt");
+	remove("test_guard_src.txt");
+	remove("test_guard_err.txt");
+}
+
+/* dsave runs copy, so it refuses too, and its own exit status says so. */
+void test_os9_command_dsave_refuses_disk_images()
+{
+	static char before[4608], after[4608];
+	FILE *fp;
+	size_t got;
+	int status;
+
+	status = system("rm -rf test_dsave_src test_dsave_dst && mkdir test_dsave_src test_dsave_dst"
+			" && echo new > test_dsave_src/x.dsk");
+	ASSERT_EQUALS(0, status);
+	memset(before, 0x5A, sizeof(before));
+	fp = fopen("test_dsave_dst/x.dsk", "wb");
+	fwrite(before, 1, sizeof(before), fp);
+	fclose(fp);
+
+	status = system("PATH=../os9:$PATH ../os9/os9 dsave -e -r test_dsave_src test_dsave_dst > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+	ASSERT_EQUALS(EOS_FAE, WEXITSTATUS(status));
+
+	fp = fopen("test_dsave_dst/x.dsk", "rb");
+	got = fread(after, 1, sizeof(after), fp);
+	fclose(fp);
+	ASSERT_EQUALS(sizeof(before), got);
+	ASSERT_EQUALS(0, memcmp(before, after, sizeof(before)));
+
+	status = system("rm -rf test_dsave_src test_dsave_dst");
+	ASSERT_EQUALS(0, status);
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -475,5 +570,7 @@ int main()
 	RUN(test_os9_command_copy_raw_path);
 	RUN(test_os9_command_copy_eol_same_type);
 
+	RUN(test_os9_command_copy_refuses_disk_images);
+	RUN(test_os9_command_dsave_refuses_disk_images);
 	return TEST_REPORT();
 }

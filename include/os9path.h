@@ -131,6 +131,7 @@ typedef struct _os9_path_id
 	unsigned int	filepos;	/* file position */
 	diskimage_id	disk;		/* the image file */
 	int		raw_image;	/* the image file is a raw image */
+	int		quiet;		/* do not warn about bad CRCs */
 	lsn0_sect	*lsn0;		/* copy of LSN0 */
 	u_char		*bitmap;	/* bitmap */
 	u_char		*saved_bitmap;	/* bitmap as read, to tell if it changed */

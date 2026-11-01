@@ -237,6 +237,11 @@ int decbcopy(int argc, char *argv[])
 		}
 
 
+		if (_coco_refuse_disk_image_target(argv[0], df))
+		{
+			return EOS_FAE;
+		}
+
 		ec = CopyDECBFile(argv[j], df, eolTranslate, tokTranslate,
 				  binary_concat, rewrite, file_type,
 				  data_type);

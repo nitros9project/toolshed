@@ -182,7 +182,7 @@ On our theoretical host computer, a file exists that you wished to have copied t
 
 Notice the use of the comma at the end of the second parameter. This tells the os9 program that you wish to copy the file test1 over to the root directory of the os9.dsk image.
 
-What happened if you didn't put the comma at the end of the second parameter?  os9 copy would have copied test1 on top of the os9.dsk image, effectively replacing your entire disk image with the contents of test1. This is probably not the intended effect.
+What happens if you don't put the comma at the end of the second parameter?  os9 copy would copy test1 on top of the os9.dsk image, replacing your entire disk image with the contents of test1, so the copy commands refuse to do that. An existing file on the host that is or looks like a disk image is never replaced, even with -r. The copy is refused, and says why. A file looks like one if it has the extension .dsk, .vdk, .dmk, .sdf, .jvc, .os9, .img or .ima, has the header of a disk image format, or is at least a track long (4608 bytes) and a whole number of sectors. This applies to os9, decb, cecb and dgndos copy, and to dsave. To replace such a file, delete it first.
 
 Let's take the example a step further. A file exists in the os9.dsk image file, in RBF format, that you wish to copy to your host file system, in the root directory. The file on the disk image is named test2, and resides in the RBF subdirectory path DIR1/DIR2. How would you copy the file to your host file system's root?
 
@@ -1680,6 +1680,16 @@ On a two sided image, a run of tracks is reported once if both sides match, and 
     Tracks 1 to 34, both sides, are 18 sectors (1-18), 256 bytes each.
 
 A file that is not a disk image is reported as such.
+
+If the image could hold an OS-9, Disk BASIC or Dragon DOS filesystem, diskinfo names them. A disk can hold more than one, and Disk BASIC has nothing to identify it, so this is only what could be there.
+
+    test.dsk is a raw disk image.
+    Possible filesystems: OS-9, Disk BASIC
+    Tracks 0 to 34 are 18 sectors (1-18), 256 bytes each.
+
+`os9 dir`, `decb dir` and `dgndos dir` end their listing by naming any other filesystems the image could hold.
+
+    Other possible filesystems: Disk BASIC
 
 With -p or -u, diskinfo changes the write protect flag instead of reporting the layout. Raw and JVC images have no such flag. os9, decb and dgndos can read a write protected image, but cannot change it.
 

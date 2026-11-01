@@ -362,6 +362,13 @@ int os9copy(int argc, char *argv[])
 			strcat(df, ExtractFilename(argv[j]));
 		}
 
+		if (_coco_refuse_disk_image_target(argv[0], df))
+		{
+			if (first_error == 0)
+				first_error = EOS_FAE;
+			continue;
+		}
+
 		ec = TSCopyFile(argv[j], df, eolTranslate, rewrite, owner,
 				owner_set, buffer, buffer_size);
 

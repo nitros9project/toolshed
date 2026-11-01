@@ -11,6 +11,9 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <math.h>
+#ifndef WIN32
+#include <sys/wait.h>
+#endif
 
 /* globals */
 u_int buffer_size = 32768;
@@ -33,6 +36,23 @@ static char const *const helpMessage[] = {
 	"     -r         force rewrite on copy\n",
 	NULL
 };
+
+
+/* Run a command, and return its exit status rather than how it is packed in
+   the wait status, which would not survive being an exit status itself. */
+static error_code run_command(const char *command)
+{
+	int status = system(command);
+
+#ifndef WIN32
+	if (status != -1 && WIFEXITED(status))
+	{
+		return WEXITSTATUS(status);
+	}
+#endif
+
+	return status;
+}
 
 
 int os9dsave(int argc, char *argv[])
@@ -279,7 +299,7 @@ error_code do_dsave(char *pgmname, char *source, char *target, int execute,
 				puts(command);
 				if (execute)
 				{
-					ec = system(command);
+					ec = run_command(command);
 					if (ec != 0)
 					{
 						_coco_close(sourcePath);
@@ -289,9 +309,15 @@ error_code do_dsave(char *pgmname, char *source, char *target, int execute,
 				}
 
 				/* 4. call this function again */
-				do_dsave(pgmname, sourcePathList, newTarget,
-					 execute, buffer_size, rewrite,
-					 eoltranslate, basicdetoken);
+				ec = do_dsave(pgmname, sourcePathList, newTarget,
+					      execute, buffer_size, rewrite,
+					      eoltranslate, basicdetoken);
+				if (ec != 0)
+				{
+					_coco_close(sourcePath);
+
+					return (ec);
+				}
 
 				/* 5. decrement level indicator */
 				level--;
@@ -357,7 +383,7 @@ error_code do_dsave(char *pgmname, char *source, char *target, int execute,
 				puts(command);
 				if (execute)
 				{
-					ec = system(command);
+					ec = run_command(command);
 					if (ec != 0)
 					{
 						_coco_close(sourcePath);

@@ -84,6 +84,8 @@ int decbdir(int argc, char *argv[])
 
 			return ec;
 		}
+
+		_coco_print_other_filesystems(p, COCO_FS_DECB);
 	}
 
 

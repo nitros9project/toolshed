@@ -163,6 +163,8 @@ int dgndosdir(int argc, char *argv[])
 			fprintf(stderr, "%s: error %d with '%s'\n", argv[0], ec, p);
 			return (ec);
 		}
+
+		_coco_print_other_filesystems(p, COCO_FS_DRAGONDOS);
 	}
 
 	if (p == NULL)
