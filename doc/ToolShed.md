@@ -1802,7 +1802,7 @@ Without -f, the format comes from the disk's extension, and otherwise it is raw.
 
 #### Description
 
-This is the same dump command as in the os9 and decb tools.
+This is the same dump command as in the os9 and decb tools. With -z, a file with the header SAVE writes is decoded: its data is shown at its load address, followed by its execution address. Dragon DOS files hold a single block, unlike Disk BASIC's.
 
 ---
 

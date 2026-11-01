@@ -637,6 +637,65 @@ static void test_copy_replaces_other_host_files(void)
 	clean_up();
 }
 
+static void test_dump_decodes_binaries(void)
+{
+	static const u_char with_extra[] = { 0x55, 0x02, 0x30, 0x00, 0x00, 0x03, 0x30, 0x02, 0xAA, 0xC1, 0xC2, 0xC3, 0xEE, 0xEE };
+	static const u_char too_short[] = { 0x55, 0x02, 0x30, 0x00, 0x00, 0x10, 0x30, 0x00, 0xAA, 0xC1 };
+	static const u_char no_end_mark[] = { 0x55, 0x02, 0x30, 0x00, 0x00, 0x01, 0x30, 0x00, 0xAB, 0xC1 };
+	static const u_char short_header[] = { 0x55, 0x02, 0x30, 0x00, 0x00, 0x01 };
+	static const u_char decb[] = { 0x00, 0x00, 0x02, 0x40, 0x00, 0xD1, 0xD2, 0xFF, 0x00, 0x00, 0x40, 0x01 };
+	static const u_char decb_two_blocks[] = { 0x00, 0x00, 0x01, 0x40, 0x00, 0xD1, 0x55, 0x00, 0x01, 0x50, 0x00, 0xD2, 0xFF, 0x00, 0x00, 0x40, 0x00 };
+
+	clean_up();
+	ASSERT_RUN(0, DGNDOS "dskinit " TEST_IMAGE);
+
+	/* From a disk, the data is at its load address, without the header. */
+	write_bytes(NATIVE_FILE, with_extra, sizeof(with_extra));
+	ASSERT_RUN(0, DGNDOS "copy " NATIVE_FILE " " TEST_IMAGE ",CODE.BIN");
+	ASSERT_RUN(0, DGNDOS "dump -z " TEST_IMAGE ",CODE.BIN" CAPTURE);
+	read_output();
+	ASSERT("the load address", strstr(output, "3000") != NULL);
+	ASSERT("the data", strstr(output, "c1c2") != NULL || strstr(output, "C1C2") != NULL);
+	ASSERT("the header is not data", strstr(output, "5502") == NULL);
+	ASSERT("the bytes past its length are not data", strstr(output, "eeee") == NULL && strstr(output, "EEEE") == NULL);
+	ASSERT("the execution address", strstr(output, "Execution address: $3002\n") != NULL);
+	ASSERT("what is left over", strstr(output, "2 bytes extra at end of file.\n") != NULL);
+
+	/* Without -z it is the file's bytes from the start. */
+	ASSERT_RUN(0, DGNDOS "dump " TEST_IMAGE ",CODE.BIN" CAPTURE);
+	read_output();
+	ASSERT("the header is data", strstr(output, "5502") != NULL);
+	ASSERT("no decoding", strstr(output, "Execution address") == NULL);
+
+	/* A BASIC program has the same form. */
+	ASSERT_RUN(0, DGNDOS "dump -z " MAME_IMAGE ",HW1.BAS" CAPTURE);
+	read_output();
+	ASSERT("BASIC's load address", strstr(output, "2401") != NULL);
+	ASSERT("BASIC's execution address", strstr(output, "Execution address: $8B8D\n") != NULL);
+	ASSERT("nothing left over", strstr(output, "extra") == NULL);
+
+	write_bytes(NATIVE_FILE, too_short, sizeof(too_short));
+	ASSERT_RUN(EOS_EOF, DGNDOS "dump -z " NATIVE_FILE QUIET);
+	write_bytes(NATIVE_FILE, short_header, sizeof(short_header));
+	ASSERT_RUN(EOS_EOF, DGNDOS "dump -z " NATIVE_FILE QUIET);
+	write_bytes(NATIVE_FILE, no_end_mark, sizeof(no_end_mark));
+	ASSERT_RUN(1, DGNDOS "dump -z " NATIVE_FILE CAPTURE);
+	read_output();
+	ASSERT("the header is reported", strstr(output, "Dragon DOS file header") != NULL);
+
+	/* Disk BASIC files still decode as before, even with $55 in their data. */
+	write_bytes(NATIVE_FILE, decb, sizeof(decb));
+	ASSERT_RUN(0, DGNDOS "dump -z " NATIVE_FILE CAPTURE);
+	read_output();
+	ASSERT("its load address", strstr(output, "4000") != NULL);
+	ASSERT("its execution address", strstr(output, "Execution address: $4001\n") != NULL);
+	write_bytes(NATIVE_FILE, decb_two_blocks, sizeof(decb_two_blocks));
+	ASSERT_RUN(1, DGNDOS "dump -z " NATIVE_FILE CAPTURE);
+	read_output();
+	ASSERT("a $55 after the first block is still no block", strstr(output, "Expected 0 or 255") != NULL);
+	clean_up();
+}
+
 int main(void)
 {
 	RUN(test_help);
@@ -654,5 +713,6 @@ int main(void)
 	RUN(test_copy_tokens);
 	RUN(test_copy_refuses_to_overwrite_disk_images);
 	RUN(test_copy_replaces_other_host_files);
+	RUN(test_dump_decodes_binaries);
 	return TEST_REPORT();
 }
