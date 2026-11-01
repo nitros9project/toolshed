@@ -122,10 +122,10 @@ typedef struct
    "/" and up to 3 more.  Lower case is made upper, and extra characters
    in the name part are ignored, but not extra characters in the extension. */
 
-/* Make a new image of a blank disk, formatted as DSKINI does.  An existing
-   file is not replaced.  tracks is 21 to 80, sides is 1 or 2.  Unlike DSKINI,
+/* Make a new image of a blank disk, formatted as DSKINIT does.  An existing
+   file is not replaced.  tracks is 21 to 80, sides is 1 or 2.  Unlike DSKINIT,
    an 80 track single sided disk has all of its sectors free. */
-error_code _dragondos_dskini(const char *pathname, diskimage_format format, u_int tracks, u_int sides);
+error_code _dragondos_dskinit(const char *pathname, diskimage_format format, u_int tracks, u_int sides);
 
 /* mode is FAM_READ and/or FAM_WRITE, optionally with
    DISKIMAGE_IGNORE_WRITE_PROTECT. */

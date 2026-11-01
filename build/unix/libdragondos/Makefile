@@ -3,7 +3,7 @@ include ../rules.mak
 
 CFLAGS += -I../../../include -Wall -MMD -MP
 
-SRCS = libdragondosbitmap.c libdragondosdir.c libdragondosdisk.c libdragondosdskini.c \
+SRCS = libdragondosbitmap.c libdragondosdir.c libdragondosdisk.c libdragondosdskinit.c \
 	libdragondoskill.c libdragondosopen.c libdragondosread.c libdragondoswrite.c
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)

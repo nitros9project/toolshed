@@ -1,17 +1,17 @@
 /********************************************************************
- * libdragondosdskini.c - Make a blank disk, as DSKINI at $C3BC of the ROM
+ * libdragondosdskinit.c - Make a blank disk, as DSKINIT at $C3BC of the ROM
  ********************************************************************/
 #include <stdlib.h>
 #include <string.h>
 
 #include "libdragondosint.h"
 
-#define DSKINI_INTERLEAVE	2
-#define DSKINI_FILL		0xE5
-#define DSKINI_EMPTY_ENTRY	0x89
+#define DSKINIT_INTERLEAVE	2
+#define DSKINIT_FILL		0xE5
+#define DSKINIT_EMPTY_ENTRY	0x89
 
 
-error_code _dragondos_dskini(const char *pathname, diskimage_format format, u_int tracks, u_int sides)
+error_code _dragondos_dskinit(const char *pathname, diskimage_format format, u_int tracks, u_int sides)
 {
 	dragondos_path_id path;
 	u_int sectors_per_track = DRAGONDOS_TRACK_SECTORS * sides;
@@ -24,7 +24,7 @@ error_code _dragondos_dskini(const char *pathname, diskimage_format format, u_in
 	}
 
 	ec = _diskimage_create(pathname, format, sides, tracks, DRAGONDOS_SECTOR_SIZE, DRAGONDOS_TRACK_SECTORS,
-			       0, DSKINI_INTERLEAVE, DSKINI_FILL);
+			       0, DSKINIT_INTERLEAVE, DSKINIT_FILL);
 	if (ec != 0)
 	{
 		return ec;
@@ -58,7 +58,7 @@ error_code _dragondos_dskini(const char *pathname, diskimage_format format, u_in
 
 		for (entry = 0; entry < DD_ENTRIES_PER_SECTOR; entry++)
 		{
-			path->track[i][entry * DD_ENTRY_SIZE] = DSKINI_EMPTY_ENTRY;
+			path->track[i][entry * DD_ENTRY_SIZE] = DSKINIT_EMPTY_ENTRY;
 		}
 	}
 	memset(path->track_loaded, 1, sizeof(path->track_loaded));

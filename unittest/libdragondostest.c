@@ -356,7 +356,7 @@ static void test_read_mame_disk(void)
 	ASSERT_CALL(EOS_BPNAM, _dragondos_open(&path, MAME_IMAGE, FAM_READ));
 }
 
-/* DSKINI and saving the same files must make the same disk Dragon DOS made. */
+/* DSKINIT and saving the same files must make the same disk Dragon DOS made. */
 static void test_reproduce_mame_disk(void)
 {
 	static u_char programs[5][41];
@@ -379,7 +379,7 @@ static void test_reproduce_mame_disk(void)
 	}
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_VDK, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_VDK, 40, 1));
 	for (i = 0; i < 5; i++)
 	{
 		char pathlist[64];
@@ -407,7 +407,7 @@ static void check_bitmap(diskimage_format format, u_int tracks, u_int sides, u_i
 	u_int i;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, format, tracks, sides));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, format, tracks, sides));
 	ASSERT_EQUALS(free_count, free_sectors());
 	ASSERT_EQUALS(ENTRY_AT_END, entry_flags(0));
 
@@ -434,7 +434,7 @@ static void check_bitmap(diskimage_format format, u_int tracks, u_int sides, u_i
 	remove(TEST_IMAGE);
 }
 
-static void test_dskini_bitmaps(void)
+static void test_dskinit_bitmaps(void)
 {
 	check_bitmap(DISKIMAGE_RAW, 40, 1, 720 - 36, SS_DIRECTORY * 256L);
 	check_bitmap(DISKIMAGE_RAW, 80, 1, 1440 - 36, SS_DIRECTORY * 256L);
@@ -443,14 +443,14 @@ static void test_dskini_bitmaps(void)
 	check_bitmap(DISKIMAGE_RAW, 35, 1, 630 - 36, SS_DIRECTORY * 256L);
 }
 
-static void test_dskini_arguments(void)
+static void test_dskinit_arguments(void)
 {
 	remove(TEST_IMAGE);
-	ASSERT_CALL(EOS_IA, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 20, 1));
-	ASSERT_CALL(EOS_IA, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 81, 2));
-	ASSERT_CALL(EOS_IA, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 3));
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
-	ASSERT_CALL(EOS_FAE, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(EOS_IA, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 20, 1));
+	ASSERT_CALL(EOS_IA, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 81, 2));
+	ASSERT_CALL(EOS_IA, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 3));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(EOS_FAE, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	remove(TEST_IMAGE);
 }
 
@@ -471,7 +471,7 @@ static void test_all_formats(void)
 			u_int blank = 40 * 18 * sides - 36;
 
 			remove(TEST_IMAGE);
-			ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, formats[i], 40, sides));
+			ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, formats[i], 40, sides));
 			ASSERT_EQUALS(blank, free_sectors());
 			ASSERT_CALL(0, save(TEST_FILE("LONG.BIN"), 20000, 3));
 			ASSERT_CALL(0, save(TEST_FILE("SHORT.DAT"), 5, 9));
@@ -494,7 +494,7 @@ static void test_double_sided_placement(void)
 	u_int size = sizeof(sector);
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_VDK, 40, 2));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_VDK, 40, 2));
 	ASSERT_CALL(0, save(TEST_FILE("FILE"), 256 * 19, 1));
 
 	/* Two free tracks below LSN 720 are 702 and 684.  The file goes on from
@@ -517,7 +517,7 @@ static void test_raw_double_sided_placement(void)
 	dragondos_path_id path;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 2));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 2));
 	ASSERT_CALL(0, _dragondos_open(&path, TEST_IMAGE ",", FAM_READ));
 	ASSERT_EQUALS(1, path->linear);
 	ASSERT_EQUALS(DS_DIRECTORY, path->directory_lsn);
@@ -537,7 +537,7 @@ static void test_sizes_at_sector_boundaries(void)
 	size_t i;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 2));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 2));
 	for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++)
 	{
 		u_int blank = free_sectors();
@@ -559,12 +559,12 @@ static void test_small_writes_match_one_write(void)
 	long size;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_CALL(0, save(TEST_FILE("FILE"), 30000, 5));
 	size = read_file(TEST_IMAGE, other, sizeof(other));
 	remove(TEST_IMAGE);
 
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_CALL(0, _dragondos_create(&path, TEST_FILE("FILE"), RW));
 	fill_pattern(30000, 5);
 	while (position < 30000)
@@ -600,7 +600,7 @@ static void test_continuation_entries(void)
 	u_int next, index;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 80, 2));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 80, 2));
 	blank = free_sectors();
 	ASSERT_CALL(0, save(TEST_FILE("A"), 10, 0));
 	ASSERT_CALL(0, save(TEST_FILE("BIG"), 0, 0));
@@ -681,7 +681,7 @@ static void test_disk_full(void)
 	u_int blank;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	blank = free_sectors();
 	ASSERT_CALL(0, save(TEST_FILE("KEEP"), 1000, 2));
 
@@ -710,7 +710,7 @@ static void test_directory_full(void)
 	dragondos_path_id path;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	for (i = 0; i < DRAGONDOS_MAX_DIR_ENTRIES; i++)
 	{
 		char pathlist[64];
@@ -743,7 +743,7 @@ static void test_create_existing(void)
 	dragondos_path_id path;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_CALL(0, save(TEST_FILE("FILE"), 1000, 2));
 	ASSERT_CALL(EOS_FAE, _dragondos_create(&path, TEST_FILE("FILE"), RW | FAM_NOCREATE));
 	ASSERT("the file is intact", file_matches(TEST_FILE("FILE"), 1000, 2));
@@ -762,7 +762,7 @@ static void test_protection(void)
 	u_int size = 1;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_CALL(0, save(TEST_FILE("FILE"), 100, 2));
 
 	ASSERT_CALL(0, _dragondos_open(&path, TEST_FILE("FILE"), RW));
@@ -794,7 +794,7 @@ static void test_rename(void)
 	dragondos_path_id path;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_CALL(0, save(TEST_FILE("ONE.BAS"), 100, 1));
 	ASSERT_CALL(0, save(TEST_FILE("TWO.BAS"), 200, 2));
 	ASSERT_CALL(EOS_FAE, _dragondos_rename(TEST_FILE("ONE.BAS"), "two.bas"));
@@ -814,7 +814,7 @@ static void test_seek_and_overwrite(void)
 	u_char buffer[8];
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_CALL(0, save(TEST_FILE("FILE"), 1000, 2));
 
 	ASSERT_CALL(0, _dragondos_open(&path, TEST_FILE("FILE"), RW));
@@ -850,7 +850,7 @@ static void test_write_past_end(void)
 	u_int size = 3;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_CALL(0, _dragondos_create(&path, TEST_FILE("FILE"), RW));
 	ASSERT_CALL(0, _dragondos_seek(path, 1000, SEEK_SET));
 	ASSERT_CALL(0, _dragondos_write(path, "abc", &size));
@@ -872,7 +872,7 @@ static void test_set_size(void)
 	int i;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 80, 2));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 80, 2));
 	blank = free_sectors();
 
 	/* A fragmented file, so that shrinking crosses entries. */
@@ -928,7 +928,7 @@ static void test_readln(void)
 	u_int size = 10;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_CALL(0, _dragondos_create(&path, TEST_FILE("TEXT"), RW));
 	ASSERT_CALL(0, _dragondos_write(path, "ONE\rTWO\rTH", &size));
 	ASSERT_CALL(0, _dragondos_seek(path, 0, SEEK_SET));
@@ -964,7 +964,7 @@ static void test_access_modes(void)
 	u_int size = 1;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_CALL(0, save(TEST_FILE("FILE"), 100, 2));
 
 	ASSERT_CALL(0, _dragondos_open(&path, TEST_FILE("FILE"), FAM_READ));
@@ -999,7 +999,7 @@ static void test_write_protected_image(void)
 	long size;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_VDK, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_VDK, 40, 1));
 	size = read_file(TEST_IMAGE, image, sizeof(image));
 	image[10] |= 1;
 	write_file(TEST_IMAGE, image, size);
@@ -1020,7 +1020,7 @@ static void test_not_dragondos(void)
 	ASSERT_CALL(EOS_WT, _dragondos_open(&path, TEST_IMAGE ",", FAM_READ));
 	remove(TEST_IMAGE);
 
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_EQUALS(720 * 256, read_file(TEST_IMAGE, image, sizeof(image)));
 	image[SS_DIRECTORY * 256L + 0xFE] ^= 1;
 	image[(SS_DIRECTORY - 72) * 256L + 0xFE] ^= 1;
@@ -1048,7 +1048,7 @@ static void test_corrupt_chain(void)
 	long offset = (SS_DIRECTORY + 2) * 256L;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_CALL(0, save(TEST_FILE("LOOP"), 10, 1));
 	ASSERT_EQUALS(720 * 256, read_file(TEST_IMAGE, image, sizeof(image)));
 	image[offset] |= DRAGONDOS_FLAG_CONTINUED;
@@ -1101,7 +1101,7 @@ static void test_missing_sectors_unneeded_for_read(void)
 	u_int cylinder, sector;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
 	ASSERT_CALL(0, save(TEST_FILE("FILE"), 300, 2));
 
 	/* Leave only the file's sectors, and what's needed to find them. */
@@ -1138,7 +1138,7 @@ static void test_missing_sector_stops_a_read(void)
 	u_int size = 300;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
 	ASSERT_CALL(0, save(TEST_FILE("FILE"), 300, 2));
 	dmk_load();
 	dmk_remove_sector(18, 2);	/* LSN 325, the file's second sector */
@@ -1159,7 +1159,7 @@ static void test_directory_falls_back_to_copy(void)
 	dragondos_path_id path;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
 	ASSERT_CALL(0, save(TEST_FILE("FILE"), 300, 2));
 	dmk_load();
 	dmk_remove_sector(20, 1);
@@ -1185,7 +1185,7 @@ static void test_write_without_copy_track(void)
 	u_int sector;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
 	dmk_load();
 	for (sector = 1; sector <= 18; sector++)
 	{
@@ -1204,7 +1204,7 @@ static void test_write_needs_only_what_it_touches(void)
 	u_int cylinder, sector;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
 	dmk_load();
 	for (cylinder = 0; cylinder < 40; cylinder++)
 	{
@@ -1234,7 +1234,7 @@ static void test_write_to_missing_sector(void)
 	u_int blank;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_DMK, 40, 1));
 	blank = free_sectors();
 	dmk_load();
 	dmk_remove_sector(18, 2);	/* LSN 325 */
@@ -1258,7 +1258,7 @@ static void test_short_image(void)
 	long size;
 
 	remove(TEST_IMAGE);
-	ASSERT_CALL(0, _dragondos_dskini(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
 	ASSERT_CALL(0, save(TEST_FILE("FILE"), 300, 2));
 	size = read_file(TEST_IMAGE, image, sizeof(image));
 	ASSERT_EQUALS(720 * 256, size);
@@ -1277,8 +1277,8 @@ int main(void)
 	RUN(test_parse_names);
 	RUN(test_read_mame_disk);
 	RUN(test_reproduce_mame_disk);
-	RUN(test_dskini_bitmaps);
-	RUN(test_dskini_arguments);
+	RUN(test_dskinit_bitmaps);
+	RUN(test_dskinit_arguments);
 	RUN(test_all_formats);
 	RUN(test_double_sided_placement);
 	RUN(test_raw_double_sided_placement);
