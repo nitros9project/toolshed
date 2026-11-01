@@ -284,7 +284,7 @@ static diskimage_format identify(void)
 }
 
 static const test_sector dd_cylinder_sectors[] = {
-	/* Recorded out of order: streams must still follow sector number. */
+	/* Recorded out of order: logical sectors must still follow sector number. */
 	{0, 0, 2, 1, 0, 0x22, 0, -1},
 	{0, 0, 1, 1, 0, 0x11, 0, -1},
 	{1, 0, 1, 1, 0, 0x33, 0, -1},
@@ -392,7 +392,6 @@ static void test_raw_geometry(void)
 	ASSERT_EQUALS(256, g.sector_size);
 	ASSERT_EQUALS(1, g.first_sector);
 	ASSERT_EQUALS(36, g.total_sectors);
-	ASSERT_EQUALS(36 * 256, g.stream_size);
 	ASSERT_EQUALS(1, g.uniform);
 	ASSERT_EQUALS(0, g.write_protected);
 	ASSERT_EQUALS(1, g.extendable);
@@ -461,127 +460,6 @@ static void test_raw_extend_by_sector(void)
 	remove(TEST_IMAGE);
 }
 
-static void test_raw_stream(void)
-{
-	diskimage_id disk;
-	diskimage_stream_id stream;
-	u_char buffer[600];
-	u_int size;
-	long long position;
-
-	write_image(build_linear(NULL, 0, 4, 256));
-	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, 250, SEEK_SET));
-	size = 300;
-	ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &size));
-	ASSERT_EQUALS(300, size);
-	ASSERT_EQUALS(1, buffer[5]);
-	ASSERT_EQUALS(2, buffer[6]);
-	ASSERT_EQUALS(3, buffer[299 - 37]);
-	ASSERT_CALL(0, _diskimage_stream_tell(stream, &position));
-	ASSERT_EQUALS(550, position);
-
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, -6, SEEK_END));
-	size = 100;
-	ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &size));
-	ASSERT_EQUALS(6, size);
-	size = 100;
-	ASSERT_CALL(EOS_EOF, _diskimage_stream_read(stream, buffer, &size));
-	ASSERT_EQUALS(0, size);
-
-	ASSERT_CALL(EOS_SE, _diskimage_stream_seek(stream, -5000, SEEK_CUR));
-	ASSERT_CALL(EOS_IA, _diskimage_stream_seek(stream, 0, 99));
-
-	size = 1;
-	ASSERT_CALL(EOS_BMODE, _diskimage_stream_write(stream, buffer, &size));
-	ASSERT_EQUALS(0, size);
-
-	ASSERT_CALL(0, _diskimage_stream_close(stream));
-	_diskimage_close(disk);
-	remove(TEST_IMAGE);
-}
-
-static void test_raw_stream_partial_write_keeps_sector(void)
-{
-	diskimage_id disk;
-	diskimage_stream_id stream;
-	u_char out[300];
-	u_int size = sizeof(out);
-
-	write_image(build_linear(NULL, 0, 3, 256));
-	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	memset(out, 0xAA, sizeof(out));
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, 100, SEEK_SET));
-	ASSERT_CALL(0, _diskimage_stream_write(stream, out, &size));
-	ASSERT_EQUALS(300, size);
-	_diskimage_close(disk);
-
-	ASSERT_EQUALS(3 * 256, read_image());
-	ASSERT_EQUALS(1, image[99]);
-	ASSERT_EQUALS(0xAA, image[100]);
-	ASSERT_EQUALS(0xAA, image[399]);
-	ASSERT_EQUALS(2, image[400]);
-	remove(TEST_IMAGE);
-}
-
-static void test_raw_stream_extends(void)
-{
-	diskimage_id disk;
-	diskimage_stream_id stream;
-	diskimage_geometry g;
-	u_char out[10];
-	u_int size = sizeof(out);
-
-	write_image(0);
-	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
-	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
-	ASSERT_EQUALS(0, g.total_sectors);
-	ASSERT_EQUALS(0, g.cylinders);
-
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	memset(out, 0x55, sizeof(out));
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, 600, SEEK_SET));
-	ASSERT_CALL(0, _diskimage_stream_write(stream, out, &size));
-	ASSERT_EQUALS(10, size);
-	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
-	ASSERT_EQUALS(3, g.total_sectors);
-	ASSERT_EQUALS(3 * 256, g.stream_size);
-	_diskimage_close(disk);
-
-	ASSERT_EQUALS(3 * 256, read_image());
-	ASSERT_EQUALS(0xFF, image[0]);
-	ASSERT_EQUALS(0xFF, image[599]);
-	ASSERT_EQUALS(0x55, image[600]);
-	ASSERT_EQUALS(0x55, image[609]);
-	ASSERT_EQUALS(0xFF, image[610]);
-	remove(TEST_IMAGE);
-}
-
-static void test_streams_are_independent_and_closed_with_disk(void)
-{
-	diskimage_id disk;
-	diskimage_stream_id a, b;
-	u_char buffer[1];
-	u_int size = 1;
-
-	write_image(build_linear(NULL, 0, 2, 256));
-	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
-	ASSERT_CALL(0, _diskimage_stream_open(&a, disk));
-	ASSERT_CALL(0, _diskimage_stream_open(&b, disk));
-	ASSERT_CALL(0, _diskimage_stream_seek(a, 256, SEEK_SET));
-	ASSERT_CALL(0, _diskimage_stream_read(a, buffer, &size));
-	ASSERT_EQUALS(2, buffer[0]);
-	size = 1;
-	ASSERT_CALL(0, _diskimage_stream_read(b, buffer, &size));
-	ASSERT_EQUALS(1, buffer[0]);
-	ASSERT_CALL(0, _diskimage_stream_close(a));
-	ASSERT_CALL(0, _diskimage_close(disk));
-	remove(TEST_IMAGE);
-}
-
 /* JVC */
 
 static void test_jvc_header_geometry(void)
@@ -618,7 +496,6 @@ static void test_jvc_header_geometry(void)
 	ASSERT_EQUALS(1, info.cylinder);
 	ASSERT_EQUALS(1, info.side);
 	ASSERT_EQUALS(6, info.sector);
-	ASSERT_EQUALS(28 * 512, info.stream_offset);
 	ASSERT_CALL(EOS_SECT, _diskimage_query_sector(disk, 54, &info));
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
@@ -647,26 +524,21 @@ static void test_jvc_write_and_no_extend(void)
 {
 	static const u_char header[] = {18, 1};
 	diskimage_id disk;
-	diskimage_stream_id stream;
 	u_char out[256];
-	u_int size = 10;
 
 	write_image(build_linear(header, 2, 18, 256));
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
 	memset(out, 0x77, sizeof(out));
 	ASSERT_CALL(0, _diskimage_write_sector(disk, 0, 0, 2, out, 256));
 
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, -5, SEEK_END));
-	ASSERT_CALL(EOS_DF, _diskimage_stream_write(stream, out, &size));
-	ASSERT_EQUALS(5, size);
+	/* Past the last track is not a sector, and the image doesn't grow. */
+	ASSERT_CALL(EOS_SECT, _diskimage_write_sector(disk, 1, 0, 2, out, 256));
 	_diskimage_close(disk);
 
 	ASSERT_EQUALS(2 + 18 * 256, read_image());
 	ASSERT_EQUALS(1, image[2 + 255]);
 	ASSERT_EQUALS(0x77, image[2 + 256]);
 	ASSERT_EQUALS(3, image[2 + 512]);
-	ASSERT_EQUALS(0x77, image[2 + 18 * 256 - 1]);
 	remove(TEST_IMAGE);
 }
 
@@ -677,7 +549,6 @@ static void test_jvc_sector_attributes(void)
 	static const u_char header[] = {16, 1, 1, 1, 1};
 	diskimage_id disk;
 	diskimage_geometry g;
-	diskimage_stream_id stream;
 	diskimage_sector_info info;
 	u_char buffer[256], out[256];
 	u_int size = sizeof(buffer);
@@ -710,17 +581,6 @@ static void test_jvc_sector_attributes(void)
 	ASSERT_CALL(0, _diskimage_query_sector(disk, 2, &info));
 	ASSERT_EQUALS(4, info.sector);
 	ASSERT_EQUALS(DISKIMAGE_SECTOR_DELETED, info.flags);
-
-	/* The stream skips the missing sector and stops at the bad one. */
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	size = 512;
-	{
-		u_char two[512];
-
-		ASSERT_CALL(EOS_CRC, _diskimage_stream_read(stream, two, &size));
-		ASSERT_EQUALS(256, size);
-		ASSERT_EQUALS(0, two[0]);
-	}
 
 	/* Writing a sector clears its CRC error and keeps a deleted mark. */
 	memset(out, 0x5A, sizeof(out));
@@ -759,10 +619,11 @@ static void check_track_geometry_and_order(image_builder build, diskimage_format
 {
 	diskimage_id disk;
 	diskimage_geometry g;
-	diskimage_stream_id stream;
 	diskimage_sector_info info;
 	u_char buffer[1024];
 	u_int size = sizeof(buffer);
+	static const u_char expected[4] = {0x11, 0x22, 0x33, 0x44};
+	int i;
 
 	build(0, dd_cylinder_sectors, 4);
 	ASSERT_EQUALS(format, identify());
@@ -787,19 +648,16 @@ static void check_track_geometry_and_order(image_builder build, diskimage_format
 
 	ASSERT_CALL(0, _diskimage_query_sector(disk, 1, &info));
 	ASSERT_EQUALS(2, info.sector);
-	ASSERT_EQUALS(256, info.stream_offset);
 
-	/* The stream follows sector numbers, not recording order. */
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	size = 1024;
-	ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &size));
-	ASSERT_EQUALS(1024, size);
-	ASSERT_EQUALS(0x11, buffer[0]);
-	ASSERT_EQUALS(0x22, buffer[256]);
-	ASSERT_EQUALS(0x33, buffer[512]);
-	ASSERT_EQUALS(0x44, buffer[768]);
-	size = 1;
-	ASSERT_CALL(EOS_EOF, _diskimage_stream_read(stream, buffer, &size));
+	/* Logical sectors follow sector numbers, not recording order. */
+	for (i = 0; i < 4; i++)
+	{
+		ASSERT_CALL(0, _diskimage_query_sector(disk, i, &info));
+		size = sizeof(buffer);
+		ASSERT_CALL(0, _diskimage_read_sector(disk, info.cylinder, info.side, info.sector, buffer, &size));
+		ASSERT_EQUALS(expected[i], buffer[0]);
+	}
+	ASSERT_CALL(EOS_SECT, _diskimage_query_sector(disk, 4, &info));
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
 }
@@ -814,7 +672,7 @@ static void test_sdf_geometry_and_order(void)
 	check_track_geometry_and_order(build_sdf_2t, DISKIMAGE_SDF);
 }
 
-static void check_mixed_sizes_stream(image_builder build)
+static void check_mixed_sizes(image_builder build)
 {
 	static const test_sector sectors[] = {
 		{0, 0, 1, 0, 0, 0x11, 0, -1},	/* 128 bytes */
@@ -823,58 +681,58 @@ static void check_mixed_sizes_stream(image_builder build)
 	};
 	diskimage_id disk;
 	diskimage_geometry g;
-	diskimage_stream_id stream;
-	u_char buffer[16];
-	u_int size = 4;
+	u_char buffer[512], out[512];
+	u_int size = sizeof(buffer);
 
 	build(0, sectors, 3);
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
 	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
-	ASSERT_EQUALS(896, g.stream_size);
 	ASSERT_EQUALS(512, g.sector_size);
 	ASSERT_EQUALS(0, g.uniform);
 
-	/* Read across both boundaries between differently sized sectors. */
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, 126, SEEK_SET));
-	ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &size));
-	ASSERT_EQUALS(0x11, buffer[1]);
-	ASSERT_EQUALS(0x22, buffer[2]);
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, 639, SEEK_SET));
-	size = 2;
-	ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &size));
-	ASSERT_EQUALS(0x22, buffer[0]);
-	ASSERT_EQUALS(0x33, buffer[1]);
+	/* Each is read at its own size. */
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 1, buffer, &size));
+	ASSERT_EQUALS(128, size);
+	ASSERT_EQUALS(0x11, buffer[127]);
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 2, buffer, &size));
+	ASSERT_EQUALS(512, size);
+	ASSERT_EQUALS(0x22, buffer[511]);
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 1, 0, 1, buffer, &size));
+	ASSERT_EQUALS(256, size);
+	ASSERT_EQUALS(0x33, buffer[255]);
 
-	/* A write across the same boundary lands in both sectors. */
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, 639, SEEK_SET));
-	memset(buffer, 0x99, 2);
-	size = 2;
-	ASSERT_CALL(0, _diskimage_stream_write(stream, buffer, &size));
+	/* A write must be the size of the sector. */
+	memset(out, 0x99, sizeof(out));
+	ASSERT_CALL(EOS_IA, _diskimage_write_sector(disk, 0, 0, 2, out, 256));
+	ASSERT_CALL(0, _diskimage_write_sector(disk, 0, 0, 2, out, 512));
+	ASSERT_CALL(0, _diskimage_write_sector(disk, 1, 0, 1, out, 256));
 	_diskimage_close(disk);
 
-	/* Reopening proves the CRCs written were right. */
+	/* Reopening proves the CRCs written were right, and the neighbor is untouched. */
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, 638, SEEK_SET));
-	size = 4;
-	ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &size));
-	ASSERT_EQUALS(0x22, buffer[0]);
-	ASSERT_EQUALS(0x99, buffer[1]);
-	ASSERT_EQUALS(0x99, buffer[2]);
-	ASSERT_EQUALS(0x33, buffer[3]);
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 1, buffer, &size));
+	ASSERT_EQUALS(0x11, buffer[127]);
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 2, buffer, &size));
+	ASSERT_MEM_EQUALS(out, buffer, 512);
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 1, 0, 1, buffer, &size));
+	ASSERT_MEM_EQUALS(out, buffer, 256);
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
 }
 
-static void test_dmk_mixed_sizes_stream(void)
+static void test_dmk_mixed_sizes(void)
 {
-	check_mixed_sizes_stream(build_dmk_2t);
+	check_mixed_sizes(build_dmk_2t);
 }
 
-static void test_sdf_mixed_sizes_stream(void)
+static void test_sdf_mixed_sizes(void)
 {
-	check_mixed_sizes_stream(build_sdf_2t);
+	check_mixed_sizes(build_sdf_2t);
 }
 
 static void check_unavailable_sectors_excluded(image_builder build)
@@ -923,7 +781,6 @@ static void check_crc_error_then_rewrite(image_builder build)
 		{0, 0, 3, 1, 0, 0x33, 0, -1},
 	};
 	diskimage_id disk;
-	diskimage_stream_id stream;
 	diskimage_sector_info info;
 	u_char buffer[512], out[256];
 	u_int size = 256;
@@ -936,15 +793,6 @@ static void check_crc_error_then_rewrite(image_builder build)
 	ASSERT_EQUALS(0x22, buffer[0]);
 	ASSERT_CALL(0, _diskimage_query_sector(disk, 1, &info));
 	ASSERT_EQUALS(DISKIMAGE_SECTOR_CRC_ERROR, info.flags);
-
-	/* A stream delivers what precedes the bad sector and stays before it. */
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	size = 512;
-	ASSERT_CALL(EOS_CRC, _diskimage_stream_read(stream, buffer, &size));
-	ASSERT_EQUALS(256, size);
-	size = 512;
-	ASSERT_CALL(EOS_CRC, _diskimage_stream_read(stream, buffer, &size));
-	ASSERT_EQUALS(0, size);
 
 	memset(out, 0xC3, sizeof(out));
 	ASSERT_CALL(0, _diskimage_write_sector(disk, 0, 0, 2, out, 256));
@@ -1009,7 +857,6 @@ static void check_protection_and_modes(image_builder build)
 	static const test_sector sectors[] = {{0, 0, 1, 1, 0, 0x11, 0, -1}};
 	diskimage_id disk;
 	diskimage_geometry g;
-	diskimage_stream_id stream;
 	u_char buffer[256];
 	u_int size = sizeof(buffer);
 
@@ -1020,9 +867,6 @@ static void check_protection_and_modes(image_builder build)
 	ASSERT_EQUALS(1, g.write_protected);
 	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 1, buffer, &size));
 	ASSERT_CALL(EOS_WP, _diskimage_write_sector(disk, 0, 0, 1, buffer, 256));
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	size = 1;
-	ASSERT_CALL(EOS_WP, _diskimage_stream_write(stream, buffer, &size));
 	_diskimage_close(disk);
 
 	/* Neither can an image opened only for reading... */
@@ -1035,8 +879,6 @@ static void check_protection_and_modes(image_builder build)
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_WRITE));
 	size = sizeof(buffer);
 	ASSERT_CALL(EOS_BMODE, _diskimage_read_sector(disk, 0, 0, 1, buffer, &size));
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	ASSERT_CALL(EOS_BMODE, _diskimage_stream_read(stream, buffer, &size));
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
 }
@@ -1055,17 +897,12 @@ static void check_no_track_extension(image_builder build)
 {
 	static const test_sector sectors[] = {{0, 0, 1, 1, 0, 0x11, 0, -1}};
 	diskimage_id disk;
-	diskimage_stream_id stream;
 	u_char out[300];
-	u_int size = sizeof(out);
 
 	build(0, sectors, 1);
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
 	memset(out, 0x21, sizeof(out));
 	ASSERT_CALL(EOS_SECT, _diskimage_write_sector(disk, 0, 0, 2, out, 256));
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	ASSERT_CALL(EOS_DF, _diskimage_stream_write(stream, out, &size));
-	ASSERT_EQUALS(256, size);
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
 }
@@ -1092,7 +929,7 @@ static void test_dmk_double_sided(void)
 	};
 	diskimage_id disk;
 	diskimage_geometry g;
-	diskimage_stream_id stream;
+	diskimage_sector_info info;
 	u_char buffer[1024];
 	u_int size = sizeof(buffer);
 
@@ -1100,15 +937,25 @@ static void test_dmk_double_sided(void)
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
 	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
 	ASSERT_EQUALS(2, g.sides);
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &size));
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 1, buffer, &size));
 	ASSERT_EQUALS(0xA0, buffer[0]);
-	ASSERT_EQUALS(0xB0, buffer[256]);
-	ASSERT_EQUALS(0xC0, buffer[512]);
-	ASSERT_EQUALS(0xD0, buffer[768]);
-	size = 256;
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 1, 1, buffer, &size));
+	ASSERT_EQUALS(0xB0, buffer[0]);
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 1, 0, 1, buffer, &size));
+	ASSERT_EQUALS(0xC0, buffer[0]);
+	size = sizeof(buffer);
 	ASSERT_CALL(0, _diskimage_read_sector(disk, 1, 1, 1, buffer, &size));
 	ASSERT_EQUALS(0xD0, buffer[0]);
+
+	/* Logical sectors go through both sides of a cylinder before the next. */
+	ASSERT_CALL(0, _diskimage_query_sector(disk, 1, &info));
+	ASSERT_EQUALS(0, info.cylinder);
+	ASSERT_EQUALS(1, info.side);
+	ASSERT_CALL(0, _diskimage_query_sector(disk, 2, &info));
+	ASSERT_EQUALS(1, info.cylinder);
+	ASSERT_EQUALS(0, info.side);
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
 }
@@ -1314,12 +1161,11 @@ static void test_sdf_single_density_without_density_bit(void)
 /* Create */
 
 /* Check every logical sector of a new image holds the fill byte, with no
-   CRC errors, reading both by sector and through a stream. */
+   CRC errors, reading by sector. */
 static void check_created(u_int want_total, u_int size, u_char fill)
 {
 	diskimage_id disk;
 	diskimage_geometry g;
-	diskimage_stream_id stream;
 	diskimage_sector_info info;
 	u_char buffer[1024];
 	u_int i, j, got;
@@ -1327,9 +1173,7 @@ static void check_created(u_int want_total, u_int size, u_char fill)
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
 	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
 	ASSERT_EQUALS(want_total, g.total_sectors);
-	ASSERT_EQUALS((long long)want_total * size, g.stream_size);
 	ASSERT_EQUALS(size, g.sector_size);
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
 	for (i = 0; i < want_total; i++)
 	{
 		ASSERT_CALL(0, _diskimage_query_sector(disk, i, &info));
@@ -1341,13 +1185,8 @@ static void check_created(u_int want_total, u_int size, u_char fill)
 		{
 			ASSERT_EQUALS(fill, buffer[j]);
 		}
-		got = size;
-		ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &got));
-		ASSERT_EQUALS(size, got);
-		ASSERT_EQUALS(fill, buffer[size - 1]);
 	}
-	got = 1;
-	ASSERT_CALL(EOS_EOF, _diskimage_stream_read(stream, buffer, &got));
+	ASSERT_CALL(EOS_SECT, _diskimage_query_sector(disk, want_total, &info));
 	_diskimage_close(disk);
 }
 
@@ -1457,7 +1296,6 @@ static void check_create_short_track0(diskimage_format format)
 {
 	diskimage_id disk;
 	diskimage_geometry g;
-	diskimage_stream_id stream;
 	diskimage_sector_info info;
 	u_char buffer[256];
 	u_int size = sizeof(buffer);
@@ -1481,8 +1319,6 @@ static void check_create_short_track0(diskimage_format format)
 	ASSERT_EQUALS(0, info.cylinder);
 	ASSERT_EQUALS(1, info.side);
 	ASSERT_EQUALS(1, info.sector);
-	ASSERT_EQUALS(10 * 256, info.stream_offset);
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
 }
@@ -1535,7 +1371,6 @@ static void check_raw_short_track0(int osk)
 {
 	diskimage_id disk;
 	diskimage_geometry g;
-	diskimage_stream_id stream;
 	diskimage_sector_info info;
 	u_char buffer[256];
 	u_int size = sizeof(buffer);
@@ -1546,7 +1381,6 @@ static void check_raw_short_track0(int osk)
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
 	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
 	ASSERT_EQUALS(28, g.total_sectors);
-	ASSERT_EQUALS(28 * 256, g.stream_size);
 	ASSERT_EQUALS(2, g.cylinders);
 	ASSERT_EQUALS(18, g.sectors_per_track);
 	ASSERT_EQUALS(10, g.sectors_track0);
@@ -1565,15 +1399,11 @@ static void check_raw_short_track0(int osk)
 	ASSERT_CALL(0, _diskimage_query_sector(disk, 10, &info));
 	ASSERT_EQUALS(1, info.cylinder);
 	ASSERT_EQUALS(1, info.sector);
-	ASSERT_EQUALS(10 * 256, info.stream_offset);
 
-	/* LSN 9 and LSN 10 are next to each other in the stream. */
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, 10 * 256 - 1, SEEK_SET));
-	size = 2;
-	ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &size));
-	ASSERT_EQUALS(10, buffer[0]);
-	ASSERT_EQUALS(19, buffer[1]);
+	/* LSN 9 and LSN 10 are next to each other in logical order. */
+	ASSERT_CALL(0, _diskimage_query_sector(disk, 9, &info));
+	ASSERT_EQUALS(0, info.cylinder);
+	ASSERT_EQUALS(10, info.sector);
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
 }
@@ -1736,7 +1566,6 @@ static void check_create_interleave(diskimage_format format)
 	static const u_char two[18] = {1, 10, 2, 11, 3, 12, 4, 13, 5, 14, 6, 15, 7, 16, 8, 17, 9, 18};
 	static const u_char short_three[10] = {1, 8, 5, 2, 9, 6, 3, 10, 7, 4};
 	diskimage_id disk;
-	diskimage_stream_id stream;
 	diskimage_sector_info info;
 	diskimage_geometry g;
 	u_char order[64], buffer[256];
@@ -1772,7 +1601,7 @@ static void check_create_interleave(diskimage_format format)
 	}
 	check_created(2 * 2 * 18, 256, 0xE5);
 
-	/* Addressing and the stream still follow sector numbers. */
+	/* Addressing and logical order still follow sector numbers. */
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
 	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
 	ASSERT_EQUALS(1, g.uniform);
@@ -1784,12 +1613,12 @@ static void check_create_interleave(diskimage_format format)
 	}
 	memset(buffer, 0x7A, sizeof(buffer));
 	ASSERT_CALL(0, _diskimage_write_sector(disk, 0, 0, 2, buffer, 256));
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, 255, SEEK_SET));
-	size = 2;
-	ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &size));
-	ASSERT_EQUALS(0xE5, buffer[0]);
-	ASSERT_EQUALS(0x7A, buffer[1]);
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 1, buffer, &size));
+	ASSERT_EQUALS(0xE5, buffer[255]);
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 2, buffer, &size));
+	ASSERT_EQUALS(0x7A, buffer[0]);
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
 
@@ -2017,7 +1846,6 @@ static void test_vdk_geometry_and_sectors(void)
 	diskimage_id disk;
 	diskimage_geometry g;
 	diskimage_sector_info info;
-	diskimage_stream_id stream;
 	u_char buffer[256];
 	u_int size = sizeof(buffer);
 
@@ -2034,7 +1862,6 @@ static void test_vdk_geometry_and_sectors(void)
 	ASSERT_EQUALS(256, g.sector_size);
 	ASSERT_EQUALS(1, g.first_sector);
 	ASSERT_EQUALS(108, g.total_sectors);
-	ASSERT_EQUALS(108 * 256, g.stream_size);
 	ASSERT_EQUALS(1, g.uniform);
 	ASSERT_EQUALS(0, g.write_protected);
 	ASSERT_EQUALS(0, g.extendable);
@@ -2053,13 +1880,11 @@ static void test_vdk_geometry_and_sectors(void)
 	ASSERT_EQUALS(1, info.side);
 	ASSERT_EQUALS(2, info.sector);
 
-	/* The stream starts after the header. */
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, 255, SEEK_SET));
-	size = 2;
-	ASSERT_CALL(0, _diskimage_stream_read(stream, buffer, &size));
+	/* The first sector starts after the header. */
+	size = sizeof(buffer);
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 1, buffer, &size));
 	ASSERT_EQUALS(1, buffer[0]);
-	ASSERT_EQUALS(2, buffer[1]);
+	ASSERT_EQUALS(1, buffer[255]);
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
 }
@@ -2069,10 +1894,8 @@ static void test_vdk_geometry_and_sectors(void)
 static void test_vdk_long_header_and_flags_kept(void)
 {
 	diskimage_id disk;
-	diskimage_stream_id stream;
 	u_char buffer[256], out[256];
 	u_int size = sizeof(buffer);
-	u_int count = 10;
 	long length = build_vdk(44, 2, 1, 18);
 
 	image[10] = 0xA4;
@@ -2089,10 +1912,6 @@ static void test_vdk_long_header_and_flags_kept(void)
 	ASSERT_CALL(0, _diskimage_write_sector(disk, 0, 0, 1, out, 256));
 
 	/* VDK images do not grow. */
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, -4, SEEK_END));
-	ASSERT_CALL(EOS_DF, _diskimage_stream_write(stream, out, &count));
-	ASSERT_EQUALS(4, count);
 	ASSERT_CALL(EOS_SECT, _diskimage_write_sector(disk, 2, 0, 1, out, 256));
 	ASSERT_CALL(EOS_IA, _diskimage_write_sector(disk, 0, 0, 1, out, 128));
 	_diskimage_close(disk);
@@ -2104,7 +1923,6 @@ static void test_vdk_long_header_and_flags_kept(void)
 	ASSERT_EQUALS(0x7E, image[44]);
 	ASSERT_EQUALS(0x7E, image[44 + 255]);
 	ASSERT_EQUALS(2, image[44 + 256]);
-	ASSERT_EQUALS(0x7E, image[length - 1]);
 	remove(TEST_IMAGE);
 }
 
@@ -2195,13 +2013,12 @@ static void check_write_protect_override(image_builder build, int flag_offset, u
 	};
 	diskimage_id disk;
 	diskimage_geometry g;
-	diskimage_stream_id stream;
 	u_char buffer[256], out[256];
 	u_int size;
 
 	fill_pattern(out, 256, 9);
 
-	/* Protected: sectors and streams both refuse, and the file is unchanged. */
+	/* Protected: writes are refused, and the file is unchanged. */
 	build(0xFF, sectors, 2);
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
 	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
@@ -2209,22 +2026,14 @@ static void check_write_protect_override(image_builder build, int flag_offset, u
 	size = sizeof(buffer);
 	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 0, 1, buffer, &size));
 	ASSERT_CALL(EOS_WP, _diskimage_write_sector(disk, 0, 0, 1, out, 256));
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	size = 256;
-	ASSERT_CALL(EOS_WP, _diskimage_stream_write(stream, out, &size));
-	ASSERT_EQUALS(0, size);
 	_diskimage_close(disk);
 
-	/* The override writes through both, and still reports the flag. */
+	/* The override writes, and still reports the flag. */
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW | DISKIMAGE_IGNORE_WRITE_PROTECT));
 	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
 	ASSERT_EQUALS(1, g.write_protected);
 	ASSERT_CALL(0, _diskimage_write_sector(disk, 0, 0, 1, out, 256));
-	ASSERT_CALL(0, _diskimage_stream_open(&stream, disk));
-	ASSERT_CALL(0, _diskimage_stream_seek(stream, 256, SEEK_SET));
-	size = 256;
-	ASSERT_CALL(0, _diskimage_stream_write(stream, out, &size));
-	ASSERT_EQUALS(256, size);
+	ASSERT_CALL(0, _diskimage_write_sector(disk, 1, 0, 1, out, 256));
 	_diskimage_close(disk);
 
 	/* The flag on disk is untouched, and protects the next open as before. */
@@ -2431,10 +2240,6 @@ int main(void)
 	RUN(test_raw_geometry);
 	RUN(test_raw_read_write_sector);
 	RUN(test_raw_extend_by_sector);
-	RUN(test_raw_stream);
-	RUN(test_raw_stream_partial_write_keeps_sector);
-	RUN(test_raw_stream_extends);
-	RUN(test_streams_are_independent_and_closed_with_disk);
 
 	RUN(test_jvc_header_geometry);
 	RUN(test_jvc_short_header_uses_defaults);
@@ -2443,8 +2248,8 @@ int main(void)
 
 	RUN(test_dmk_geometry_and_order);
 	RUN(test_sdf_geometry_and_order);
-	RUN(test_dmk_mixed_sizes_stream);
-	RUN(test_sdf_mixed_sizes_stream);
+	RUN(test_dmk_mixed_sizes);
+	RUN(test_sdf_mixed_sizes);
 	RUN(test_dmk_unavailable_sectors_excluded);
 	RUN(test_sdf_unavailable_sectors_excluded);
 	RUN(test_dmk_crc_error_then_rewrite);

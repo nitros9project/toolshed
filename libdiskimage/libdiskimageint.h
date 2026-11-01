@@ -35,7 +35,6 @@ typedef struct
 {
 	long long data_off;	/* file offset of the first data byte */
 	long long status_off;	/* file offset of the SDF data offset field or JVC attribute */
-	long long stream_off;
 	unsigned short cylinder;
 	unsigned short size;
 	u_char side;
@@ -69,7 +68,6 @@ struct _diskimage_path
 	u_int cylinders;
 	u_int sides;
 	u_int total_sectors;
-	long long stream_size;
 
 	/* Linear images */
 	int linear;
@@ -87,15 +85,6 @@ struct _diskimage_path
 	/* Other images */
 	di_sector *table;
 	u_int table_capacity;
-
-	struct _diskimage_stream *streams;
-};
-
-struct _diskimage_stream
-{
-	diskimage_id disk;
-	long long position;
-	struct _diskimage_stream *next;
 };
 
 typedef struct

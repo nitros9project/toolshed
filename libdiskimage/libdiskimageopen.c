@@ -194,7 +194,6 @@ void di_raw_set_slots(diskimage_id disk, long long slots)
 
 	disk->raw_slots = slots;
 	disk->total_sectors = (u_int)total;
-	disk->stream_size = total * DI_RAW_SECTOR_SIZE;
 }
 
 
@@ -309,10 +308,6 @@ error_code _diskimage_close(diskimage_id disk)
 		return EOS_IA;
 	}
 
-	while (disk->streams != NULL)
-	{
-		_diskimage_stream_close(disk->streams);
-	}
 	if (fclose(disk->fd) != 0)
 	{
 		ec = EOS_WRITE;
@@ -425,7 +420,6 @@ error_code _diskimage_query_geometry(diskimage_id disk, diskimage_geometry *geom
 	geometry->cylinders = disk->cylinders;
 	geometry->sides = disk->sides;
 	geometry->total_sectors = disk->total_sectors;
-	geometry->stream_size = disk->stream_size;
 	geometry->write_protected = disk->write_protected;
 	geometry->extendable = disk->format == DISKIMAGE_RAW;
 
@@ -483,7 +477,6 @@ error_code _diskimage_query_sector(diskimage_id disk, u_int index, diskimage_sec
 		info->sector = disk->first_sector + (u_int)(slot % spt);
 		info->size = disk->sector_size;
 		info->flags = 0;
-		info->stream_offset = (long long)index * disk->sector_size;
 	}
 	else
 	{
@@ -494,7 +487,6 @@ error_code _diskimage_query_sector(diskimage_id disk, u_int index, diskimage_sec
 		info->sector = entry->id;
 		info->size = entry->size;
 		info->flags = entry->flags & DI_FLAG_PUBLIC;
-		info->stream_offset = entry->stream_off;
 	}
 
 	return 0;

@@ -60,6 +60,5 @@ void di_vdk_load(diskimage_id disk, const u_char *header, long long file_size)
 	disk->sectors_per_track = sectors_per_track(header, file_size);
 	disk->first_sector = 1;
 	disk->data_start = header[2] | (header[3] << 8);
-	disk->stream_size = file_size - disk->data_start;
-	disk->total_sectors = (u_int)(disk->stream_size / VDK_SECTOR_SIZE);
+	disk->total_sectors = (u_int)((file_size - disk->data_start) / VDK_SECTOR_SIZE);
 }

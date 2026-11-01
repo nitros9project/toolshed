@@ -183,7 +183,6 @@ error_code di_index_write(diskimage_id disk, long long index, const void *buffer
 		{
 			disk->raw_slots = di_linear_slot(disk, index) + 1;
 			disk->total_sectors = (u_int)index + 1;
-			disk->stream_size = (long long)disk->total_sectors * disk->sector_size;
 		}
 
 		return ec;

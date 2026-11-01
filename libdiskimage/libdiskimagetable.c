@@ -70,8 +70,6 @@ error_code di_table_append(diskimage_id disk, const di_sector *sector)
 
 	entry = &disk->table[disk->total_sectors++];
 	*entry = *sector;
-	entry->stream_off = disk->stream_size;
-	disk->stream_size += sector->size;
 
 	return 0;
 }

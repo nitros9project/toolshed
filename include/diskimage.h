@@ -9,8 +9,7 @@
  * and by the sector number recorded in the sector's ID field.
  *
  * The logical sectors of an image are those a floppy controller could
- * find, ordered by cylinder, then side, then ascending sector number.
- * The stream functions treat them as one contiguous run of bytes.  In
+ * find, ordered by cylinder, then side, then ascending sector number.  In
  * DMK and SDF images these are not logical sectors:
  *   - sectors whose ID field has a bad CRC
  *   - sectors whose ID track number is not the physical cylinder
@@ -21,8 +20,8 @@
  * also not logical sectors.
  *
  * A raw image can have a short track 0, as OS-9 disks can.  Its file keeps
- * all 18 slots of track 0, unused past the short count, and the stream
- * skips them.  This is read from LSN0 when the image is opened, so writing
+ * all 18 slots of track 0, and those past the short count are not logical
+ * sectors.  This is read from LSN0 when the image is opened, so writing
  * a new LSN0 takes effect the next time it is opened.
  *
  * Tracks of an existing image cannot be formatted and missing sectors
@@ -42,9 +41,7 @@
  *   EOS_WRITE          the file could not be written, or the sector
  *                      overlaps another sector's ID field
  *   EOS_READ           the file could not be read
- *   EOS_EOF            a stream read began at or past the end
- *   EOS_DF             a stream write reached the end of the image
- *   EOS_SE             a stream seek went before the start
+ *   EOS_DF             a raw image cannot grow any larger
  ********************************************************************/
 #ifndef	_DISKIMAGE_H
 #define	_DISKIMAGE_H
@@ -73,7 +70,6 @@ typedef enum
 #define DISKIMAGE_IGNORE_WRITE_PROTECT	0x0400
 
 typedef struct _diskimage_path *diskimage_id;
-typedef struct _diskimage_stream *diskimage_stream_id;
 
 typedef struct
 {
@@ -85,7 +81,6 @@ typedef struct
 	u_int first_sector;		/* lowest sector number in use */
 	u_int sectors_track0;		/* logical sectors on side 0 of track 0 */
 	u_int total_sectors;		/* logical sectors in the image */
-	long long stream_size;		/* bytes in all logical sectors */
 	int uniform;			/* every track has the same sectors */
 	int write_protected;		/* the image's write protect flag */
 	int extendable;			/* writes can grow the image */
@@ -102,7 +97,6 @@ typedef struct
 	u_int sector;
 	u_int size;
 	u_int flags;
-	long long stream_offset;	/* where the sector begins in the stream */
 } diskimage_sector_info;
 
 /* The format with a name: raw, jvc, vdk, dmk or sdf, in either case.  Any other
@@ -127,7 +121,7 @@ error_code _diskimage_identify(const char *pathname, diskimage_format *format);
    0 and 1 both mean in order.  It must be less than sectors_per_track, unless
    it is 1.  A position already taken moves on to the next free one.  It only
    changes the order on the track: sectors are still addressed by number, and
-   the stream still follows ascending numbers.  Raw, JVC and VDK images do
+   logical sectors still follow ascending numbers.  Raw, JVC and VDK images do
    not record an order, so they ignore it.
 
    The result is EOS_IA if the format cannot represent the request:
@@ -165,7 +159,7 @@ error_code _diskimage_create_index_mark(const char *pathname, diskimage_format f
    and is still reported by _diskimage_query_geometry. */
 error_code _diskimage_open(diskimage_id *disk, const char *pathname, int mode);
 
-/* Close an image and any of its streams still open. */
+/* Close an image. */
 error_code _diskimage_close(diskimage_id disk);
 
 /* Set or clear the write protect flag of a DMK, SDF or VDK image.  Raw and JVC
@@ -186,24 +180,6 @@ error_code _diskimage_read_sector(diskimage_id disk, u_int cylinder, u_int side,
 /* Write one whole sector.  size must be the size of the sector.  A CRC
    error recorded for the sector is cleared; a Deleted Data Mark is kept. */
 error_code _diskimage_write_sector(diskimage_id disk, u_int cylinder, u_int side, u_int sector, const void *buffer, u_int size);
-
-/* Open a stream positioned at the start of the image.  An image may have
-   many streams, and each keeps its own position. */
-error_code _diskimage_stream_open(diskimage_stream_id *stream, diskimage_id disk);
-
-/* On entry *size is the number of bytes to transfer; on return it is the
-   number transferred, including when an error is returned.  A read that
-   reaches the end returns the bytes available, then EOS_EOF on the next
-   call.  A read stops at a sector with a bad CRC, before that sector;
-   _diskimage_read_sector can still read it. */
-error_code _diskimage_stream_read(diskimage_stream_id stream, void *buffer, u_int *size);
-error_code _diskimage_stream_write(diskimage_stream_id stream, const void *buffer, u_int *size);
-
-/* mode is SEEK_SET, SEEK_CUR or SEEK_END.  Seeking past the end is allowed. */
-error_code _diskimage_stream_seek(diskimage_stream_id stream, long long offset, int mode);
-error_code _diskimage_stream_tell(diskimage_stream_id stream, long long *offset);
-
-error_code _diskimage_stream_close(diskimage_stream_id stream);
 
 #ifdef __cplusplus
 }
