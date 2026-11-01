@@ -8,81 +8,8 @@
 
 #include "tinytest.h"
 #include <toolshed.h>
+#include "imagedamage.h"
 
-
-/* Change a sector of a single sided, double density DMK image in a file. */
-#define DMK_HEADER_SIZE 16
-#define DMK_POINTERS 64
-
-static long dmk_find_id(FILE *fp, int cylinder, int sector)
-{
-	u_char header[DMK_HEADER_SIZE];
-	long track;
-	long found = -1;
-	int i;
-
-	fseek(fp, 0, SEEK_SET);
-	fread(header, 1, sizeof(header), fp);
-	track = DMK_HEADER_SIZE + (long) cylinder * (header[2] | (header[3] << 8));
-
-	for (i = 0; i < DMK_POINTERS && found < 0; i++)
-	{
-		u_char pointer[2], id[5];
-		long offset;
-
-		fseek(fp, track + i * 2, SEEK_SET);
-		fread(pointer, 1, sizeof(pointer), fp);
-		offset = (pointer[0] | (pointer[1] << 8)) & 0x3FFF;
-		if (offset == 0)
-		{
-			continue;
-		}
-		fseek(fp, track + offset, SEEK_SET);
-		fread(id, 1, sizeof(id), fp);
-		if (id[0] == 0xFE && id[1] == cylinder && id[3] == sector)
-		{
-			found = track + offset;
-		}
-	}
-
-	return found;
-}
-
-/* A sector whose ID records the wrong track cannot be found. */
-static void dmk_remove_sector(const char *pathname, int cylinder, int sector)
-{
-	FILE *fp = fopen(pathname, "r+b");
-	u_char wrong = 0xEE;
-	long id = dmk_find_id(fp, cylinder, sector);
-
-	ASSERT("the sector to remove exists", id >= 0);
-	fseek(fp, id + 1, SEEK_SET);
-	fwrite(&wrong, 1, 1, fp);
-	fclose(fp);
-}
-
-/* Change a byte of a sector's data, without changing its CRC. */
-static void dmk_damage_sector(const char *pathname, int cylinder, int sector)
-{
-	FILE *fp = fopen(pathname, "r+b");
-	long id = dmk_find_id(fp, cylinder, sector);
-	long position;
-	u_char byte = 0;
-
-	ASSERT("the sector to damage exists", id >= 0);
-	for (position = id + 7; position < id + 80 && byte != 0xFB; position++)
-	{
-		fseek(fp, position, SEEK_SET);
-		fread(&byte, 1, 1, fp);
-	}
-	ASSERT_EQUALS(0xFB, byte);
-	fseek(fp, position, SEEK_SET);
-	fread(&byte, 1, 1, fp);
-	byte ^= 0xFF;
-	fseek(fp, position, SEEK_SET);
-	fwrite(&byte, 1, 1, fp);
-	fclose(fp);
-}
 
 #define DECB_DMK "test_decb.dmk"
 
@@ -206,7 +133,7 @@ void test_decb_only_needed_sectors_are_errors()
 	decb_dmk_with_file(data, sizeof(data));
 
 	/* A sector nothing uses changes nothing, and no later sector moves. */
-	dmk_remove_sector(DECB_DMK, 1, 5);
+	image_remove_sector(DECB_DMK, 1, 0, 5);
 	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
 	ASSERT_EQUALS(0, ec);
 	first_granule = p->dir_entry.first_granule;
@@ -218,7 +145,7 @@ void test_decb_only_needed_sectors_are_errors()
 
 	/* A sector of the file fails only reading the file. */
 	granule_address(first_granule, &track, &sector);
-	dmk_remove_sector(DECB_DMK, track, sector + 2);
+	image_remove_sector(DECB_DMK, track, 0, sector + 2);
 	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
 	ASSERT_EQUALS(0, ec);
 	size = sizeof(back);
@@ -228,7 +155,7 @@ void test_decb_only_needed_sectors_are_errors()
 	ASSERT_EQUALS(0, ec);
 
 	/* Without a FAT the directory still reads, but not file sizes. */
-	dmk_remove_sector(DECB_DMK, 17, 2);
+	image_remove_sector(DECB_DMK, 17, 0, 2);
 	ec = _decb_open(&p, DECB_DMK ",", FAM_READ);
 	ASSERT_EQUALS(0, ec);
 	ec = _decb_readdir(p, &entry);
@@ -247,7 +174,7 @@ void test_decb_only_needed_sectors_are_errors()
 
 	/* A file found before a missing directory sector does not need it, but
 	   looking for one that is not there does. */
-	dmk_remove_sector(DECB_DMK, 17, 4);
+	image_remove_sector(DECB_DMK, 17, 0, 4);
 	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
 	ASSERT_EQUALS(0, ec);
 	ec = _decb_close(p);
@@ -267,7 +194,7 @@ void test_decb_dir_lists_names_without_fat()
 	int status;
 
 	decb_dmk_with_file(data, sizeof(data));
-	dmk_remove_sector(DECB_DMK, 17, 2);
+	image_remove_sector(DECB_DMK, 17, 0, 2);
 
 	status = system("../decb/decb dir " DECB_DMK ", > test_decb_dir.txt 2> /dev/null");
 	ASSERT_NEQUALS(0, status);
@@ -302,7 +229,7 @@ void test_decb_bad_crc_is_read()
 	granule_address(p->dir_entry.first_granule, &track, &sector);
 	ec = _decb_close(p);
 	ASSERT_EQUALS(0, ec);
-	dmk_damage_sector(DECB_DMK, track, sector);
+	image_damage_sector(DECB_DMK, track, 0, sector);
 
 	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
 	ASSERT_EQUALS(0, ec);
@@ -984,6 +911,305 @@ void test_decb_token_keyword_after_var()
 	free(detokenize_buffer);
 }
 
+#define DECB_IMAGE "test_decb_format.img"
+
+/* A raw path is the bytes of the whole disk, with one position. */
+static void check_decb_raw_path(diskimage_format format)
+{
+	static const u_char text[] = "across a sector boundary";
+	u_char back[sizeof(text)];
+	u_char sector[256];
+	decb_path_id p;
+	u_int size = sizeof(text);
+	u_int position;
+
+	remove(DECB_IMAGE);
+	ASSERT_EC(0, _decb_dskini_format(DECB_IMAGE, format, 35, NULL, 1, 256, 0));
+
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",", FAM_READ | FAM_WRITE));
+	ASSERT_EQUALS(1, p->israw);
+
+	/* Write across a sector boundary, keeping the rest of both. */
+	ASSERT_EC(0, _decb_seek(p, 250, SEEK_SET));
+	ASSERT_EC(0, _decb_write(p, (void *) text, &size));
+	ASSERT_EQUALS(sizeof(text), size);
+	ASSERT_EC(0, _decb_gs_pos(p, &position));
+	ASSERT_EQUALS(250 + sizeof(text), position);
+
+	/* Back from where it is, and from the end */
+	ASSERT_EC(0, _decb_seek(p, -(int) sizeof(text), SEEK_CUR));
+	size = sizeof(back);
+	ASSERT_EC(0, _decb_read(p, back, &size));
+	ASSERT_EQUALS(sizeof(back), size);
+	ASSERT_EQUALS(0, memcmp(text, back, sizeof(text)));
+
+	ASSERT_EC(0, _decb_seek(p, -256, SEEK_END));
+	ASSERT_EC(0, _decb_gs_pos(p, &position));
+	ASSERT_EQUALS(161280 - 256, position);
+	ASSERT_EC(EOS_SE, _decb_seek(p, -200000, SEEK_END));
+	ASSERT_EC(EOS_SE, _decb_seek(p, -1000000, SEEK_CUR));
+
+	/* The size and end of a raw path are the disk's. */
+	ASSERT_EC(0, _decb_gs_size(p, &size));
+	ASSERT_EQUALS(161280, size);
+	ASSERT_EC(0, _decb_gs_eof(p));
+	ASSERT_EC(0, _decb_seek(p, 161280, SEEK_SET));
+	ASSERT_EC(EOS_EOF, _decb_gs_eof(p));
+	size = 1;
+	ASSERT_EC(EOS_EOF, _decb_read(p, back, &size));
+	ASSERT_EC(0, _decb_close(p));
+
+	/* It landed where it says, and left the rest of the sectors. */
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",", FAM_READ));
+	ASSERT_EC(0, _decb_gs_sector(p, 0, 1, (char *) sector));
+	ASSERT_EQUALS(0xFF, sector[249]);
+	ASSERT_EQUALS(0, memcmp(text, &sector[250], 6));
+	ASSERT_EC(0, _decb_gs_sector(p, 0, 2, (char *) sector));
+	ASSERT_EQUALS(0, memcmp(text + 6, sector, sizeof(text) - 6));
+	ASSERT_EQUALS(0xFF, sector[sizeof(text) - 6]);
+	ASSERT_EC(0, _decb_close(p));
+	remove(DECB_IMAGE);
+}
+
+void test_decb_raw_path_all_formats()
+{
+	check_decb_raw_path(DISKIMAGE_RAW);
+	check_decb_raw_path(DISKIMAGE_DMK);
+	check_decb_raw_path(DISKIMAGE_SDF);
+	check_decb_raw_path(DISKIMAGE_VDK);
+}
+
+/* Only a raw image grows, and the rest of a new sector is $FF. */
+void test_decb_raw_write_past_end()
+{
+	static const u_char text[] = "past the end";
+	u_char sector[256];
+	decb_path_id p;
+	u_int size = sizeof(text);
+	FILE *fp;
+	long length;
+
+	remove(DECB_IMAGE);
+	ASSERT_EC(0, _decb_dskini_format(DECB_IMAGE, DISKIMAGE_RAW, 35, NULL, 1, 256, 0));
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",", FAM_READ | FAM_WRITE));
+	ASSERT_EC(0, _decb_seek(p, 161280 + 256 + 10, SEEK_SET));
+	ASSERT_EC(0, _decb_write(p, (void *) text, &size));
+	ASSERT_EQUALS(sizeof(text), size);
+	ASSERT_EC(0, _decb_close(p));
+
+	fp = fopen(DECB_IMAGE, "rb");
+	fseek(fp, 0, SEEK_END);
+	length = ftell(fp);
+	ASSERT_EQUALS(161280 + 512, length);
+	fseek(fp, 161280 + 256, SEEK_SET);
+	length = (long) fread(sector, 1, sizeof(sector), fp);
+	fclose(fp);
+	ASSERT_EQUALS(256, length);
+	ASSERT_EQUALS(0xFF, sector[9]);
+	ASSERT_EQUALS(0, memcmp(text, &sector[10], sizeof(text)));
+	ASSERT_EQUALS(0xFF, sector[10 + sizeof(text)]);
+	remove(DECB_IMAGE);
+
+	/* Other images have the sectors they have. */
+	ASSERT_EC(0, _decb_dskini_format(DECB_IMAGE, DISKIMAGE_DMK, 35, NULL, 1, 256, 0));
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",", FAM_READ | FAM_WRITE));
+	ASSERT_EC(0, _decb_seek(p, 161280 + 10, SEEK_SET));
+	size = 5;
+	ASSERT_EC(EOS_SECT, _decb_write(p, (void *) text, &size));
+	ASSERT_EQUALS(0, size);
+	ASSERT_EC(0, _decb_close(p));
+	remove(DECB_IMAGE);
+}
+
+/* What a disk needs of its sectors doesn't depend on how they are recorded. */
+static void check_decb_damage(diskimage_format format)
+{
+	static u_char data[3000], back[3000];
+	decb_path_id p;
+	decb_dir_entry entry;
+	u_int size = sizeof(data);
+	int track, sector, i;
+
+	for (i = 0; i < (int) sizeof(data); i++)
+	{
+		data[i] = (u_char) (i * 3);
+	}
+
+	remove(DECB_IMAGE);
+	ASSERT_EC(0, _decb_dskini_format(DECB_IMAGE, format, 35, NULL, 1, 256, 0));
+	ASSERT_EC(0, _decb_create(&p, DECB_IMAGE ",FILE.TXT", FAM_WRITE, 0, 0));
+	ASSERT_EC(0, _decb_write(p, data, &size));
+	ASSERT_EC(0, _decb_close(p));
+
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",FILE.TXT", FAM_READ));
+	granule_address(p->dir_entry.first_granule, &track, &sector);
+	ASSERT_EC(0, _decb_close(p));
+
+	/* A bad CRC gives the data as recorded. */
+	image_damage_sector(DECB_IMAGE, track, 0, sector);
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",FILE.TXT", FAM_READ));
+	size = sizeof(back);
+	ASSERT_EC(0, _decb_read(p, back, &size));
+	ASSERT_EQUALS(sizeof(data), size);
+	ASSERT_EQUALS((u_char) (data[0] ^ 0xFF), back[0]);
+	ASSERT_EQUALS(0, memcmp(data + 1, back + 1, sizeof(data) - 1));
+	ASSERT_EC(0, _decb_close(p));
+
+	/* A sector nothing uses changes nothing, and no later sector moves. */
+	image_remove_sector(DECB_IMAGE, 1, 0, 5);
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",FILE.TXT", FAM_READ));
+	size = sizeof(back);
+	ASSERT_EC(0, _decb_read(p, back, &size));
+	ASSERT_EQUALS(0, memcmp(data + 1, back + 1, sizeof(data) - 1));
+	ASSERT_EC(0, _decb_close(p));
+
+	/* A sector of the file fails only reading the file. */
+	image_remove_sector(DECB_IMAGE, track, 0, sector + 2);
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",FILE.TXT", FAM_READ));
+	size = sizeof(back);
+	ASSERT_EC(EOS_SECT, _decb_read(p, back, &size));
+	ASSERT_EC(0, _decb_close(p));
+
+	/* Without a FAT the directory reads, but not file sizes. */
+	image_remove_sector(DECB_IMAGE, 17, 0, 2);
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",", FAM_READ));
+	ASSERT_EC(0, _decb_readdir(p, &entry));
+	ASSERT_EQUALS(0, memcmp(entry.filename, "FILE    ", 8));
+	ASSERT_EC(0, _decb_close(p));
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",FILE.TXT", FAM_READ));
+	ASSERT_EC(EOS_SECT, _decb_gs_size(p, &size));
+	ASSERT_EC(0, _decb_close(p));
+	ASSERT_EC(EOS_SECT, _decb_create(&p, DECB_IMAGE ",NEW.TXT", FAM_WRITE, 0, 0));
+	ASSERT_EC(EOS_SECT, _decb_kill(DECB_IMAGE ",FILE.TXT"));
+
+	/* A missing directory sector only matters to what gets that far. */
+	image_remove_sector(DECB_IMAGE, 17, 0, 4);
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",FILE.TXT", FAM_READ));
+	ASSERT_EC(0, _decb_close(p));
+	ASSERT_EC(EOS_SECT, _decb_open(&p, DECB_IMAGE ",NOFILE.TXT", FAM_READ));
+	remove(DECB_IMAGE);
+}
+
+void test_decb_damage_sdf()
+{
+	check_decb_damage(DISKIMAGE_SDF);
+}
+
+/* Make a disk in a format, and use all that a disk does. */
+static void check_decb_round_trip(diskimage_format format, int sides)
+{
+	static const u_char text[] = "round trip";
+	u_char back[sizeof(text)];
+	decb_path_id p;
+	char buffer[256];
+	u_int size = sizeof(text);
+	u_int free_granules;
+
+	remove(DECB_IMAGE);
+	if (sides == 1)
+	{
+		ASSERT_EC(0, _decb_dskini_format(DECB_IMAGE, format, 35, NULL, 1, 256, 0));
+	}
+	else
+	{
+		ASSERT_EC(0, _diskimage_create(DECB_IMAGE, format, sides, 35, 256, 18, 0, 0, 0xFF));
+		ASSERT_EC(0, _decb_dskini(DECB_IMAGE, 35, NULL, 1, 256, 0));
+	}
+
+	ASSERT_EC(0, _decb_create(&p, DECB_IMAGE ",FILE.TXT", FAM_WRITE, 0, 0));
+	ASSERT_EC(0, _decb_write(p, (void *) text, &size));
+	ASSERT_EC(0, _decb_close(p));
+	ASSERT_EC(0, _decb_rename(DECB_IMAGE ",FILE.TXT", "OTHER.TXT"));
+
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",OTHER.TXT", FAM_READ));
+	size = sizeof(back);
+	ASSERT_EC(0, _decb_read(p, back, &size));
+	ASSERT_EQUALS(sizeof(text), size);
+	ASSERT_EQUALS(0, memcmp(text, back, size));
+
+	/* Past the last track is not a sector. */
+	ASSERT_EC(EOS_SECT, _decb_gs_sector(p, 35, 1, buffer));
+	ASSERT_EC(0, _decb_close(p));
+
+	ASSERT_EC(0, TSDECBFree(DECB_IMAGE, &free_granules));
+	ASSERT_EQUALS(67, free_granules);
+	ASSERT_EC(0, _decb_kill(DECB_IMAGE ",OTHER.TXT"));
+	ASSERT_EC(0, TSDECBFree(DECB_IMAGE, &free_granules));
+	ASSERT_EQUALS(68, free_granules);
+	remove(DECB_IMAGE);
+}
+
+void test_decb_round_trip_all_formats()
+{
+	check_decb_round_trip(DISKIMAGE_DMK, 1);
+	check_decb_round_trip(DISKIMAGE_SDF, 1);
+	check_decb_round_trip(DISKIMAGE_VDK, 1);
+
+	/* A JVC image needs a reason for a header, and side 1 goes unused. */
+	check_decb_round_trip(DISKIMAGE_JVC, 2);
+	check_decb_round_trip(DISKIMAGE_DMK, 2);
+	check_decb_round_trip(DISKIMAGE_SDF, 2);
+}
+
+static void check_decb_write_protect(diskimage_format format)
+{
+	u_char data[16] = { 0 }, back[16];
+	decb_path_id p;
+	u_int size = sizeof(data);
+
+	remove(DECB_IMAGE);
+	ASSERT_EC(0, _decb_dskini_format(DECB_IMAGE, format, 35, NULL, 1, 256, 0));
+	ASSERT_EC(0, _decb_create(&p, DECB_IMAGE ",FILE.TXT", FAM_WRITE, 0, 0));
+	ASSERT_EC(0, _decb_write(p, data, &size));
+	ASSERT_EC(0, _decb_close(p));
+	ASSERT_EC(0, _diskimage_set_write_protect(DECB_IMAGE, 1));
+
+	/* Reading is still fine, and a path that could write closes cleanly. */
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",FILE.TXT", FAM_READ | FAM_WRITE));
+	size = sizeof(back);
+	ASSERT_EC(0, _decb_read(p, back, &size));
+	ASSERT_EC(0, _decb_close(p));
+
+	ASSERT_EC(EOS_WP, _decb_create(&p, DECB_IMAGE ",NEW.TXT", FAM_WRITE, 0, 0));
+	ASSERT_EC(EOS_WP, _decb_kill(DECB_IMAGE ",FILE.TXT"));
+	ASSERT_EC(EOS_WP, _decb_rename(DECB_IMAGE ",FILE.TXT", "OTHER.TXT"));
+	ASSERT_EC(EOS_WP, _decb_dskini(DECB_IMAGE, 35, NULL, 1, 256, 0));
+
+	/* A raw path is refused too. */
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",", FAM_READ | FAM_WRITE));
+	size = sizeof(back);
+	ASSERT_EC(EOS_WP, _decb_write(p, back, &size));
+	ASSERT_EQUALS(0, size);
+	ASSERT_EC(0, _decb_close(p));
+
+	ASSERT_EC(0, _diskimage_set_write_protect(DECB_IMAGE, 0));
+	ASSERT_EC(0, _decb_kill(DECB_IMAGE ",FILE.TXT"));
+	remove(DECB_IMAGE);
+}
+
+void test_decb_write_protect_all_formats()
+{
+	check_decb_write_protect(DISKIMAGE_DMK);
+	check_decb_write_protect(DISKIMAGE_SDF);
+	check_decb_write_protect(DISKIMAGE_VDK);
+}
+
+/* Sectors of another size can't be Disk BASIC's. */
+void test_decb_wrong_sector_size()
+{
+	char sector[256];
+	decb_path_id p;
+
+	remove(DECB_IMAGE);
+	ASSERT_EC(0, _diskimage_create(DECB_IMAGE, DISKIMAGE_DMK, 1, 35, 512, 9, 0, 0, 0xFF));
+	ASSERT_EC(0, _decb_open(&p, DECB_IMAGE ",", FAM_READ | FAM_WRITE));
+	ASSERT_EC(EOS_SECT, p->fat_ec);
+	ASSERT_EC(EOS_SECT, _decb_gs_sector(p, 0, 1, sector));
+	ASSERT_EC(EOS_SECT, _decb_ss_sector(p, 0, 1, sector));
+	ASSERT_EC(0, _decb_close(p));
+	remove(DECB_IMAGE);
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -1008,5 +1234,11 @@ int main()
 	RUN(test_decb_token);
 	RUN(test_decb_token_keyword_after_var);
 
+	RUN(test_decb_raw_path_all_formats);
+	RUN(test_decb_raw_write_past_end);
+	RUN(test_decb_damage_sdf);
+	RUN(test_decb_round_trip_all_formats);
+	RUN(test_decb_write_protect_all_formats);
+	RUN(test_decb_wrong_sector_size);
 	return TEST_REPORT();
 }

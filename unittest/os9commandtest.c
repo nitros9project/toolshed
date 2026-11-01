@@ -688,7 +688,7 @@ void test_os9_command_format_formats()
 	check_format_format("-t40 -ds", "test_fmt.vdk", DISKIMAGE_VDK);
 	check_format_format("-sz10", "test_fmt.dmk", DISKIMAGE_DMK);
 	check_format_format("-ds -sz10", "test_fmt.dmk", DISKIMAGE_DMK);
-	check_format_format("-bs512", "test_fmt.dmk", DISKIMAGE_DMK);
+	check_format_format("-bs512 -st9", "test_fmt.dmk", DISKIMAGE_DMK);
 	check_format_format("-st10 -t80 -ds", "test_fmt.jvc", DISKIMAGE_JVC);
 	check_format_format("-dr", "test_fmt.dmk", DISKIMAGE_DMK);
 
@@ -703,10 +703,138 @@ void test_os9_command_format_formats()
 	/* A layout the format can't hold, and an unknown format, are refused */
 	status = system("../os9/os9 format -q -sz10 test_fmt.vdk > /dev/null 2>&1");
 	ASSERT_NEQUALS(0, status);
+
+	/* 18 sectors of 512 bytes don't fit on a track. */
+	status = system("../os9/os9 format -q -bs512 test_fmt.dmk > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
 	status = system("../os9/os9 format -q -sd test_fmt.dmk > /dev/null 2>&1");
 	ASSERT_NEQUALS(0, status);
 	status = system("../os9/os9 format -q -fxyz test_fmt.dmk > /dev/null 2>&1");
 	ASSERT_NEQUALS(0, status);
+}
+
+/* The commands, not only the library, on an image with tracks. */
+static void check_os9_commands(const char *image)
+{
+	static const char *const steps[] = {
+		"format -q -e %s",
+		"copy test_cmd_src.txt %s,FILE",
+		"copy -l test_cmd_src.txt %s,TEXT",
+		"makdir %s,DIR",
+		"copy test_cmd_src.txt %s,DIR/INNER",
+		"dir -e -r %s,",
+		"dump %s,FILE",
+		"list %s,TEXT",
+		"free %s",
+		"attr %s,FILE",
+		"attr -w %s,FILE",
+		"attr %s,DIR/INNER",
+		"rename %s,FILE RENAMED",
+		"reveal %s 2",
+		"dcheck %s",
+		"copy %s,RENAMED test_cmd_out.bin",
+		"del %s,TEXT",
+		"deldir -q %s,DIR",
+	};
+	char command[256];
+	size_t i;
+	int status;
+
+	remove(image);
+	remove("test_cmd_out.bin");
+	for (i = 0; i < sizeof(steps) / sizeof(steps[0]); i++)
+	{
+		char step[128];
+
+		snprintf(step, sizeof(step), steps[i], image);
+		snprintf(command, sizeof(command), "../os9/os9 %s > test_cmd_log.txt 2>&1", step);
+		status = system(command);
+		if (status != 0)
+		{
+			printf("failed: %s\n", command);
+		}
+		ASSERT_EQUALS(0, status);
+	}
+	status = system("cmp test_cmd_src.txt test_cmd_out.bin");
+	ASSERT_EQUALS(0, status);
+	remove(image);
+	remove("test_cmd_out.bin");
+	remove("test_cmd_log.txt");
+}
+
+void test_os9_commands_on_images_with_tracks()
+{
+	FILE *fp = fopen("test_cmd_src.txt", "wb");
+	int i;
+
+	for (i = 0; i < 200; i++)
+	{
+		fputs("a line of text\n", fp);
+	}
+	fclose(fp);
+
+	check_os9_commands("test_cmd.dmk");
+	check_os9_commands("test_cmd.sdf");
+	check_os9_commands("test_cmd.vdk");
+	remove("test_cmd_src.txt");
+}
+
+/* gen links a boot file and writes the kernel track through a raw path. */
+static void check_os9_gen(const char *image)
+{
+	static char boot[2048], track[4608];
+	os9_path_id p;
+	char command[256];
+	u_char sector[256];
+	error_code ec;
+	FILE *fp;
+	int status;
+
+	memset(boot, 0x87, sizeof(boot));
+	memset(track, 0x4F, sizeof(track));
+	fp = fopen("test_gen_boot.bin", "wb");
+	fwrite(boot, 1, sizeof(boot), fp);
+	fclose(fp);
+	fp = fopen("test_gen_track.bin", "wb");
+	fwrite(track, 1, sizeof(track), fp);
+	fclose(fp);
+
+	remove(image);
+	snprintf(command, sizeof(command), "../os9/os9 format -q -t40 %s > /dev/null 2>&1", image);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+	snprintf(command, sizeof(command),
+		 "../os9/os9 gen -b=test_gen_boot.bin -t=test_gen_track.bin %s > /dev/null 2>&1", image);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+
+	snprintf(command, sizeof(command), "%s,@", image);
+	ec = _os9_open(&p, command, FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_NEQUALS(0, int3(p->lsn0->dd_bt));
+	ASSERT_EQUALS(sizeof(boot), int2(p->lsn0->dd_bsz));
+
+	/* The kernel track is track 34, whatever the image. */
+	ec = _os9_lsn_get(p, 34 * 18, 0, sector, sizeof(sector));
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(0x4F, sector[0]);
+
+	ec = _os9_lsn_get(p, int3(p->lsn0->dd_bt), 0, sector, sizeof(sector));
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(0x87, sector[0]);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	remove(image);
+	remove("test_gen_boot.bin");
+	remove("test_gen_track.bin");
+}
+
+void test_os9_gen_on_images_with_tracks()
+{
+	check_os9_gen("test_gen.dsk");
+	check_os9_gen("test_gen.dmk");
+	check_os9_gen("test_gen.sdf");
 }
 
 int main()
@@ -725,5 +853,7 @@ int main()
 	RUN(test_os9_command_dsave_refuses_disk_images);
 	RUN(test_os9_command_dsave_executable);
 	RUN(test_os9_command_format_formats);
+	RUN(test_os9_commands_on_images_with_tracks);
+	RUN(test_os9_gen_on_images_with_tracks);
 	return TEST_REPORT();
 }

@@ -6,6 +6,7 @@
 #include "tinytest.h"
 #include "cocopath.h"
 #include "diskimage.h"
+#include "imagedamage.h"
 
 #define TEST_IMAGE "diskinfo_test.dsk"
 #define TEST_OTHER "diskinfo_other.dsk"
@@ -512,6 +513,37 @@ static void test_filesystems_status(void)
 	ASSERT("the report is printed", strstr(output, "Possible filesystems: OS-9") != NULL);
 }
 
+/* A bad CRC doesn't stop a disk being recognized, and detection doesn't warn. */
+static void test_detection_on_bad_crc(void)
+{
+	unsigned int total_sectors, total_bytes;
+	int cluster_size = 0;
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _os9_format_image(TEST_IMAGE, DISKIMAGE_DMK, 0, 35, 18, 18, 1, 256, &cluster_size, "Test", 8, 48, 1, 1,
+					 0, 0, 3, &total_sectors, &total_bytes));
+	image_damage_sector(TEST_IMAGE, 0, 0, 3);
+	ASSERT_CALL(COCO_FS_OS9, filesystems_status("-s " TEST_IMAGE));
+	ASSERT_STRING_EQUALS("", errors);
+
+	/* LSN0 is still read.  Its first byte isn't one that detection looks at. */
+	image_damage_sector(TEST_IMAGE, 0, 0, 1);
+	ASSERT_CALL(COCO_FS_OS9, filesystems_status("-s " TEST_IMAGE));
+	ASSERT_STRING_EQUALS("", errors);
+
+	/* The root directory's first byte is, so now it isn't OS-9, still quietly. */
+	image_damage_sector(TEST_IMAGE, 0, 0, 4);
+	ASSERT_CALL(0, filesystems_status("-s " TEST_IMAGE));
+	ASSERT_STRING_EQUALS("", errors);
+	remove(TEST_IMAGE);
+
+	ASSERT_CALL(0, _decb_dskini_format(TEST_IMAGE, DISKIMAGE_SDF, 35, NULL, 1, 256, 0));
+	image_damage_sector(TEST_IMAGE, 17, 0, 3);
+	ASSERT_CALL(COCO_FS_DECB, filesystems_status("-s " TEST_IMAGE));
+	ASSERT_STRING_EQUALS("", errors);
+	remove(TEST_IMAGE);
+}
+
 int main(void)
 {
 	RUN(test_dmk_report);
@@ -529,5 +561,6 @@ int main(void)
 
 	RUN(test_possible_filesystems);
 	RUN(test_filesystems_status);
+	RUN(test_detection_on_bad_crc);
 	return TEST_REPORT();
 }

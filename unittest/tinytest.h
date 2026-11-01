@@ -88,25 +88,31 @@ void tt_execute(const char* name, void (*test_function)())
   }
 }
 
+/* A failure stays failed, and the first one is what gets reported.  An assertion
+   in a helper only returns from the helper, so the test goes on to assert more. */
 int tt_assert(const char* file, int line, const char* msg, const char* expression, int pass)
 {
-  tt_current_msg = msg;
-  tt_current_value = 0;
-  tt_current_expression = expression;
-  tt_current_file = file;
-  tt_current_line = line;
-  tt_current_test_failed = !pass;
+  if (!tt_current_test_failed) {
+    tt_current_msg = msg;
+    tt_current_value = 0;
+    tt_current_expression = expression;
+    tt_current_file = file;
+    tt_current_line = line;
+    tt_current_test_failed = !pass;
+  }
   return pass;
 }
 
 int tt_assert_v(const char* file, int line, const char* msg, long value, const char* expression, int pass)
 {
-  tt_current_msg = msg;
-  tt_current_value = value;
-  tt_current_expression = expression;
-  tt_current_file = file;
-  tt_current_line = line;
-  tt_current_test_failed = !pass;
+  if (!tt_current_test_failed) {
+    tt_current_msg = msg;
+    tt_current_value = value;
+    tt_current_expression = expression;
+    tt_current_file = file;
+    tt_current_line = line;
+    tt_current_test_failed = !pass;
+  }
   return pass;
 }
 

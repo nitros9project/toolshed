@@ -634,6 +634,66 @@ void test_decb_command_dskini_formats()
 	ASSERT_NEQUALS(0, status);
 }
 
+/* The commands, not only the library, on an image with tracks. */
+static void check_decb_commands(const char *image)
+{
+	static const char *const steps[] = {
+		"dskini %s",
+		"copy -2 -b test_cmd_src.txt %s,FILE.BIN",
+		"copy -3 -a -l test_cmd_src.txt %s,TEXT.TXT",
+		"dir %s,",
+		"dump %s,FILE.BIN",
+		"list %s,TEXT.TXT",
+		"free %s",
+		"fstat %s,FILE.BIN",
+		"attr %s,FILE.BIN",
+		"rename %s,FILE.BIN NEW.BIN",
+		"copy %s,NEW.BIN test_cmd_out.bin",
+		"kill %s,TEXT.TXT",
+	};
+	char command[256];
+	size_t i;
+	int status;
+
+	remove(image);
+	remove("test_cmd_out.bin");
+	for (i = 0; i < sizeof(steps) / sizeof(steps[0]); i++)
+	{
+		char step[128];
+
+		snprintf(step, sizeof(step), steps[i], image);
+		snprintf(command, sizeof(command), "../decb/decb %s > test_cmd_log.txt 2>&1", step);
+		status = system(command);
+		if (status != 0)
+		{
+			printf("failed: %s\n", command);
+		}
+		ASSERT_EQUALS(0, status);
+	}
+	status = system("cmp test_cmd_src.txt test_cmd_out.bin");
+	ASSERT_EQUALS(0, status);
+	remove(image);
+	remove("test_cmd_out.bin");
+	remove("test_cmd_log.txt");
+}
+
+void test_decb_commands_on_images_with_tracks()
+{
+	FILE *fp = fopen("test_cmd_src.txt", "wb");
+	int i;
+
+	for (i = 0; i < 200; i++)
+	{
+		fputs("a line of text\n", fp);
+	}
+	fclose(fp);
+
+	check_decb_commands("test_cmd.dmk");
+	check_decb_commands("test_cmd.sdf");
+	check_decb_commands("test_cmd.vdk");
+	remove("test_cmd_src.txt");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -650,5 +710,6 @@ int main()
 	RUN(test_decb_command_dsave_executable);
 	RUN(test_decb_command_hdbconv);
 	RUN(test_decb_command_dskini_formats);
+	RUN(test_decb_commands_on_images_with_tracks);
 	return TEST_REPORT();
 }

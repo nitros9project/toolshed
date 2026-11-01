@@ -6,6 +6,9 @@ include ../rules.mak
 
 vpath %.c ../../../unittest
 
+# A test is rebuilt when a header it includes changes.
+CFLAGS += -MMD -MP
+
 LDLIBS += -L../libtoolshed -L../libcoco -L../libcecb -L../libdecb -L../libdragondos -L../libdiskimage \
           -L../librbf -L../libnative -L../libmisc -L../libsys \
           -ltoolshed -lcoco -lcecb -ldecb -ldragondos -ldiskimage -lrbf -lnative -lmisc -lsys -lm
@@ -26,7 +29,9 @@ TEST_LIBS = \
 TESTS = librbftest libdecbtest libcecbtest libtoolshedtest libnativetest libmisctest os9commandtest \
 	decbcommandtest cecbcommandtest libsystest libdiskimagetest diskinfocommandtest libdragondostest dgndoscommandtest
 
-$(TESTS): $(TEST_LIBS)
+# Only the source and libraries are linked, not the headers the .d files add.
+$(TESTS): %: %.c $(TEST_LIBS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $< $(TEST_LIBS) $(LDLIBS) -o $@
 
 testall: $(TESTS)
 ifeq (,$(NOTEST))
@@ -47,4 +52,6 @@ ifeq (,$(NOTEST))
 endif
 
 clean:
-	$(RM) *.o *.dsk *.wav *.cas *.c10 $(TESTS)
+	$(RM) *.o *.d *.dsk *.wav *.cas *.c10 $(TESTS)
+
+-include $(TESTS:=.d)
