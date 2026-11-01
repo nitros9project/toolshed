@@ -14,6 +14,10 @@
  *   - On a double sided disk, the bitmap's first read leaves it cached as LSN
  *     360 ($D191), and a write to track 20 side 1 overruns the table at $06AA
  *     into the file control blocks ($D2EB).
+ *
+ * The source of SuperDOS E6 in this repository, when assembled, also gives the
+ * same disks.  It fixes the bug at $D026 and the caching of LSN 360, but not
+ * the others that can be read in its source.
  ********************************************************************/
 #include <string.h>
 

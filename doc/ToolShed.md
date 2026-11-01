@@ -1785,7 +1785,7 @@ Entries in sectors that can't be read don't stop the rest being listed, but the 
 
 #### Description
 
-Without -f, the format comes from the disk's extension, and otherwise it is raw. An existing file is not replaced. Disks are formatted as the DSKINIT command of Dragon DOS does, except that an 80 track single sided disk has all of its sectors free.
+Without -f, the format comes from the disk's extension, and otherwise it is raw. An existing file is not replaced. Disks are formatted as the DSKINIT command of Dragon DOS does, except that an 80 track single sided disk has all of its sectors free, as SuperDOS makes them. Dragon DOS 1.0 leaves half of such a disk used.
 
 #### Examples
 

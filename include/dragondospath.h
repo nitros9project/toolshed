@@ -127,8 +127,9 @@ typedef struct
 error_code _dragondos_identify(const char *pathname, int *found);
 
 /* Make a new image of a blank disk, formatted as DSKINIT does.  An existing
-   file is not replaced.  tracks is 21 to 80, sides is 1 or 2.  Unlike DSKINIT,
-   an 80 track single sided disk has all of its sectors free. */
+   file is not replaced.  tracks is 21 to 80, sides is 1 or 2.  An 80 track
+   single sided disk has all of its sectors free, as in SuperDOS, where Dragon
+   DOS 1.0 leaves half of them used. */
 error_code _dragondos_dskinit(const char *pathname, diskimage_format format, u_int tracks, u_int sides);
 
 /* mode is FAM_READ and/or FAM_WRITE, optionally with
