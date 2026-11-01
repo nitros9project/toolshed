@@ -257,6 +257,32 @@ void test_decb_only_needed_sectors_are_errors()
 	remove(DECB_DMK);
 }
 
+/* decb dir lists the names it can read, then reports the missing FAT. */
+void test_decb_dir_lists_names_without_fat()
+{
+	u_char data[16] = { 0 };
+	char output[1024];
+	size_t got;
+	FILE *fp;
+	int status;
+
+	decb_dmk_with_file(data, sizeof(data));
+	dmk_remove_sector(DECB_DMK, 17, 2);
+
+	status = system("../decb/decb dir " DECB_DMK ", > test_decb_dir.txt 2> /dev/null");
+	ASSERT_NEQUALS(0, status);
+
+	fp = fopen("test_decb_dir.txt", "rb");
+	ASSERT("the listing was written", fp != NULL);
+	got = fread(output, 1, sizeof(output) - 1, fp);
+	fclose(fp);
+	output[got] = '\0';
+	ASSERT("the file is listed with no size", strstr(output, "FILE     TXT  0  B  ?\n") != NULL);
+
+	remove("test_decb_dir.txt");
+	remove(DECB_DMK);
+}
+
 void test_decb_bad_crc_is_read()
 {
 	u_char data[100], back[100];
@@ -965,6 +991,7 @@ int main()
 	RUN(test_decb_dmk_read_write);
 	RUN(test_decb_colon_needs_raw_image);
 	RUN(test_decb_only_needed_sectors_are_errors);
+	RUN(test_decb_dir_lists_names_without_fat);
 	RUN(test_decb_bad_crc_is_read);
 	RUN(test_decb_write_protect);
 	RUN(test_decb_dskini);
