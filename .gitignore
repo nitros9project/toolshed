@@ -25,6 +25,7 @@ build/unix/unittest/diskinfocommandtest
 build/unix/unittest/libcecbtest
 build/unix/unittest/libdecbtest
 build/unix/unittest/libdiskimagetest
+build/unix/unittest/libdragondostest
 build/unix/unittest/libmisctest
 build/unix/unittest/libnativetest
 build/unix/unittest/librbftest

@@ -21,7 +21,7 @@ endif
 
 APPS 		= ar2 os9 mamou cecb decb tocgen makewav dis68 lst2cmt diskinfo
 
-DIRS		= libtoolshed libnative libcecb librbf libcoco libdecb libdiskimage libmisc libsys \
+DIRS		= libtoolshed libnative libcecb librbf libcoco libdecb libdiskimage libdragondos libmisc libsys \
 		decb cecb os9 makewav tocgen lst2cmt diskinfo \
 		dis68 mamou ar2 \
 		doc
