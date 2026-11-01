@@ -1734,6 +1734,8 @@ With no options, each file is reported as protected or not. A protected file can
 
 A target of `<disk>,` or a host directory takes each file under its own name. Allocation follows the algorithm of the Dragon DOS 1.0 ROM.
 
+An existing file on the host that is or looks like a disk image is never replaced, even with -r. The copy is refused, and says why. A file looks like one if it has the extension .dsk, .vdk, .dmk, .sdf, .jvc, .os9, .img or .ima, has the header of a disk image format, or is at least a track long (4608 bytes) and a whole number of sectors. This guards against `dgndos copy file disk.vdk` where `disk.vdk,` was meant. Other host files are replaced without -r.
+
 A file that doesn't fit is removed, and the error reported.
 
 With -t, a file with the header of a saved BASIC program is listed as text, with its lines ending the way the target's system ends them. Anything else is taken to be a program's text, and is tokenized as Dragon BASIC with Dragon DOS would, giving the same file as its SAVE command. Lines must have ascending numbers, and only upper case is recognized as a keyword. Dragon BASIC's tokens differ from those of Color BASIC.

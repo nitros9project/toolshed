@@ -17,6 +17,8 @@
 #define NATIVE_OTHER "dgndoscmd_other.bin"
 #define NATIVE_DIR "dgndoscmd_dir"
 #define CAPTURE " > " OUTPUT_FILE " 2>&1"
+#define KEEP_FILE "dgndoscmd_keep.bin"
+#define KEEP_NAMED "dgndoscmd_keep.DSK"
 
 static char output[16384];
 static u_char data[65536];
@@ -83,6 +85,8 @@ static void clean_up(void)
 	remove(OUTPUT_FILE);
 	remove(NATIVE_FILE);
 	remove(NATIVE_OTHER);
+	remove(KEEP_FILE);
+	remove(KEEP_NAMED);
 	remove(NATIVE_DIR "/" NATIVE_FILE);
 	rmdir(NATIVE_DIR);
 }
@@ -516,6 +520,123 @@ static void test_fstat_file_headers(void)
 	clean_up();
 }
 
+/* Refusing leaves the file as it was, and says why once. */
+static void check_refused(const char *target, const char *reason)
+{
+	static u_char before[1024 * 1024];
+	static u_char after[1024 * 1024];
+	static const char *const formats[] = { "copy ", "copy -r ", "copy -l -r ", "copy -t -r " };
+	long size = file_size(target, before, sizeof(before));
+	size_t i;
+
+	ASSERT("the file to protect exists", size >= 0);
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+	{
+		char command[256];
+
+		sprintf(command, DGNDOS "%s" TEST_IMAGE ",%s %s" CAPTURE, formats[i], i == 3 ? "PROGRAM" : "FILE", target);
+		ASSERT_RUN(1, command);
+		read_output();
+		ASSERT("it says why", strstr(output, "looks like a disk image") != NULL);
+		ASSERT(reason, strstr(output, reason) != NULL);
+		ASSERT("it says so once", strstr(output, "Error:") == NULL && strstr(output, "error ") == NULL);
+		ASSERT_EQUALS(size, file_size(target, after, sizeof(after)));
+		ASSERT_MEM_EQUALS(before, after, size);
+	}
+}
+
+static void test_copy_refuses_to_overwrite_disk_images(void)
+{
+	static const char *const image_formats[][2] =
+	{
+		{ "vdk", "VDK header" }, { "dmk", "DMK header" }, { "sdf", "SDF header" },
+		{ "raw", "whole number of sectors" }
+	};
+	size_t i;
+	char command[256];
+	FILE *fp;
+
+	clean_up();
+	ASSERT_RUN(0, DGNDOS "dskinit " TEST_IMAGE);
+	write_native(NATIVE_FILE, 100);
+	ASSERT_RUN(0, DGNDOS "copy " NATIVE_FILE " " TEST_IMAGE ",FILE");
+	fp = fopen(NATIVE_FILE, "wb");
+	fputs("10 PRINT\n", fp);
+	fclose(fp);
+	ASSERT_RUN(0, DGNDOS "copy -t " NATIVE_FILE " " TEST_IMAGE ",PROGRAM");
+
+	/* Real images with names that give nothing away. */
+	for (i = 0; i < sizeof(image_formats) / sizeof(image_formats[0]); i++)
+	{
+		remove(KEEP_FILE);
+		sprintf(command, DGNDOS "dskinit -f%s " KEEP_FILE, image_formats[i][0]);
+		ASSERT_RUN(0, command);
+		check_refused(KEEP_FILE, image_formats[i][1]);
+	}
+	remove(KEEP_FILE);
+	ASSERT_RUN(0, DGNDOS "dskinit -s2 -fjvc " KEEP_FILE);
+	check_refused(KEEP_FILE, "JVC header");
+	remove(KEEP_FILE);
+
+	/* One track of anything, whole sectors long. */
+	write_native(KEEP_FILE, 18 * 256);
+	check_refused(KEEP_FILE, "whole number of sectors");
+	remove(KEEP_FILE);
+
+	/* The name alone, whatever the case, even of an empty file. */
+	fp = fopen(KEEP_NAMED, "wb");
+	fclose(fp);
+	check_refused(KEEP_NAMED, "by its name");
+
+	/* Into a directory, under the source's own name. */
+	run_status = mkdir(NATIVE_DIR, 0755);
+	ASSERT_EQUALS(0, run_status);
+	ASSERT_RUN(0, DGNDOS "copy " TEST_IMAGE ",FILE " TEST_IMAGE ",DISK.VDK");
+	ASSERT_RUN(0, DGNDOS "copy " TEST_IMAGE ",DISK.VDK " NATIVE_DIR "/DISK.VDK");
+	ASSERT_RUN(1, DGNDOS "copy " TEST_IMAGE ",DISK.VDK " NATIVE_DIR QUIET);
+
+	/* Of several, the others still copy, and the failure is still reported. */
+	ASSERT_RUN(1, DGNDOS "copy " TEST_IMAGE ",DISK.VDK " TEST_IMAGE ",FILE " NATIVE_DIR QUIET);
+	ASSERT_EQUALS(100, file_size(NATIVE_DIR "/FILE", back, sizeof(back)));
+	remove(NATIVE_DIR "/FILE");
+	remove(NATIVE_DIR "/DISK.VDK");
+
+	remove(KEEP_NAMED);
+	clean_up();
+}
+
+/* Everything else on the host can still be replaced. */
+static void test_copy_replaces_other_host_files(void)
+{
+	static const u_int sizes[] = { 0, 9, 256, 512, 18 * 256 - 256, 18 * 256 + 1, 5000 };
+	size_t i;
+	long size;
+
+	clean_up();
+	ASSERT_RUN(0, DGNDOS "dskinit " TEST_IMAGE);
+	write_native(NATIVE_FILE, 100);
+	ASSERT_RUN(0, DGNDOS "copy " NATIVE_FILE " " TEST_IMAGE ",FILE");
+
+	for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++)
+	{
+		remove(NATIVE_OTHER);
+		write_native(NATIVE_OTHER, sizes[i]);
+		ASSERT_RUN(0, DGNDOS "copy " TEST_IMAGE ",FILE " NATIVE_OTHER);
+		size = file_size(NATIVE_OTHER, back, sizeof(back));
+		ASSERT_EQUALS(100, size);
+	}
+
+	ASSERT_RUN(0, DGNDOS "copy -r " TEST_IMAGE ",FILE " NATIVE_OTHER);
+	ASSERT_RUN(0, DGNDOS "copy -r " NATIVE_FILE " " NATIVE_OTHER);
+
+	/* A name that isn't there yet can look like anything. */
+	remove(KEEP_NAMED);
+	ASSERT_RUN(0, DGNDOS "copy " TEST_IMAGE ",FILE " KEEP_NAMED);
+	remove(KEEP_NAMED);
+
+	clean_up();
+}
+
 int main(void)
 {
 	RUN(test_help);
@@ -531,5 +652,7 @@ int main(void)
 	RUN(test_fstat_file_headers);
 	RUN(test_list_tokens);
 	RUN(test_copy_tokens);
+	RUN(test_copy_refuses_to_overwrite_disk_images);
+	RUN(test_copy_replaces_other_host_files);
 	return TEST_REPORT();
 }
