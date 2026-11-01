@@ -291,6 +291,73 @@ void test_os9_command_root_past_short_t0()
 	remove("min_t0_source");
 }
 
+void test_os9_command_no_comma_spec()
+{
+	error_code ec;
+	os9_path_id path;
+	char *filename = NULL;
+	int i;
+	const char *const commands[] = {
+		"../os9/os9 del no_comma.dsk > /dev/null 2>&1",
+		"../os9/os9 attr no_comma.dsk > /dev/null 2>&1",
+		"../os9/os9 attr -e no_comma.dsk > /dev/null 2>&1",
+		"../os9/os9 attr no_comma.dsk no_comma.dsk,KEEP > /dev/null 2>&1",
+		"../os9/os9 attr no_comma.dsk,KEEP no_comma.dsk > /dev/null 2>&1",
+		"../os9/os9 attr no_comma.dsk,NOPE no_comma.dsk > /dev/null 2>&1",
+		"../os9/os9 attr no_comma.dsk,KEEP > /dev/null 2>&1",
+	};
+	const int expected[] = {EOS_BPNAM, EOS_BPNAM, EOS_BPNAM, EOS_BPNAM,
+		EOS_BPNAM, EOS_PNNF, 0};
+
+	remove("no_comma.dsk");
+	remove("no_comma.before");
+
+	ec = system("../os9/os9 format -q -t35 no_comma.dsk > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_create(&path, "no_comma.dsk,KEEP", FAM_WRITE, FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(path);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_create(&path, "no_comma.dsk,GONE", FAM_WRITE, FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(path);
+	ASSERT_EQUALS(0, ec);
+	ec = system("cp no_comma.dsk no_comma.before");
+	ASSERT_EQUALS(0, ec);
+
+	/* A spec without a comma names no file in an image, so it must fail
+	 * without crashing and without changing the image. */
+	for (i = 0; i < 7; i++)
+	{
+		ec = system(commands[i]);
+		ASSERT_EQUALS(1, WIFEXITED(ec));
+		ec = WEXITSTATUS(ec);
+		ASSERT_EQUALS(expected[i], ec);
+		ec = system("cmp -s no_comma.dsk no_comma.before");
+		ASSERT_EQUALS(0, ec);
+	}
+
+	ec = _os9_open_parent_directory(&path, "no_comma.dsk", FAM_DIR | FAM_READ,
+					&filename);
+	ASSERT_EQUALS(EOS_BPNAM, ec);
+	ASSERT("no filename returned", filename == NULL);
+
+	/* Specs before the bad one are still processed, and del stops at it. */
+	ec = system("../os9/os9 del no_comma.dsk,GONE no_comma.dsk no_comma.dsk,KEEP > /dev/null 2>&1");
+	ASSERT_EQUALS(1, WIFEXITED(ec));
+	ec = WEXITSTATUS(ec);
+	ASSERT_EQUALS(EOS_BPNAM, ec);
+	ec = _os9_open(&path, "no_comma.dsk,GONE", FAM_READ);
+	ASSERT_EQUALS(EOS_PNNF, ec);
+	ec = _os9_open(&path, "no_comma.dsk,KEEP", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(path);
+	ASSERT_EQUALS(0, ec);
+
+	remove("no_comma.before");
+	remove("no_comma.dsk");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -299,6 +366,7 @@ int main()
 	RUN(test_os9_command_copy_exit_status);
 	RUN(test_os9_command_format_rejects_bad_t0s);
 	RUN(test_os9_command_root_past_short_t0);
+	RUN(test_os9_command_no_comma_spec);
 
 	return TEST_REPORT();
 }

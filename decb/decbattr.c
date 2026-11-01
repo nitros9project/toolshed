@@ -42,6 +42,8 @@ int decbattr(int argc, char *argv[])
 	int file_type = -1;
 	int data_type = -1;
 	int quiet = 0;
+	error_code ec;
+	error_code first_error = 0;
 
 
 	/* walk command line for options */
@@ -100,14 +102,19 @@ int decbattr(int argc, char *argv[])
 			{
 				/* No options were specified */
 
-				do_getattr(argv, p);
+				ec = do_getattr(argv, p);
 			}
 			else
 			{
 				/* Options were specified */
 
-				do_setattr(argv, p, file_type, data_type,
-					   quiet);
+				ec = do_setattr(argv, p, file_type, data_type,
+						quiet);
+			}
+			/* Keep failures visible even if a later file succeeds. */
+			if (ec != 0 && first_error == 0)
+			{
+				first_error = ec;
 			}
 			if (quiet == 0)
 			{
@@ -122,7 +129,7 @@ int decbattr(int argc, char *argv[])
 		return (0);
 	}
 
-	return (0);
+	return (first_error);
 }
 
 
