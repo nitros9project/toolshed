@@ -144,7 +144,9 @@ error_code _dragondos_close(dragondos_path_id path);
 
 /* On entry *size is the number of bytes to transfer; on return it is the
    number transferred, including when an error is returned.  Writing past
-   the end allocates sectors with the algorithm of Dragon DOS. */
+   the end allocates sectors with the algorithm of Dragon DOS.  Unlike Dragon
+   DOS, a write may start past the end, which leaves the sectors between
+   as they were. */
 error_code _dragondos_read(dragondos_path_id path, void *buffer, u_int *size);
 error_code _dragondos_write(dragondos_path_id path, const void *buffer, u_int *size);
 

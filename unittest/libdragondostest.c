@@ -1271,6 +1271,183 @@ static void test_short_image(void)
 	remove(TEST_IMAGE);
 }
 
+/* Whole file layouts.  Each of these is the directory the Dragon DOS 1.0 ROM
+   makes of the same writes, with its write, close and kill routines run in an
+   emulator. */
+typedef struct
+{
+	int flags;
+	int last_or_next;
+	u_int extents[7][2];
+} expected_entry;
+
+static void check_directory(const expected_entry *expected, int count, u_int free_count)
+{
+	dragondos_path_id path;
+	dragondos_dir_entry entry;
+	u_int sectors;
+	int i, e;
+
+	ASSERT_CALL(0, _dragondos_open(&path, TEST_IMAGE ",", FAM_READ));
+	for (i = 0; i < count; i++)
+	{
+		ASSERT_CALL(0, _dragondos_readdir(path, &entry));
+		ASSERT_EQUALS(expected[i].flags, entry.flags);
+		if (entry.flags & DRAGONDOS_FLAG_DELETED)
+		{
+			continue;
+		}
+		ASSERT_EQUALS(expected[i].last_or_next, entry.last_or_next);
+		for (e = 0; e < ((entry.flags & DRAGONDOS_FLAG_CONTINUATION) ? 7 : 4); e++)
+		{
+			const dragondos_extent *extent = (entry.flags & DRAGONDOS_FLAG_CONTINUATION) ? entry.u.continuation.extent : entry.u.header.extent;
+
+			ASSERT_EQUALS(expected[i].extents[e][1], extent[e].count);
+			if (extent[e].count != 0)
+			{
+				ASSERT_EQUALS(expected[i].extents[e][0], (u_int)((extent[e].lsn[0] << 8) | extent[e].lsn[1]));
+			}
+		}
+	}
+	ASSERT_CALL(EOS_EOF, _dragondos_readdir(path, &entry));
+	ASSERT_CALL(0, _dragondos_gs_free(path, &sectors));
+	ASSERT_EQUALS(free_count, sectors);
+	ASSERT_CALL(0, _dragondos_close(path));
+}
+
+/* Write to a file in pieces of what a Dragon can hold at once. */
+static error_code write_in_pieces(const char *pathlist, int create, u_int position, u_int pieces, u_int piece)
+{
+	dragondos_path_id path;
+	error_code ec = create ? _dragondos_create(&path, pathlist, RW) : _dragondos_open(&path, pathlist, RW);
+	u_int i;
+
+	if (ec != 0)
+	{
+		return ec;
+	}
+	ec = _dragondos_seek(path, (long)position, SEEK_SET);
+	for (i = 0; ec == 0 && i < pieces; i++)
+	{
+		u_int size = piece;
+
+		fill_pattern(size, (u_char)i);
+		ec = _dragondos_write(path, data, &size);
+	}
+	{
+		error_code close_ec = _dragondos_close(path);
+
+		return ec != 0 ? ec : close_ec;
+	}
+}
+
+static void test_layout_of_a_fragmented_disk_matches_rom(void)
+{
+	static const expected_entry expected[] =
+	{
+		{ 0x00, 0, { { 324, 3 } } },
+		{ 0x20, 3, { { 252, 36 }, { 180, 36 }, { 108, 36 }, { 0, 36 } } },
+		{ 0x81, 0, { { 0 } } },
+		{ 0x01, 0, { { 378, 144 } } },
+		{ 0x00, 0, { { 144, 3 } } },
+		{ 0x81, 0, { { 0 } } },
+		{ 0x00, 0, { { 72, 3 } } },
+		{ 0x00, 10, { { 36, 4 } } }
+	};
+	int i;
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	for (i = 0; i < 8; i++)
+	{
+		char pathlist[64];
+
+		sprintf(pathlist, TEST_FILE("F%d.BIN"), i);
+		ASSERT_CALL(0, write_in_pieces(pathlist, 1, 0, 1, 256 * 3));
+	}
+	ASSERT_CALL(0, _dragondos_kill(TEST_FILE("F1.BIN")));
+	ASSERT_CALL(0, _dragondos_kill(TEST_FILE("F3.BIN")));
+	ASSERT_CALL(0, _dragondos_kill(TEST_FILE("F5.BIN")));
+	ASSERT_CALL(0, write_in_pieces(TEST_FILE("BIG.BIN"), 1, 0, 3, 0x6000));
+	ASSERT_CALL(0, write_in_pieces(TEST_FILE("F7.BIN"), 0, 768, 1, 10));
+	ASSERT_CALL(0, _dragondos_kill(TEST_FILE("F2.BIN")));
+
+	check_directory(expected, 8, 383);
+	remove(TEST_IMAGE);
+}
+
+/* An extent stops at 255 sectors, and sectors above LSN 1440 are freed. */
+static void test_layout_of_a_large_disk_matches_rom(void)
+{
+	static const expected_entry expected[] =
+	{
+		{ 0x00, 112, { { 684, 36 }, { 648, 36 }, { 612, 10 } } },
+		{ 0x81, 0, { { 0 } } },
+		{ 0x81, 0, { { 0 } } },
+		{ 0x81, 0, { { 0 } } },
+		{ 0x00, 232, { { 1044, 4 } } }
+	};
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 80, 2));
+	ASSERT_CALL(0, write_in_pieces(TEST_FILE("HUGE.BIN"), 1, 0, 10, 0x6000));
+	ASSERT_CALL(0, write_in_pieces(TEST_FILE("MORE.BIN"), 1, 0, 1, 1000));
+	ASSERT_CALL(0, _dragondos_kill(TEST_FILE("HUGE.BIN")));
+	ASSERT_CALL(0, write_in_pieces(TEST_FILE("LAST.BIN"), 1, 0, 1, 70000 % 0x6000));
+
+	check_directory(expected, 5, 2758);
+	remove(TEST_IMAGE);
+}
+
+/* The bitmap's sector above LSN 1440 is the one changed, not the sector before
+   the directory as in the ROM. */
+static void test_freeing_high_sectors_changes_only_the_bitmap(void)
+{
+	long size;
+	long before = (DS_DIRECTORY - 1) * 256L;
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 80, 2));
+	ASSERT_CALL(0, write_in_pieces(TEST_FILE("HUGE.BIN"), 1, 0, 10, 0x6000));
+	size = read_file(TEST_IMAGE, other, sizeof(other));
+	ASSERT_EQUALS(2880 * 256, size);
+	ASSERT_CALL(0, _dragondos_kill(TEST_FILE("HUGE.BIN")));
+	ASSERT_EQUALS(2880 - 36, free_sectors());
+	ASSERT_EQUALS(size, read_file(TEST_IMAGE, image, sizeof(image)));
+	ASSERT_MEM_EQUALS(other + before, image + before, 256);
+	remove(TEST_IMAGE);
+}
+
+/* The last write wins, however the ROM's buffers would have dealt with it. */
+static void test_whole_sector_write_over_a_partial_one(void)
+{
+	dragondos_path_id path;
+	u_int size;
+	int i;
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+	ASSERT_CALL(0, _dragondos_create(&path, TEST_FILE("FILE"), RW));
+	size = 300;
+	memset(data, 0x11, size);
+	ASSERT_CALL(0, _dragondos_write(path, data, &size));
+	ASSERT_CALL(0, _dragondos_seek(path, 256, SEEK_SET));
+	size = 256;
+	memset(data, 0x22, size);
+	ASSERT_CALL(0, _dragondos_write(path, data, &size));
+	ASSERT_CALL(0, _dragondos_close(path));
+
+	ASSERT_CALL(0, _dragondos_open(&path, TEST_FILE("FILE"), FAM_READ));
+	size = 512;
+	ASSERT_CALL(0, _dragondos_read(path, back, &size));
+	ASSERT_EQUALS(512, size);
+	for (i = 0; i < 512; i++)
+	{
+		ASSERT_EQUALS(i < 256 ? 0x11 : 0x22, back[i]);
+	}
+	ASSERT_CALL(0, _dragondos_close(path));
+	remove(TEST_IMAGE);
+}
+
 /* Every result here is what the routine at $8F67 of the Dragon BASIC ROM gives,
    with Dragon DOS's keywords added. */
 static const struct
@@ -1757,6 +1934,10 @@ int main(void)
 	RUN(test_write_needs_only_what_it_touches);
 	RUN(test_write_to_missing_sector);
 	RUN(test_short_image);
+	RUN(test_layout_of_a_fragmented_disk_matches_rom);
+	RUN(test_layout_of_a_large_disk_matches_rom);
+	RUN(test_freeing_high_sectors_changes_only_the_bitmap);
+	RUN(test_whole_sector_write_over_a_partial_one);
 	RUN(test_entoken_matches_rom);
 	RUN(test_entoken_makes_a_saved_program);
 	RUN(test_detoken_lists_a_saved_program);

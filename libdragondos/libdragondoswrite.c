@@ -1,7 +1,19 @@
 /********************************************************************
  * libdragondoswrite.c - Write and resize files
  *
- * _dd_extend follows the routine at $CBEC of the Dragon DOS 1.0 ROM.
+ * _dd_extend follows the routine at $CBEC of the Dragon DOS 1.0 ROM, and gives
+ * the same disk given the same writes, apart from these bugs of the ROM, which
+ * are not reproduced:
+ *   - A whole sector write ($C9F8) leaves any dirty buffer of that sector to
+ *     overwrite it later, undoing the write.
+ *   - The search for a free entry ($D0FC) can evict the buffer holding the
+ *     file's last entry, which then doesn't get the link to its continuation.
+ *   - Freeing sectors above LSN 1440 ($D026) changes the sector before the
+ *     directory rather than the bitmap's second sector.
+ *   - Freeing a run that ends at LSN 2880 ($D02F) is an error.
+ *   - On a double sided disk, the bitmap's first read leaves it cached as LSN
+ *     360 ($D191), and a write to track 20 side 1 overruns the table at $06AA
+ *     into the file control blocks ($D2EB).
  ********************************************************************/
 #include <string.h>
 
