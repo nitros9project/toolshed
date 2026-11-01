@@ -1210,6 +1210,411 @@ void test_decb_wrong_sector_size()
 	remove(DECB_IMAGE);
 }
 
+/*
+ * "rsdos mame.dmk" was made by Disk Extended Color BASIC 1.1 under MAME, by a
+ * program that writes each machine code file from a pattern, so that tests can
+ * recompute it.  What this expects of its directory is what DIR and FREE(0) said.
+ */
+#define REAL_DISK "../../../unittest/testdata/rsdos mame.dmk"
+#define REAL_COPY "test_real_rsdos.dmk"
+#define REAL_FREE_GRANULES 39
+
+static const struct
+{
+	const char *name;
+	int type;
+	int ascii;
+	int granules;
+} real_directory[] = {
+	{ "CROSS.BIN", 2, 0x00, 7 },
+	{ "ONESECT.BIN", 2, 0x00, 1 },
+	{ "SECTPLUS.BIN", 2, 0x00, 1 },
+	{ "ONEGRAN.BIN", 2, 0x00, 2 },
+	{ "FRAG.BIN", 2, 0x00, 4 },
+	{ "KEEP.BIN", 2, 0x00, 2 },
+	{ "EMPTY.DAT", 1, 0xFF, 1 },
+	{ "AFTER.BIN", 2, 0x00, 3 },
+	{ "ONEBYTE.DAT", 1, 0xFF, 1 },
+	{ "LINES.DAT", 1, 0xFF, 3 },
+	{ "TOKEN.BAS", 0, 0x00, 1 },
+	{ "ASCII.BAS", 0, 0xFF, 1 },
+	{ "EDTASM.TXT", 3, 0xFF, 1 },
+	{ "LAST.DAT", 1, 0xFF, 1 },
+};
+
+static const struct
+{
+	const char *name;
+	int seed;
+	int size;
+} real_patterns[] = {
+	{ "CROSS.BIN", 9, 14000 },
+	{ "ONESECT.BIN", 1, 246 },
+	{ "SECTPLUS.BIN", 2, 247 },
+	{ "ONEGRAN.BIN", 3, 2294 },
+	{ "FRAG.BIN", 8, 9000 },
+	{ "KEEP.BIN", 5, 2294 },
+	{ "AFTER.BIN", 7, 4598 },
+};
+
+static void copy_real_disk(void)
+{
+	static char buffer[4096];
+	FILE *in = fopen(REAL_DISK, "rb");
+	FILE *out = fopen(REAL_COPY, "wb");
+	size_t got;
+
+	ASSERT("the real disk is there", in != NULL && out != NULL);
+	while ((got = fread(buffer, 1, sizeof(buffer), in)) > 0)
+	{
+		fwrite(buffer, 1, got, out);
+	}
+	fclose(in);
+	fclose(out);
+}
+
+/* Read a whole file through a pathlist. */
+static error_code read_real_file(const char *image, const char *name, u_char *buffer, u_int capacity, u_int *size)
+{
+	char pathlist[128];
+	decb_path_id p;
+	error_code ec;
+
+	snprintf(pathlist, sizeof(pathlist), "%s,%s", image, name);
+	ec = _decb_open(&p, pathlist, FAM_READ);
+	if (ec != 0)
+	{
+		return ec;
+	}
+	*size = capacity;
+	ec = _decb_read(p, buffer, size);
+	if (ec == EOS_EOF)
+	{
+		*size = 0;
+		ec = 0;
+	}
+	_decb_close(p);
+
+	return ec;
+}
+
+/* Check a SAVEM file: its header, the pattern, and its trailer. */
+static void check_real_pattern(const u_char *data, u_int size, int seed, int length)
+{
+	int i;
+
+	ASSERT_EQUALS(length + 10, size);
+	ASSERT_EQUALS(0x00, data[0]);
+	ASSERT_EQUALS(length, data[1] << 8 | data[2]);
+	ASSERT_EQUALS(0x4000, data[3] << 8 | data[4]);
+	for (i = 0; i < length; i++)
+	{
+		int byte = (i & 1) ? (i & 255) : (i >> 8);
+
+		ASSERT_EQUALS((byte + seed) & 255, data[5 + i]);
+	}
+	ASSERT_EQUALS(0xFF, data[5 + length]);
+	ASSERT_EQUALS(0x4000, data[8 + length] << 8 | data[9 + length]);
+}
+
+void test_real_rsdos_is_recognized()
+{
+	u_int filesystems;
+	_path_type type;
+
+	ASSERT_EC(0, _coco_detect_filesystems(REAL_DISK, &filesystems));
+	ASSERT_EQUALS(COCO_FS_DECB, filesystems);
+	ASSERT_EC(0, _coco_identify_image(REAL_DISK ",", &type));
+	ASSERT_EQUALS(DECB, type);
+
+	/* Real DSKINI leaves all of track 17 $FF, like an unused track, and that
+	   is deliberately not taken for a disk.  This is what that fixture holds. */
+	ASSERT_EC(0, _coco_detect_filesystems("../../../unittest/testdata/rsdos artifact.dmk", &filesystems));
+	ASSERT_EQUALS(0, filesystems);
+}
+
+void test_real_rsdos_directory_matches_the_machine()
+{
+	decb_path_id p;
+	decb_dir_entry entry;
+	u_int free_granules;
+	int killed_at = -1, live = 0, position = 0;
+	error_code ec;
+
+	ASSERT_EC(0, _decb_open(&p, REAL_DISK ",", FAM_READ));
+	while ((ec = _decb_readdir(p, &entry)) == 0)
+	{
+		if (entry.filename[0] == 0xFF)
+		{
+			break;
+		}
+		if (entry.filename[0] == 0)
+		{
+			killed_at = position;
+		}
+		else
+		{
+			u_char name[13];
+			int granule = entry.first_granule;
+			int granules = 1;
+
+			ASSERT("no more files than DIR showed", live < (int) (sizeof(real_directory) / sizeof(real_directory[0])));
+			ASSERT_EC(0, _decb_ncpy_name(entry, name, sizeof(name)));
+			ASSERT_STRING_EQUALS(real_directory[live].name, (char *) name);
+			ASSERT_EQUALS(real_directory[live].type, entry.file_type);
+			ASSERT_EQUALS(real_directory[live].ascii, entry.ascii_flag);
+			while (p->FAT[granule] < 0xC0)
+			{
+				granule = p->FAT[granule];
+				granules++;
+			}
+			ASSERT_EQUALS(real_directory[live].granules, granules);
+			live++;
+		}
+		position++;
+	}
+	ASSERT_EC(0, _decb_close(p));
+
+	ASSERT_EQUALS(sizeof(real_directory) / sizeof(real_directory[0]), live);
+	ASSERT("a killed entry is passed over, with a file after it", killed_at >= 8 && killed_at < position - 1);
+
+	ASSERT_EC(0, TSDECBFree(REAL_DISK, &free_granules));
+	ASSERT_EQUALS(REAL_FREE_GRANULES, free_granules);
+}
+
+void test_real_rsdos_files_match_their_patterns()
+{
+	static u_char data[20000];
+	u_int size;
+	size_t i;
+
+	for (i = 0; i < sizeof(real_patterns) / sizeof(real_patterns[0]); i++)
+	{
+		ASSERT_EC(0, read_real_file(REAL_DISK, real_patterns[i].name, data, sizeof(data), &size));
+		check_real_pattern(data, size, real_patterns[i].seed, real_patterns[i].size);
+	}
+
+	/* Sizes at the edges, as the ROM records them */
+	ASSERT_EC(0, _decb_gs_size_pathlist(REAL_DISK ",ONESECT.BIN", &size));
+	ASSERT_EQUALS(256, size);
+	ASSERT_EC(0, _decb_gs_size_pathlist(REAL_DISK ",SECTPLUS.BIN", &size));
+	ASSERT_EQUALS(257, size);
+	ASSERT_EC(0, _decb_gs_size_pathlist(REAL_DISK ",ONEGRAN.BIN", &size));
+	ASSERT_EQUALS(2304, size);
+	ASSERT_EC(0, _decb_gs_size_pathlist(REAL_DISK ",EMPTY.DAT", &size));
+	ASSERT_EQUALS(0, size);
+	ASSERT_EC(0, _decb_gs_size_pathlist(REAL_DISK ",ONEBYTE.DAT", &size));
+	ASSERT_EQUALS(1, size);
+
+	ASSERT_EC(0, read_real_file(REAL_DISK, "EMPTY.DAT", data, sizeof(data), &size));
+	ASSERT_EQUALS(0, size);
+	ASSERT_EC(0, read_real_file(REAL_DISK, "ONEBYTE.DAT", data, sizeof(data), &size));
+	ASSERT_EQUALS(1, size);
+	ASSERT_EQUALS('A', data[0]);
+}
+
+/* Reading in small pieces gets the same bytes, through every granule. */
+void test_real_rsdos_reads_in_pieces()
+{
+	static u_char whole[20000], piece[20000];
+	decb_path_id p;
+	u_int whole_size, total = 0, size;
+	error_code ec;
+
+	ASSERT_EC(0, read_real_file(REAL_DISK, "AFTER.BIN", whole, sizeof(whole), &whole_size));
+	ASSERT_EC(0, _decb_open(&p, REAL_DISK ",AFTER.BIN", FAM_READ));
+	for (;;)
+	{
+		size = 97;
+		ec = _decb_read(p, piece + total, &size);
+		if (ec != 0)
+		{
+			break;
+		}
+		total += size;
+	}
+	ASSERT_EQUALS(EOS_EOF, ec);
+	ASSERT_EC(0, _decb_close(p));
+	ASSERT_EQUALS(whole_size, total);
+	ASSERT_EQUALS(0, memcmp(whole, piece, total));
+}
+
+void test_real_rsdos_reads_lines()
+{
+	char line[64], expected[64];
+	decb_path_id p;
+	u_int size;
+	int number = 0;
+	error_code ec;
+
+	/* PRINT #1,"LINE";L puts a space after a number, and a CR ends each line. */
+	ASSERT_EC(0, _decb_open(&p, REAL_DISK ",LINES.DAT", FAM_READ));
+	for (;;)
+	{
+		size = sizeof(line);
+		ec = _decb_readln(p, line, &size);
+		if (ec != 0)
+		{
+			break;
+		}
+		number++;
+		snprintf(expected, sizeof(expected), "LINE %d \r", number);
+		ASSERT_EQUALS(strlen(expected), size);
+		ASSERT_EQUALS(0, memcmp(expected, line, size));
+	}
+	ASSERT_EQUALS(EOS_EOF, ec);
+	ASSERT_EQUALS(500, number);
+	ASSERT_EC(0, _decb_close(p));
+}
+
+/* The real tokenized program lists as what BASIC itself saved as ASCII. */
+void test_real_rsdos_detokenizes()
+{
+	static u_char token[4096], ascii[4096];
+	char *text = NULL;
+	unsigned char *again = NULL;
+	u_int token_size, ascii_size, text_size, again_size;
+	u_int a = 0, t = 0;
+
+	ASSERT_EC(0, read_real_file(REAL_DISK, "TOKEN.BAS", token, sizeof(token), &token_size));
+	ASSERT_EC(0, read_real_file(REAL_DISK, "ASCII.BAS", ascii, sizeof(ascii), &ascii_size));
+	ASSERT_EQUALS(0, _decb_detect_tokenized(token, token_size));
+	ASSERT_NEQUALS(0, _decb_detect_tokenized(ascii, ascii_size));
+	ASSERT_EC(0, _decb_detoken(token, token_size, &text, &text_size));
+
+	/* BASIC's file starts with a CR, and ends lines in CR, not LF. */
+	if (ascii[0] == 0x0D)
+	{
+		a = 1;
+	}
+	while (a < ascii_size && t < text_size)
+	{
+		char from_ascii = ascii[a] == 0x0D ? '\n' : (char) ascii[a];
+
+		ASSERT_EQUALS(from_ascii, text[t]);
+		a++;
+		t++;
+	}
+	ASSERT_EQUALS(ascii_size, a);
+	ASSERT_EQUALS(text_size, t);
+
+	/* And that listing tokenizes to exactly what BASIC saved. */
+	ASSERT_EC(0, _decb_entoken((unsigned char *) text, text_size, &again, &again_size, 1));
+	ASSERT_EQUALS(token_size, again_size);
+	ASSERT_EQUALS(0, memcmp(token, again, token_size));
+	free(again);
+	free(text);
+}
+
+/* Change a copy of the real disk, and keep what the ROM put there. */
+void test_real_rsdos_can_be_changed()
+{
+	static u_char data[20000], text[] = "written by toolshed";
+	unsigned char reserved[16];
+	decb_path_id p;
+	decb_dir_entry entry;
+	u_int size = sizeof(text);
+	u_int free_granules;
+	error_code ec;
+	int found = 0;
+
+	copy_real_disk();
+
+	/* A new file takes the killed entry and free granules. */
+	ASSERT_EC(0, _decb_create(&p, REAL_COPY ",NEW.TXT", FAM_WRITE, 3, 0xFF));
+	ASSERT_EC(0, _decb_write(p, text, &size));
+	ASSERT_EC(0, _decb_close(p));
+	ASSERT_EC(0, TSDECBFree(REAL_COPY, &free_granules));
+	ASSERT_EQUALS(REAL_FREE_GRANULES - 1, free_granules);
+	ASSERT_EC(0, read_real_file(REAL_COPY, "NEW.TXT", data, sizeof(data), &size));
+	ASSERT_EQUALS(sizeof(text), size);
+	ASSERT_EQUALS(0, memcmp(text, data, size));
+
+	/* Other files are as they were. */
+	ASSERT_EC(0, read_real_file(REAL_COPY, "CROSS.BIN", data, sizeof(data), &size));
+	check_real_pattern(data, size, 9, 14000);
+
+	/* EDTASM keeps something in the part of the entry BASIC leaves unused. */
+	ASSERT_EC(0, _decb_open(&p, REAL_COPY ",", FAM_READ));
+	while ((ec = _decb_readdir(p, &entry)) == 0 && memcmp(entry.filename, "EDTASM  ", 8) != 0)
+	{
+	}
+	ASSERT_EQUALS(0, ec);
+	memcpy(reserved, &entry.file_status, sizeof(reserved));
+	ASSERT_EC(0, _decb_close(p));
+	ASSERT_EC(0, _decb_rename(REAL_COPY ",EDTASM.TXT", "SOURCE.TXT"));
+	ASSERT_EC(0, _decb_open(&p, REAL_COPY ",", FAM_READ));
+	while ((ec = _decb_readdir(p, &entry)) == 0)
+	{
+		if (memcmp(entry.filename, "SOURCE  ", 8) == 0)
+		{
+			found = 1;
+			ASSERT_EQUALS(0, memcmp(reserved, &entry.file_status, sizeof(reserved)));
+		}
+	}
+	ASSERT_EQUALS(1, found);
+	ASSERT_EC(0, _decb_close(p));
+
+	/* Killing gives back all its granules, across track 17. */
+	ASSERT_EC(0, _decb_kill(REAL_COPY ",CROSS.BIN"));
+	ASSERT_EC(0, TSDECBFree(REAL_COPY, &free_granules));
+	ASSERT_EQUALS(REAL_FREE_GRANULES - 1 + 7, free_granules);
+	ASSERT_EC(EOS_PNNF, read_real_file(REAL_COPY, "CROSS.BIN", data, sizeof(data), &size));
+	ASSERT_EC(0, read_real_file(REAL_COPY, "AFTER.BIN", data, sizeof(data), &size));
+	check_real_pattern(data, size, 7, 4598);
+	remove(REAL_COPY);
+}
+
+/* A file the ROM wrote at an exact size can be added to. */
+static void check_real_append(const char *name, int seed, int length)
+{
+	static u_char data[20000];
+	static const u_char more[] = "more";
+	char pathlist[64];
+	decb_path_id p;
+	u_int size = sizeof(more);
+	u_int before = (u_int) length + 10;
+
+	copy_real_disk();
+	snprintf(pathlist, sizeof(pathlist), REAL_COPY ",%s", name);
+	ASSERT_EC(0, _decb_open(&p, pathlist, FAM_READ | FAM_WRITE));
+	ASSERT_EC(0, _decb_seek(p, (int) before, SEEK_SET));
+	ASSERT_EC(0, _decb_write(p, (void *) more, &size));
+	ASSERT_EQUALS(sizeof(more), size);
+	ASSERT_EC(0, _decb_close(p));
+
+	ASSERT_EC(0, _decb_gs_size_pathlist(pathlist, &size));
+	ASSERT_EQUALS(before + sizeof(more), size);
+	ASSERT_EC(0, read_real_file(REAL_COPY, name, data, sizeof(data), &size));
+	ASSERT_EQUALS(before + sizeof(more), size);
+	ASSERT_EQUALS(0, memcmp(more, data + before, sizeof(more)));
+	check_real_pattern(data, before, seed, length);
+	remove(REAL_COPY);
+}
+
+void test_real_rsdos_exact_sizes_can_grow()
+{
+	check_real_append("ONESECT.BIN", 1, 246);
+	check_real_append("ONEGRAN.BIN", 3, 2294);
+}
+
+/* A file's granules can be missing on the far side of track 17 alone. */
+void test_real_rsdos_missing_sector_across_track_17()
+{
+	static u_char data[20000];
+	u_int size;
+
+	copy_real_disk();
+
+	/* Granule 34 is the first after the directory track: track 18. */
+	image_remove_sector(REAL_COPY, 18, 0, 1);
+	ASSERT_EC(EOS_SECT, read_real_file(REAL_COPY, "CROSS.BIN", data, sizeof(data), &size));
+
+	ASSERT_EC(0, read_real_file(REAL_COPY, "AFTER.BIN", data, sizeof(data), &size));
+	check_real_pattern(data, size, 7, 4598);
+	remove(REAL_COPY);
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -1240,5 +1645,14 @@ int main()
 	RUN(test_decb_round_trip_all_formats);
 	RUN(test_decb_write_protect_all_formats);
 	RUN(test_decb_wrong_sector_size);
+	RUN(test_real_rsdos_is_recognized);
+	RUN(test_real_rsdos_directory_matches_the_machine);
+	RUN(test_real_rsdos_files_match_their_patterns);
+	RUN(test_real_rsdos_reads_in_pieces);
+	RUN(test_real_rsdos_reads_lines);
+	RUN(test_real_rsdos_detokenizes);
+	RUN(test_real_rsdos_can_be_changed);
+	RUN(test_real_rsdos_exact_sizes_can_grow);
+	RUN(test_real_rsdos_missing_sector_across_track_17);
 	return TEST_REPORT();
 }
