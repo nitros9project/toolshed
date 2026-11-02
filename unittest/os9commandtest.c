@@ -12,6 +12,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include "imagedamage.h"
 
 /* Enough for the 40 track images of the gap tests */
 #define GAP_IMAGE_MAX	(40 * 18 * 256)
@@ -1031,6 +1032,222 @@ void test_os9_gen_on_full_format()
 	remove("test_gap_track.bin");
 }
 
+#define REAL_OS9 "\"../../../unittest/testdata/os9 files mame.dmk\""
+#define REAL_OS9_OUTPUT "test_real_os9.txt"
+
+/* Run a command on a disk that OS-9 made, keeping its output. */
+static int real_os9_command(const char *arguments, char *output, size_t capacity)
+{
+	char command[256];
+	FILE *fp;
+	size_t got;
+	int status;
+
+	snprintf(command, sizeof(command), "../os9/os9 %s > " REAL_OS9_OUTPUT " 2>&1", arguments);
+	status = system(command);
+	output[0] = '\0';
+	fp = fopen(REAL_OS9_OUTPUT, "rb");
+	if (fp != NULL)
+	{
+		got = fread(output, 1, capacity - 1, fp);
+		output[got] = '\0';
+		fclose(fp);
+	}
+	remove(REAL_OS9_OUTPUT);
+
+	return status;
+}
+
+static int count_lines(const char *text)
+{
+	int lines = 0;
+
+	for (; *text != '\0'; text++)
+	{
+		lines += *text == '\n';
+	}
+
+	return lines;
+}
+
+/* What OS-9's free said, with the free sectors in many holes. */
+void test_os9_free_of_real_disk()
+{
+	static char output[4096];
+	int status = real_os9_command("free " REAL_OS9 ",", output, sizeof(output));
+
+	ASSERT_EQUALS(0, status);
+	ASSERT("as OS-9 said", strstr(output, "138 Free sectors, largest block 114 sectors\n") != NULL);
+}
+
+/* A file nobody can read does not end the listing. */
+void test_os9_dir_extended_of_real_disk()
+{
+	static char output[16384];
+	int status = real_os9_command("dir -e " REAL_OS9 ",", output, sizeof(output));
+
+	ASSERT_EQUALS(0, status);
+	/* The heading is 4 lines, and OS-9 listed 29 entries. */
+	ASSERT_EQUALS(4 + 29, count_lines(output));
+	ASSERT("no permissions", strstr(output, "  0.0     1987/02/14 1212   --------      BF       300 ATTRNONE\n") != NULL);
+	ASSERT("the owner", strstr(output, "  1.2     1987/02/14 1222   ---wr-wr     1CB       100 OWNED\n") != NULL);
+	ASSERT("the last entry", strstr(output, "1CD       875 DIRCMD\n") != NULL);
+
+	status = real_os9_command("dir -e -r " REAL_OS9 ",", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("the deepest file", strstr(output, "11F       512 FILE\n") != NULL);
+	ASSERT("the last of the big directory", strstr(output, "19F         0 F69\n") != NULL);
+}
+
+/* A file descriptor that cannot be read is reported, and the rest still list. */
+void test_os9_dir_extended_missing_fd()
+{
+	static char output[16384];
+	int status;
+
+	status = system("cp " REAL_OS9 " test_real_os9.dmk");
+	ASSERT_EQUALS(0, status);
+	/* EMPTY's file descriptor is LSN 10. */
+	image_remove_sector("test_real_os9.dmk", 0, 0, 11);
+	status = real_os9_command("dir -e test_real_os9.dmk,", output, sizeof(output));
+	ASSERT_NEQUALS(0, status);
+	ASSERT("names the file", strstr(output, "error 241 reading the file descriptor of 'test_real_os9.dmk,./EMPTY'\n") != NULL);
+	ASSERT("the next one is listed", strstr(output, "1 ONEBYTE\n") != NULL);
+	ASSERT("the last one is listed", strstr(output, " DIRCMD\n") != NULL);
+	remove("test_real_os9.dmk");
+}
+
+void test_os9_fstat_of_real_disk()
+{
+	static char output[4096];
+	int status;
+
+	status = real_os9_command("fstat " REAL_OS9 ",ATTRNONE", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("no permissions", strstr(output, "Attributes         : --------\n") != NULL);
+	ASSERT("its size", strstr(output, "File size          : 300 ($12C)\n") != NULL);
+
+	status = real_os9_command("fstat " REAL_OS9 ",OWNED", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("its owner", strstr(output, "Owner              : 1.2") != NULL);
+
+	status = real_os9_command("fstat " REAL_OS9 ",BIGDIR", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("a directory", strstr(output, "Attributes         : d-ewrewr\n") != NULL);
+	ASSERT("two segments", strstr(output, " 2. LSN2 (") != NULL && strstr(output, " 3. LSN3 (") == NULL);
+
+	status = real_os9_command("fstat " REAL_OS9 ",FULLSEGS", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("as many segments as RBF allows", strstr(output, "47. LSN47 (") != NULL && strstr(output, "48. LSN48 (") == NULL);
+}
+
+/* OS-9 counts directories among the files, as 111, and this counts them apart. */
+void test_os9_dcheck_of_real_disk()
+{
+	static char output[4096];
+	int status = real_os9_command("dcheck " REAL_OS9, output, sizeof(output));
+
+	ASSERT_EQUALS(0, status);
+	ASSERT("intact", strstr(output, "'FILES' file structure is intact\n") != NULL);
+	ASSERT("the directories", strstr(output, "10 directories\n") != NULL);
+	ASSERT("the files", strstr(output, "102 files\n") != NULL);
+}
+
+void test_os9_ident_of_real_disk()
+{
+	static char output[4096];
+	int status = real_os9_command("ident " REAL_OS9 ",DIRCMD", output, sizeof(output));
+
+	ASSERT_EQUALS(0, status);
+	ASSERT("the size", strstr(output, "$36B") != NULL);
+	ASSERT("the CRC OS-9 reported", strstr(output, "$4D8369 (Good)") != NULL);
+}
+
+/* After changes, the disk still has what dcheck looks for. */
+void test_os9_dcheck_after_changing_real_disk()
+{
+	static char output[4096];
+	int status;
+
+	status = system("cp " REAL_OS9 " test_real_os9.dmk");
+	ASSERT_EQUALS(0, status);
+	status = real_os9_command("del test_real_os9.dmk,FULLSEGS", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	status = real_os9_command("rename test_real_os9.dmk,S256 RENAMED", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	status = real_os9_command("makdir test_real_os9.dmk,DELS/NEWDIR", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	status = real_os9_command("deldir -q test_real_os9.dmk,ALLGONE", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	status = real_os9_command("dcheck test_real_os9.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("intact", strstr(output, "file structure is intact\n") != NULL);
+	ASSERT("nothing lost", strstr(output, "0 clusters in file structure but not in allocation map\n") != NULL
+	       && strstr(output, "0 clusters in allocation map but not in file structure\n") != NULL);
+	remove("test_real_os9.dmk");
+}
+
+#define REAL_CLUSTERS "\"../../../unittest/testdata/os9 clusters mame.dmk\""
+
+/* What OS-9's free and dcheck said of a disk with 2-sector clusters. */
+void test_os9_real_clusters()
+{
+	static char output[8192];
+	int status;
+
+	status = real_os9_command("free " REAL_CLUSTERS ",", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("as OS-9 said", strstr(output, "226 Free sectors, largest block 214 sectors\n") != NULL);
+	ASSERT("the clusters", strstr(output, "2-sector clusters") != NULL);
+
+	/* OS-9 counts the 3 directories under the root among its 27 files. */
+	status = real_os9_command("dcheck " REAL_CLUSTERS, output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("intact", strstr(output, "'CLUSTER2' file structure is intact\n") != NULL);
+	ASSERT("the directories", strstr(output, "4 directories\n") != NULL);
+	ASSERT("the files", strstr(output, "24 files\n") != NULL);
+
+	status = real_os9_command("dir -e " REAL_CLUSTERS ",", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("a segment that starts inside a cluster", strstr(output, "36      3000 UNCUT\n") != NULL);
+}
+
+/* The steps OS-9 took, and what its free said after each, leave nothing lost. */
+void test_os9_real_clusters_delete()
+{
+	static const struct
+	{
+		const char *name;
+		const char *free;
+	} steps[] = {
+		{ "EMPTY", "228 Free sectors, largest block 214 sectors\n" },
+		{ "UNCUT", "242 Free sectors, largest block 214 sectors\n" },
+		{ "COMB", "268 Free sectors, largest block 214 sectors\n" },
+		{ "ODDA", "274 Free sectors, largest block 214 sectors\n" },
+		{ "CUT1100", "280 Free sectors, largest block 214 sectors\n" },
+	};
+	static char output[8192];
+	char arguments[128];
+	size_t i;
+	int status;
+
+	status = system("cp " REAL_CLUSTERS " test_real_clusters.dmk");
+	ASSERT_EQUALS(0, status);
+	for (i = 0; i < sizeof(steps) / sizeof(steps[0]); i++)
+	{
+		snprintf(arguments, sizeof(arguments), "del test_real_clusters.dmk,%s", steps[i].name);
+		status = real_os9_command(arguments, output, sizeof(output));
+		ASSERT_EQUALS(0, status);
+		status = real_os9_command("free test_real_clusters.dmk,", output, sizeof(output));
+		ASSERT_EQUALS(0, status);
+		ASSERT("as OS-9 said", strstr(output, steps[i].free) != NULL);
+	}
+	status = real_os9_command("dcheck test_real_clusters.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("nothing lost", strstr(output, "0 clusters in allocation map but not in file structure\n") != NULL);
+	remove("test_real_clusters.dmk");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -1052,5 +1269,14 @@ int main()
 	RUN(test_os9_raw_extend_of_quick_format);
 	RUN(test_os9_gen_on_quick_format);
 	RUN(test_os9_gen_on_full_format);
+	RUN(test_os9_free_of_real_disk);
+	RUN(test_os9_dir_extended_of_real_disk);
+	RUN(test_os9_dir_extended_missing_fd);
+	RUN(test_os9_fstat_of_real_disk);
+	RUN(test_os9_dcheck_of_real_disk);
+	RUN(test_os9_ident_of_real_disk);
+	RUN(test_os9_dcheck_after_changing_real_disk);
+	RUN(test_os9_real_clusters);
+	RUN(test_os9_real_clusters_delete);
 	return TEST_REPORT();
 }

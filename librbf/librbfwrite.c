@@ -274,8 +274,9 @@ static int _os9_extendSegList(os9_path_id path, Fd_seg segptr, int *delta)
 	}
 
 	/* Time for a new segment */
-	/* Is there room for another segment? */
-	if (i < NUM_SEGS)
+	/* Is there room for another segment?  RBF keeps the last entry empty, and
+	   refuses a 48th segment with E$SLF. */
+	if (i < NUM_SEGS - 1)
 	{
 		int cluster, size;
 

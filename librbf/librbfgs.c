@@ -84,13 +84,13 @@ error_code _os9_gs_fd_pathlist(char *pathlist, int count, fd_stats * fdbuf)
 	error_code ec = 0;
 	os9_path_id path;
 
-	/* Open a path to the pathlist */
+	/* Open a path to the pathlist, for no access since a file desc needs none */
 
-	ec = _os9_open(&path, pathlist, FAM_READ);
+	ec = _os9_open(&path, pathlist, 0);
 
 	if (ec != 0)
 	{
-		ec = _os9_open(&path, pathlist, FAM_READ | FAM_DIR);
+		ec = _os9_open(&path, pathlist, FAM_DIR);
 
 		if (ec != 0)
 		{

@@ -345,8 +345,11 @@ static int _os9_freefile(os9_path_id path, int fd_lsn)
 			break;
 		}
 
+		/* RBF starts a file's first segment in the file descriptor's
+		   cluster, so a segment can start and end anywhere in a cluster. */
 		ec = _os9_delbit(path->bitmap, int3(seg[i].lsn) / path->spc,
-				 int2(seg[i].num) / path->spc);
+				 (int3(seg[i].lsn) + int2(seg[i].num) - 1) / path->spc -
+				 int3(seg[i].lsn) / path->spc + 1);
 
 		if (ec != 0)
 		{

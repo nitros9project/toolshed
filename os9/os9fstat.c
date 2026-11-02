@@ -85,11 +85,11 @@ static int do_fstat(char **argv, char *p)
 	os9_path_id path;
 	char plural;
 
-	/* open a path to the device */
-	ec = _os9_open(&path, p, FAM_READ);
+	/* open a path to the device, for no access since a file desc needs none */
+	ec = _os9_open(&path, p, 0);
 	if (ec != 0)
 	{
-		ec = _os9_open(&path, p, FAM_DIR | FAM_READ);
+		ec = _os9_open(&path, p, FAM_DIR);
 		if (ec != 0)
 		{
 			fprintf(stderr, "%s: error %d opening '%s'\n",

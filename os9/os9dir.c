@@ -123,6 +123,7 @@ static int do_dir(char **argv, char *p, NodeType *q_recursion)
 	static int depth = 0;	/* recursion depth counter */
 	NodeType q_head = NULL;
 	char filepath[256];
+	error_code status = 0;
 
 
 	/* 1. Copy the passed pathlist into our own local buffer. */
@@ -197,7 +198,6 @@ static int do_dir(char **argv, char *p, NodeType *q_recursion)
 	while (_os9_gs_eof(path) == 0)
 	{
 		os9_dir_entry dentry;
-		os9_path_id path2;
 		fd_stats fdbuf;
 		char *filename;
 
@@ -222,24 +222,20 @@ static int do_dir(char **argv, char *p, NodeType *q_recursion)
 		{
 			/* EXTENDED directory output */
 
-			/* open path to file and get file desc */
+			/* read the file desc, which needs no permission on the file */
 			strcpy(filepath, os9pathlist);
 			strcat(filepath, "/");
 			strcat(filepath, filename);
 
-			ec = _os9_open(&path2, filepath, FAM_READ);
+			ec = _os9_lsn_get(path, int3(dentry.lsn), 0, &fdbuf, sizeof(fd_stats));
 			if (ec != 0)
 			{
-				ec = _os9_open(&path2, filepath,
-					       FAM_DIR | FAM_READ);
-				if (ec != 0)
-				{
-					break;
-				}
+				fprintf(stderr, "%s: error %d reading the file descriptor of '%s'\n",
+					argv[0], ec, filepath);
+				free(filename);
+				status = ec;
+				continue;
 			}
-
-			_os9_gs_fd(path2, sizeof(fd_stats), &fdbuf);
-			_os9_close(path2);
 
 			if (extended == 1)
 			{
@@ -331,7 +327,11 @@ static int do_dir(char **argv, char *p, NodeType *q_recursion)
 		while (node != NULL)
 		{
 			depth++;
-			do_dir(argv, (char *) node->data, q_recursion);
+			ec = do_dir(argv, (char *) node->data, q_recursion);
+			if (ec != 0)
+			{
+				status = ec;
+			}
 			depth--;
 			deadNode = node;
 			node = qGetNextNode(node);
@@ -345,5 +345,5 @@ static int do_dir(char **argv, char *p, NodeType *q_recursion)
 	_os9_close(path);
 	qDeleteLastNode(q_recursion);
 
-	return (0);
+	return status;
 }
