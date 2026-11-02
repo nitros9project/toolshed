@@ -215,7 +215,7 @@ static int do_dcheck(char **argv, char *p)
    It also makes it easier to determine if sectors are allocated multiple times.
 */
 	secondaryBitmap =
-		(unsigned char *) malloc((int3(os9_path->lsn0->dd_tot) + 1) /
+		(unsigned char *) malloc((int3(os9_path->lsn0->dd_tot) + 7) /
 					 8);
 
 	if (secondaryBitmap == NULL)
@@ -224,7 +224,7 @@ static int do_dcheck(char **argv, char *p)
 		return -1;
 	}
 
-	memset(secondaryBitmap, 0, (int3(os9_path->lsn0->dd_tot) + 1) / 8);
+	memset(secondaryBitmap, 0, (int3(os9_path->lsn0->dd_tot) + 7) / 8);
 
 	/* Allocate LSN0 in secondary bitmap */
 	_os9_allbit(secondaryBitmap, 0, 1);
