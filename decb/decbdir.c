@@ -84,6 +84,8 @@ int decbdir(int argc, char *argv[])
 
 			return ec;
 		}
+
+		_coco_print_other_filesystems(p, COCO_FS_DECB);
 	}
 
 
@@ -220,14 +222,23 @@ static int do_dir(char **argv, char *p)
 			}
 		}
 
-		printf("  %1.1d  %c  %d\n", de.file_type, asciiflag,
-		       granule_size);
+		/* Sizes of the files come from the FAT. */
+
+		if (path->fat_ec != 0)
+		{
+			printf("  %1.1d  %c  ?\n", de.file_type, asciiflag);
+		}
+		else
+		{
+			printf("  %1.1d  %c  %d\n", de.file_type, asciiflag,
+			       granule_size);
+		}
 	}
 
-	/* return success if reached end of directory */
+	/* reached end of directory: success, unless a size could not be given */
 
 	if (ec == EOS_PNNF)
-		ec = 0;
+		ec = path->fat_ec;
 
 	return ec;
 }

@@ -87,7 +87,6 @@ error_code _decb_create(decb_path_id * path, char *pathlist, int mode,
 {
 	error_code ec = EOS_BPNAM;
 	int empty_entry = -1;
-	char *open_mode;
 
 
 	/* 1. Allocate & initialize path descriptor. */
@@ -114,32 +113,30 @@ error_code _decb_create(decb_path_id * path, char *pathlist, int mode,
 
 	/* 3. Open a path to the image file. */
 
-	if (mode & FAM_WRITE)
-	{
-		open_mode = "rb+";
-	}
-	else
-	{
-		open_mode = "rb";
-	}
+	ec = _decb_open_image(*path);
 
-	(*path)->fd = fopen((*path)->imgfile, open_mode);
-
-	if ((*path)->fd == NULL)
+	if (ec != 0)
 	{
 		term_pd(*path);
 
-		return (EOS_BPNAM);
+		return ec;
 	}
-
-
-	(*path)->disk_offset = 161280 * (*path)->drive;
-	(*path)->disk_offset += (*path)->hdbdos_offset;
 
 
 	/* 4. At this point, sector and granule function will work - Load FAT */
 
-	_decb_gs_sector(*path, 17, 2, (char *) (*path)->FAT);
+	_decb_load_fat(*path);
+
+	if ((*path)->fat_ec != 0)
+	{
+		ec = (*path)->fat_ec;
+
+		_diskimage_close((*path)->disk);
+
+		term_pd(*path);
+
+		return ec;
+	}
 
 
 	/* 5. Determine if there is enough space. */
@@ -163,7 +160,7 @@ error_code _decb_create(decb_path_id * path, char *pathlist, int mode,
 
 		if (free_granules == 0)
 		{
-			fclose((*path)->fd);
+			_diskimage_close((*path)->disk);
 
 			term_pd(*path);
 
@@ -237,7 +234,7 @@ error_code _decb_create(decb_path_id * path, char *pathlist, int mode,
 
 		_decb_seekdir(*path, 0, SEEK_SET);
 
-		while (_decb_readdir(*path, &de) == 0)
+		while ((ec = _decb_readdir(*path, &de)) == 0)
 		{
 			/* 1. If we run across an empty directory entry, make a note of it. */
 
@@ -265,13 +262,13 @@ error_code _decb_create(decb_path_id * path, char *pathlist, int mode,
 					/* Error if we are not to create it */
 					if (mode & FAM_NOCREATE)
 					{
-						fclose((*path)->fd);
+						_diskimage_close((*path)->disk);
 						term_pd(*path);
 						return EOS_FAE;
 					}
 					else
 					{
-						fclose((*path)->fd);
+						_diskimage_close((*path)->disk);
 						term_pd(*path);
 						_decb_kill(pathlist);
 						return _decb_create(path,
@@ -285,11 +282,22 @@ error_code _decb_create(decb_path_id * path, char *pathlist, int mode,
 		}
 
 
+		if (ec != EOS_PNNF)
+		{
+			/* 1. A directory sector this needs is missing. */
+
+			_diskimage_close((*path)->disk);
+
+			term_pd(*path);
+
+			return ec;
+		}
+
 		if (empty_entry == -1)
 		{
 			/* 1. There are no more directory entries left. */
 
-			fclose((*path)->fd);
+			_diskimage_close((*path)->disk);
 
 			term_pd(*path);
 
@@ -348,7 +356,6 @@ error_code _decb_create(decb_path_id * path, char *pathlist, int mode,
 error_code _decb_open(decb_path_id * path, char *pathlist, int mode)
 {
 	error_code ec = 0;
-	char *open_mode;
 
 
 	/* 1. Strip off FAM_NOCREATE if passed -- irrelavent to _decb_open */
@@ -400,32 +407,19 @@ error_code _decb_open(decb_path_id * path, char *pathlist, int mode)
 
 	/* 5. Open a path to the image file. */
 
-	if (mode & FAM_WRITE)
-	{
-		open_mode = "rb+";
-	}
-	else
-	{
-		open_mode = "rb";
-	}
+	ec = _decb_open_image(*path);
 
-	(*path)->fd = fopen((*path)->imgfile, open_mode);
-
-	if ((*path)->fd == NULL)
+	if (ec != 0)
 	{
 		term_pd(*path);
 
-		return (EOS_BPNAM);
+		return ec;
 	}
-
-
-	(*path)->disk_offset = 161280 * (*path)->drive;
-	(*path)->disk_offset += (*path)->hdbdos_offset;
 
 
 	/* 6. At this point, sector and granule function will work - Load FAT */
 
-	_decb_gs_sector(*path, 17, 2, (char *) (*path)->FAT);
+	_decb_load_fat(*path);
 
 
 	/* 7. If path is raw, just return now. */
@@ -462,10 +456,6 @@ error_code _decb_open(decb_path_id * path, char *pathlist, int mode)
 			}
 		}
 
-		if (ec != 0)
-		{
-			ec = EOS_PNNF;
-		}
 	}
 
 
@@ -486,19 +476,14 @@ error_code _decb_close(decb_path_id path)
 	error_code ec = 0;
 
 
-	/* 1. Write out FAT sector. */
+	/* 1. Write out FAT sector if it changed, and close path. */
 
-	_decb_ss_sector(path, 17, 2, (char *) path->FAT);
-
-
-	/* 2. Close path. */
-
-	fclose(path->fd);
+	ec = _decb_close_image(path);
 
 
-	/* 3. Terminate path descriptor */
+	/* 2. Terminate path descriptor */
 
-	ec = term_pd(path);
+	term_pd(path);
 
 
 	/* 4. Return status. */
@@ -574,6 +559,7 @@ static int validate_pathlist(decb_path_id * path, char *pathlist)
 			(*path)->filename[q - p] = '\0';
 
 			(*path)->drive = atoi(q + 1);
+			(*path)->has_drive = 1;
 
 			q = strchr(p, '+');
 			if (q != NULL)

@@ -19,6 +19,7 @@
 
 static error_code HDBConv(char *srcfile, char *dstfile, int sourceSize,
 			  int targetSize);
+static error_code check_source(const char *srcfile);
 
 
 /* Help message */
@@ -132,6 +133,33 @@ int decbhdbconv(int argc, char *argv[])
 }
 
 
+/* Is the source a raw image?  If not, say so. */
+static error_code check_source(const char *srcfile)
+{
+	diskimage_format format;
+	const char *comma = strchr(srcfile, ',');
+	char image[1024];
+	size_t length = comma == NULL ? strlen(srcfile) : (size_t) (comma - srcfile);
+	error_code ec;
+
+	if (length >= sizeof(image))
+	{
+		return EOS_BPNAM;
+	}
+	memcpy(image, srcfile, length);
+	image[length] = '\0';
+
+	ec = _diskimage_identify(image, &format);
+	if (ec == 0 && format != DISKIMAGE_RAW)
+	{
+		fprintf(stderr, "hdbconv: '%s' is not a raw disk image, and only raw images can be converted\n", image);
+		ec = EOS_WT;
+	}
+
+	return ec;
+}
+
+
 static error_code HDBConv(char *srcfile, char *dstfile, int sourceSize,
 			  int targetSize)
 {
@@ -144,9 +172,22 @@ static error_code HDBConv(char *srcfile, char *dstfile, int sourceSize,
 	coco_file_stat fstat;
 
 
-	memset(buffer, 0, 512);
+	/* 1. Sectors of two sizes only make sense in a raw image. */
 
-	/* 1. Open a path to the srcfile. */
+	ec = check_source(srcfile);
+
+	if (ec != 0)
+	{
+		return ec;
+	}
+
+	if (_coco_refuse_disk_image_target("hdbconv", dstfile))
+	{
+		return EOS_FAE;
+	}
+
+
+	/* 2. Open a path to the srcfile. */
 
 	ec = _coco_open(&path, srcfile, FAM_READ);
 
@@ -156,7 +197,7 @@ static error_code HDBConv(char *srcfile, char *dstfile, int sourceSize,
 	}
 
 
-	/* 2. Attempt to create the destfile. */
+	/* 3. Attempt to create the destfile. */
 
 	fstat.perms = FAP_READ | FAP_WRITE | FAP_PREAD;
 	ec = _coco_create(&destpath, dstfile, mode, &fstat);
@@ -170,6 +211,7 @@ static error_code HDBConv(char *srcfile, char *dstfile, int sourceSize,
 
 	while (ec == 0)
 	{
+		memset(buffer, 0, sizeof(buffer));
 		buffer_size = sourceSize;
 		ec = _coco_read(path, buffer, &buffer_size);
 
@@ -179,17 +221,23 @@ static error_code HDBConv(char *srcfile, char *dstfile, int sourceSize,
 			break;
 		}
 
-		buffer_size = targetSize;
-		ec = _coco_write(destpath, buffer, &buffer_size);
-
-		if (ec != 0)
+		if (ec == 0)
 		{
-			return -1;
+			buffer_size = targetSize;
+			ec = _coco_write(destpath, buffer, &buffer_size);
 		}
 	}
 
 	_coco_close(path);
-	_coco_close(destpath);
+
+	{
+		error_code close_ec = _coco_close(destpath);
+
+		if (ec == 0)
+		{
+			ec = close_ec;
+		}
+	}
 
 	return (ec);
 }

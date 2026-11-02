@@ -25,6 +25,20 @@ error_code TSDelete(char *pathlist);
 error_code TSRBFAttrGet(char *p, char *attr, char *strattr);
 error_code TSRBFAttrSet(char *file, int attrSetMask, int attrResetMask, char *attr, char *strattr);
 error_code TSMoveFile(char *srcfile, char *dstfile);
+/* How TSDSave is to copy */
+typedef struct
+{
+	const char *program;		/* the command as the shell finds it, such as "os9" */
+	const char *executable;		/* the path to run instead of program, or NULL */
+	int execute;			/* run the commands, not only show them */
+	int rewrite;
+	int eol_translate;
+	int token_translate;
+	u_int copy_buffer_size;		/* passed to copy, if not zero */
+	int no_directories;		/* the filesystem has none, so a directory is an error */
+} ts_dsave_options;
+
+error_code TSDSave(const ts_dsave_options *options, char *source, char *target);
 error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate, int rewrite, int owner, int owner_set, char *buffer, u_int buffer_size);
 void NativeToCoCo(char *buffer, u_int size, char **newBuffer, u_int *newSize);
 void CoCoToNative(char *buffer, u_int size, char **newBuffer, u_int *newSize);

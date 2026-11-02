@@ -40,6 +40,7 @@ set(TOOLSHED_CORE_SOURCES
     ${TOOLSHED_ROOT}/libcecb/libcecbwav.c
     ${TOOLSHED_ROOT}/libcecb/libcecbwrite.c
     ${TOOLSHED_ROOT}/librbf/librbfbitmap.c
+    ${TOOLSHED_ROOT}/librbf/librbfdisk.c
     ${TOOLSHED_ROOT}/librbf/librbfdelete.c
     ${TOOLSHED_ROOT}/librbf/librbfformat.c
     ${TOOLSHED_ROOT}/librbf/librbfgs.c
@@ -60,6 +61,7 @@ set(TOOLSHED_CORE_SOURCES
     ${TOOLSHED_ROOT}/libdecb/libdecbrename.c
     ${TOOLSHED_ROOT}/libdecb/libdecbsrec.c
     ${TOOLSHED_ROOT}/libdecb/libdecbseek.c
+    ${TOOLSHED_ROOT}/libdecb/libdecbdisk.c
     ${TOOLSHED_ROOT}/libdecb/libdecbss.c
     ${TOOLSHED_ROOT}/libdecb/libdecbtokenize.c
     ${TOOLSHED_ROOT}/libdecb/libdecbwrite.c
@@ -69,7 +71,6 @@ set(TOOLSHED_CORE_SOURCES
     ${TOOLSHED_ROOT}/libdiskimage/libdiskimageopen.c
     ${TOOLSHED_ROOT}/libdiskimage/libdiskimagesdf.c
     ${TOOLSHED_ROOT}/libdiskimage/libdiskimagesector.c
-    ${TOOLSHED_ROOT}/libdiskimage/libdiskimagestream.c
     ${TOOLSHED_ROOT}/libdiskimage/libdiskimagetable.c
     ${TOOLSHED_ROOT}/libdiskimage/libdiskimagevdk.c
     ${TOOLSHED_ROOT}/libdragondos/libdragondosbitmap.c

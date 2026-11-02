@@ -67,7 +67,7 @@ error_code _decb_gs_eof(decb_path_id path)
 
 	ec = _decb_gs_size(path, &filesize);
 
-	if (ec != 0 || path->filepos >= filesize)
+	if (ec == 0 && path->filepos >= filesize)
 	{
 		ec = EOS_EOF;
 	}
@@ -85,6 +85,20 @@ error_code _decb_gs_size(decb_path_id path, u_int * size)
 	int sectors_in_last_granule;
 
 	*size = 0;
+
+	/* A raw path's size is what _decb_read will give of the disk. */
+
+	if (path->israw == 1)
+	{
+		*size = 35 * (18 * 256);
+
+		return 0;
+	}
+
+	if (path->fat_ec != 0)
+	{
+		return path->fat_ec;
+	}
 
 
 	/* 1. The following code is for DECB paths. */
@@ -151,32 +165,7 @@ error_code _decb_gs_pos(decb_path_id path, u_int * pos)
 error_code _decb_gs_sector(decb_path_id path, int track, int sector,
 			   char *buffer)
 {
-	error_code ec = 0;
-	size_t count;
-
-	/* 1. Seek to the track and sector. */
-
-	ec = _decb_seeksector(path, track, sector);
-
-	if (ec != 0)
-	{
-		return ec;
-	}
-
-
-	/* 2. Get the sector into the buffer. */
-
-	count = fread(buffer, 1, 256, path->fd);
-
-	/* possibly we are beyond EOF of disk image */
-	if (count != 256)
-	{
-		ec = EOS_EOF;
-	}
-
-	/* 3. Return status. */
-
-	return ec;
+	return _decb_slot_read(path, path->disk_offset / 256 + (long long) track * 18 + (sector - 1), buffer);
 }
 
 
@@ -184,29 +173,24 @@ error_code _decb_gs_sector(decb_path_id path, int track, int sector,
 error_code _decb_gs_granule(decb_path_id path, int granule, char *buffer)
 {
 	error_code ec = 0;
+	long long slot = path->disk_offset / 256 + (long long) granule * 9;
+	int step = path->hdbdos_offset > 0 ? 2 : 1;	/* skip unused 1/2 of sector */
+	int count;
 
 
-	/* 1. Seek to granule. */
+	/* 1. Account for directory (2 granules) */
 
-	_decb_seekgranule(path, granule);
+	if (granule > 33)
+	{
+		slot += 18;
+	}
 
 
 	/* 2. Read granule into buffer. */
 
-	if (path->hdbdos_offset > 0)
+	for (count = 0; count < 9 && ec == 0; count++)
 	{
-		int count;
-
-		for (count = 0; count < 2304; count += 256)
-		{
-			fread(&buffer[count], 1, 256, path->fd);
-			/* skip unused 1/2 of sector */
-			fseek(path->fd, 256, SEEK_CUR);
-		}
-	}
-	else
-	{
-		fread(buffer, 1, 2304, path->fd);
+		ec = _decb_slot_read(path, slot + (long long) count * step, buffer + count * 256);
 	}
 
 

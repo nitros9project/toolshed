@@ -2,7 +2,6 @@
  * dgndosdskinit.c - Dragon DOS Format Utility
  ********************************************************************/
 #include <string.h>
-#include <strings.h>
 #include <util.h>
 #include <dragondospath.h>
 
@@ -22,41 +21,9 @@ static char const *const helpMessage[] = {
 };
 
 
-struct format_name
-{
-	const char *name;
-	diskimage_format format;
-};
-
-static const struct format_name format_names[] = {
-	{"raw", DISKIMAGE_RAW},
-	{"jvc", DISKIMAGE_JVC},
-	{"vdk", DISKIMAGE_VDK},
-	{"dmk", DISKIMAGE_DMK},
-	{"sdf", DISKIMAGE_SDF},
-	{NULL, DISKIMAGE_UNKNOWN}
-};
-
-
-static diskimage_format named_format(const char *name)
-{
-	const struct format_name *x;
-
-	for (x = format_names; x->name != NULL; x++)
-	{
-		if (strcasecmp(name, x->name) == 0)
-		{
-			return x->format;
-		}
-	}
-	return DISKIMAGE_UNKNOWN;
-}
-
-
 static diskimage_format format_from_extension(const char *disk)
 {
-	const char *dot = strrchr(disk, '.');
-	diskimage_format format = dot == NULL ? DISKIMAGE_UNKNOWN : named_format(dot + 1);
+	diskimage_format format = _diskimage_format_of_extension(disk);
 
 	return format == DISKIMAGE_UNKNOWN ? DISKIMAGE_RAW : format;
 }
@@ -93,7 +60,7 @@ int dgndosdskinit(int argc, char **argv)
 					break;
 
 				case 'f':
-					format = named_format(p + 1);
+					format = _diskimage_format_named(p + 1);
 					if (format == DISKIMAGE_UNKNOWN)
 					{
 						fprintf(stderr, "%s: unknown format '%s'\n", argv[0], p + 1);

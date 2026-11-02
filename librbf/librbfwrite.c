@@ -31,8 +31,15 @@ error_code _os9_write(os9_path_id path, void *buffer, u_int * size)
 
 	if (path->israw == 1)
 	{
-		*size = fwrite(buffer, 1, *size, path->fd);
-		path->filepos += *size;
+		u_int count = _os9_lsn_write(path, 0, path->filepos, buffer, *size);
+
+		if (count != *size)
+		{
+			ec = _os9_lsn_put(path, 0, path->filepos + count, (char *) buffer + count, *size - count);
+		}
+
+		*size = count;
+		path->filepos += count;
 	}
 	else
 	{
@@ -45,14 +52,16 @@ error_code _os9_write(os9_path_id path, void *buffer, u_int * size)
 		int seg_size_bytes, write_size;
 		u_int filesize;
 
-		/* 1. Seek to FD LSN of pathlist */
+		/* 1. Read the file descriptor sector */
 
-		_os9_lsn_fseek(path, path->pl_fd_lsn);
+		ec = _os9_lsn_get(path, path->pl_fd_lsn, 0, &fd_sector, sizeof(fd_stats));
 
+		if (ec != 0)
+		{
+			*size = 0;
 
-		/* 2. Read the file descriptor sector */
-
-		fread(&fd_sector, 1, sizeof(fd_stats), path->fd);
+			return ec;
+		}
 
 
 		/* 3. Point to segment list */
@@ -165,9 +174,17 @@ error_code _os9_write(os9_path_id path, void *buffer, u_int * size)
 
 			/* 3. Write at the offset within the segment. */
 
-			_os9_lsn_write(path, int3(segptr[i].lsn),
-				       path->filepos - (accum_size - seg_size_bytes),
-				       buf_ptr, write_size);
+			ec = _os9_lsn_put(path, int3(segptr[i].lsn),
+					  path->filepos - (accum_size - seg_size_bytes),
+					  buf_ptr, write_size);
+
+			if (ec != 0)
+			{
+				*size -= bytes_left;
+
+				return ec;
+			}
+
 			buf_ptr += write_size;
 			path->filepos += write_size;
 			bytes_left -= write_size;
@@ -190,8 +207,7 @@ error_code _os9_write(os9_path_id path, void *buffer, u_int * size)
 
 		/* 12. Write updated file descriptor back to image file */
 
-		_os9_lsn_fseek(path, path->pl_fd_lsn);
-		fwrite(&fd_sector, 1, sizeof(fd_stats), path->fd);
+		ec = _os9_lsn_put(path, path->pl_fd_lsn, 0, &fd_sector, sizeof(fd_stats));
 	}
 
 	return ec;
@@ -203,6 +219,12 @@ static int _os9_extendSegList(os9_path_id path, Fd_seg segptr, int *delta)
 {
 	error_code ec = 0;
 	int i = 0, newNum, newLSN;
+
+	/* New clusters come from the bitmap. */
+	if (path->bitmap_ec != 0)
+	{
+		return path->bitmap_ec;
+	}
 
 	/* Is segment list empty */
 	if (int3(segptr[0].lsn) != 0)

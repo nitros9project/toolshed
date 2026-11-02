@@ -8,16 +8,54 @@
 #include <decbpath.h>
 #include <nativepath.h>
 #include <cocotypes.h>
+#include <diskimage.h>
 
 
 #define MAX_BPS 			256
+/* How far apart Disk BASIC's sectors are on a new DMK or SDF track. */
+#define DSKINI_INTERLEAVE	5
+
 #define MAX_DISKNAME_LEN	9	// the maximum number of characters an HDB-DOS disk name can be
+
+/* Where the sectors of a new disk go: an image's sectors, or a native file. */
+typedef struct
+{
+	diskimage_id disk;
+	native_path_id native;
+	long long slot;
+} dskini_output;
+
+
+static error_code put_sector(dskini_output *out, const char *sector, int bps)
+{
+	u_int size = bps;
+	error_code ec;
+
+	if (out->disk == NULL)
+	{
+		return _native_write(out->native, (char *) sector, &size);
+	}
+
+	ec = _diskimage_write_sector(out->disk, (u_int) (out->slot / 18), 0, (u_int) (out->slot % 18) + 1, sector, bps);
+	out->slot++;
+
+	return ec == EOS_IA ? EOS_SECT : ec;
+}
+
 
 error_code _decb_dskini(char *vdisk, int tracks, char *diskName,
 			int hdbdrives, int bps, int skitzo)
 {
+	return _decb_dskini_format(vdisk, DISKIMAGE_UNKNOWN, tracks, diskName, hdbdrives, bps, skitzo);
+}
+
+
+error_code _decb_dskini_format(char *vdisk, diskimage_format image_format, int tracks, char *diskName,
+			       int hdbdrives, int bps, int skitzo)
+{
 	error_code ec = 0;
-	native_path_id nativepath;
+	dskini_output out;
+	diskimage_format format = DISKIMAGE_UNKNOWN;
 	int max_s, i;
 	char sector[MAX_BPS];
 
@@ -26,25 +64,82 @@ error_code _decb_dskini(char *vdisk, int tracks, char *diskName,
 		return EOS_BPNAM;
 	}
 
-	/* 1. Open a path to the virtual disk. */
+	memset(&out, 0, sizeof(out));
 
-	ec = _native_open(&nativepath, vdisk, FAM_WRITE);
+	/* Only a raw image holds many drives. */
 
-	if (ec != 0)
+	if (hdbdrives > 1 && image_format != DISKIMAGE_UNKNOWN && image_format != DISKIMAGE_RAW)
 	{
-		ec = _native_create(&nativepath, vdisk, FAM_READ | FAM_WRITE,
-				    FAP_READ | FAP_WRITE);
+		return EOS_BPNAM;
+	}
+
+	/* 1. Make a new disk in the format asked for, or check it is the one that's there. */
+
+	if (image_format != DISKIMAGE_UNKNOWN)
+	{
+		ec = _diskimage_identify(vdisk, &format);
+
+		if (ec == EOS_PNNF)
+		{
+			if (image_format != DISKIMAGE_RAW)
+			{
+				ec = _diskimage_create(vdisk, image_format, 1, tracks, bps, 18, 0, DSKINI_INTERLEAVE, 0xFF);
+
+				if (ec != 0)
+				{
+					return (ec);
+				}
+			}
+		}
+		else if (ec != 0)
+		{
+			return (ec);
+		}
+		else if (format != image_format && !(image_format == DISKIMAGE_JVC && format == DISKIMAGE_RAW))
+		{
+			return EOS_FAE;
+		}
+
+		ec = 0;
+		format = DISKIMAGE_UNKNOWN;
+	}
+
+	/* 2. Open a path to the virtual disk. */
+
+	if (_diskimage_identify(vdisk, &format) == 0 && format != DISKIMAGE_RAW && format != DISKIMAGE_UNKNOWN)
+	{
+		if (hdbdrives > 1)
+		{
+			return EOS_BPNAM;
+		}
+
+		ec = _diskimage_open(&out.disk, vdisk, FAM_READ | FAM_WRITE);
 
 		if (ec != 0)
 		{
 			return (ec);
 		}
 	}
+	else
+	{
+		ec = _native_open(&out.native, vdisk, FAM_WRITE);
 
-	_native_seek(nativepath, 0, SEEK_SET);
+		if (ec != 0)
+		{
+			ec = _native_create(&out.native, vdisk, FAM_READ | FAM_WRITE,
+					    FAP_READ | FAP_WRITE);
+
+			if (ec != 0)
+			{
+				return (ec);
+			}
+		}
+
+		_native_seek(out.native, 0, SEEK_SET);
+	}
 
 
-	for (i = 0; i < hdbdrives; i++)
+	for (i = 0; i < hdbdrives && ec == 0; i++)
 	{
 		/* 2. Write 17 tracks of $FF */
 
@@ -57,10 +152,10 @@ error_code _decb_dskini(char *vdisk, int tracks, char *diskName,
 			{
 				for (s = 1; s < 19; s++)
 				{
-					u_int size = bps;
-
-					_native_write(nativepath, sector,
-						      &size);
+					if (ec == 0)
+					{
+						ec = put_sector(&out, sector, bps);
+					}
 				}
 			}
 		}
@@ -72,14 +167,15 @@ error_code _decb_dskini(char *vdisk, int tracks, char *diskName,
 
 		{
 			int s;
-			u_int size, min_s = 0;
+			u_int min_s = 0;
 
 
 			/* 1. Write sector of track 17 (all 0s..). */
 
-			size = bps;
-
-			_native_write(nativepath, sector, &size);
+			if (ec == 0)
+			{
+				ec = put_sector(&out, sector, bps);
+			}
 
 
 			/* 2. Write FAT sector. */
@@ -114,9 +210,10 @@ error_code _decb_dskini(char *vdisk, int tracks, char *diskName,
 			}
 
 
-			size = bps;
-
-			_native_write(nativepath, sector, &size);
+			if (ec == 0)
+			{
+				ec = put_sector(&out, sector, bps);
+			}
 
 
 			/* 3. Write 14 sectors of 0xFF. */
@@ -125,9 +222,10 @@ error_code _decb_dskini(char *vdisk, int tracks, char *diskName,
 
 			for (s = 0; s < 14; s++)
 			{
-				size = bps;
-
-				_native_write(nativepath, sector, &size);
+				if (ec == 0)
+				{
+					ec = put_sector(&out, sector, bps);
+				}
 			}
 
 
@@ -141,9 +239,10 @@ error_code _decb_dskini(char *vdisk, int tracks, char *diskName,
 
 			/* 5. Write 17th sector. */
 
-			size = bps;
-
-			_native_write(nativepath, sector, &size);
+			if (ec == 0)
+			{
+				ec = put_sector(&out, sector, bps);
+			}
 
 
 			memset(sector, 0xFF, bps);
@@ -151,9 +250,10 @@ error_code _decb_dskini(char *vdisk, int tracks, char *diskName,
 
 			/* 6. Write 18th sector. */
 
-			size = bps;
-
-			_native_write(nativepath, sector, &size);
+			if (ec == 0)
+			{
+				ec = put_sector(&out, sector, bps);
+			}
 		}
 
 
@@ -168,17 +268,29 @@ error_code _decb_dskini(char *vdisk, int tracks, char *diskName,
 			{
 				for (s = 1; s < 19; s++)
 				{
-					u_int size = bps;
-
-					_native_write(nativepath, sector,
-						      &size);
+					if (ec == 0)
+					{
+						ec = put_sector(&out, sector, bps);
+					}
 				}
 			}
 		}
 	}
 
 
-	_native_close(nativepath);
+	if (out.disk != NULL)
+	{
+		error_code close_ec = _diskimage_close(out.disk);
+
+		if (ec == 0)
+		{
+			ec = close_ec;
+		}
+	}
+	else
+	{
+		_native_close(out.native);
+	}
 
 
 	return (ec);

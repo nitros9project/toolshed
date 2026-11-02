@@ -39,16 +39,10 @@ error_code _decb_read(decb_path_id path, void *buffer, u_int * size)
 		{
 			*size = 0;
 
-			ec = EOS_EOF;
-		}
-		else
-		{
-			fseek(path->fd, path->filepos, SEEK_SET);
-			fread(buffer, 1, *size, path->fd);
-			path->filepos += *size;
+			return EOS_EOF;
 		}
 
-		return ec;
+		return _decb_raw_read(path, buffer, size);
 	}
 
 
@@ -122,7 +116,14 @@ error_code _decb_read(decb_path_id path, void *buffer, u_int * size)
 		int bytes_in_last_granule = 2304;
 
 
-		_decb_gs_granule(path, curr_granule, granule_buffer);
+		ec = _decb_gs_granule(path, curr_granule, granule_buffer);
+
+		if (ec != 0)
+		{
+			*size -= bytes_left;
+
+			return ec;
+		}
 
 		if (path->FAT[curr_granule] >= 0xC0)
 		{
@@ -189,16 +190,10 @@ error_code _decb_readln(decb_path_id path, void *buffer, u_int * size)
 		{
 			*size = 0;
 
-			ec = EOS_EOF;
-		}
-		else
-		{
-			fseek(path->fd, path->filepos, SEEK_SET);
-			fread(buffer, 1, *size, path->fd);
-			path->filepos += *size;
+			return EOS_EOF;
 		}
 
-		return ec;
+		return _decb_raw_read(path, buffer, size);
 	}
 
 
@@ -273,7 +268,14 @@ error_code _decb_readln(decb_path_id path, void *buffer, u_int * size)
 		int bytes_in_last_granule = 2304;
 
 
-		_decb_gs_granule(path, curr_granule, granule_buffer);
+		ec = _decb_gs_granule(path, curr_granule, granule_buffer);
+
+		if (ec != 0)
+		{
+			*size -= bytes_left;
+
+			return ec;
+		}
 
 		if (path->FAT[curr_granule] >= 0xC0)
 		{

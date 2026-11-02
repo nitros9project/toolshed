@@ -18,6 +18,8 @@ static char const *const helpMessage[] = {
 	"     -3       = 35 track disk (default)\n",
 	"     -4       = 40 track disk\n",
 	"     -8       = 80 track disk\n",
+	"     -f<name> = image format: raw, jvc, vdk, dmk or sdf\n",
+	"                (default from the disk's extension, otherwise raw)\n",
 	"     -h<num>  = create <num> HDB-DOS drives\n",
 	"     -n<name> = HDB-DOS disk name\n",
 	"     -s       = create a \"skitzo\" disk\n",
@@ -34,6 +36,7 @@ int decbdskini(int argc, char **argv)
 	char *diskName = NULL;
 	int hdbdrives = 1;
 	int skitzo = 0;
+	diskimage_format format = DISKIMAGE_UNKNOWN;
 
 	/* 1. If no arguments, show help and return. */
 
@@ -65,6 +68,17 @@ int decbdskini(int argc, char **argv)
 
 				case '8':	/* 80 tracks */
 					tracks = 80;
+					break;
+
+				case 'f':	/* image format */
+					format = _diskimage_format_named(p + 1);
+					if (format == DISKIMAGE_UNKNOWN)
+					{
+						fprintf(stderr, "%s: unknown format '%s'\n", argv[0], p + 1);
+						return (1);
+					}
+					while (*(p + 1) != '\0')
+						p++;
 					break;
 
 				case 'h':	/* HDB-DOS drives */
@@ -109,8 +123,31 @@ int decbdskini(int argc, char **argv)
 		}
 		else
 		{
-			ec = _decb_dskini(argv[i], tracks, diskName,
-					  hdbdrives, 256, skitzo);
+			diskimage_format disk_format = format == DISKIMAGE_UNKNOWN ?
+				_diskimage_format_of_extension(argv[i]) : format;
+
+			ec = _decb_dskini_format(argv[i], disk_format, tracks, diskName,
+						 hdbdrives, 256, skitzo);
+
+			if (ec == EOS_FAE)
+			{
+				fprintf(stderr, "%s: '%s' exists and is not that format, so it is left alone\n",
+					argv[0], argv[i]);
+			}
+			else if (ec == EOS_BPNAM && hdbdrives > 1)
+			{
+				fprintf(stderr, "%s: only a raw image can hold many drives, so '%s' can't\n",
+					argv[0], argv[i]);
+			}
+			else if (ec == EOS_IA)
+			{
+				fprintf(stderr, "%s: '%s' can't have %d tracks in this format\n", argv[0], argv[i], tracks);
+			}
+
+			if (ec != 0)
+			{
+				return (ec);
+			}
 		}
 	}
 

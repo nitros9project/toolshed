@@ -283,6 +283,11 @@ int cecbcopy(int argc, char *argv[])
 		}
 
 
+		if (_coco_refuse_disk_image_target(argv[0], df))
+		{
+			return EOS_FAE;
+		}
+
 		ec = CopyCECBFile(argv[j], df, eolTranslate, tokTranslate,
 				  s_record, binary_concat, file_type,
 				  data_type, gap, ml_load_address,

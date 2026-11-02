@@ -68,14 +68,15 @@ error_code di_index_read(diskimage_id disk, long long index, void *buffer)
 }
 
 
-/* Fill any sectors between the end of a raw image and index, including
-   the unused slots of a short track 0. */
+/* Zero any sectors between the end of a raw image and index, including
+   the unused slots of a short track 0.  Seeking past the end of the file
+   left them zero before images went through this library. */
 static error_code raw_extend(diskimage_id disk, long long index)
 {
 	u_char fill[DI_RAW_SECTOR_SIZE];
 	long long target = di_linear_slot(disk, index);
 
-	memset(fill, DI_RAW_FILL, sizeof(fill));
+	memset(fill, 0x00, sizeof(fill));
 	while (disk->raw_slots < target)
 	{
 		error_code ec = di_write_at(disk, disk->raw_slots * DI_RAW_SECTOR_SIZE, fill, sizeof(fill));
@@ -183,7 +184,6 @@ error_code di_index_write(diskimage_id disk, long long index, const void *buffer
 		{
 			disk->raw_slots = di_linear_slot(disk, index) + 1;
 			disk->total_sectors = (u_int)index + 1;
-			disk->stream_size = (long long)disk->total_sectors * disk->sector_size;
 		}
 
 		return ec;
@@ -220,6 +220,21 @@ error_code di_index_write(diskimage_id disk, long long index, const void *buffer
 }
 
 
+/* Another open of the same file may have grown it. */
+static void raw_refresh(diskimage_id disk)
+{
+	if (fseeko(disk->fd, 0, SEEK_END) == 0)
+	{
+		long long slots = (long long)ftello(disk->fd) / DI_RAW_SECTOR_SIZE;
+
+		if (slots > disk->raw_slots)
+		{
+			di_raw_set_slots(disk, slots);
+		}
+	}
+}
+
+
 /* Find a sector's logical index.  Sectors a raw image could hold are
    found even if they are past its end. */
 static error_code locate(diskimage_id disk, u_int cylinder, u_int side, u_int sector, long long *index)
@@ -238,6 +253,10 @@ static error_code locate(diskimage_id disk, u_int cylinder, u_int side, u_int se
 				return EOS_SECT;
 			}
 			*index -= disk->raw_missing;
+		}
+		if (*index >= disk->total_sectors)
+		{
+			raw_refresh(disk);
 		}
 	}
 	else if (disk->linear)

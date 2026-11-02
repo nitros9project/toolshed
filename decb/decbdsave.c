@@ -7,17 +7,11 @@
 #include <string.h>
 #include <cocotypes.h>
 #include <cocopath.h>
+#include <toolshed.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
 #include <math.h>
-
-/* globals */
-extern u_int buffer_size;
-
-extern error_code do_dsave(char *pgmname, char *source, char *target,
-			   int execute, int buffsize, int rewrite,
-			   int eoltranslate, int basicdetoken);
 
 /* Help message */
 static char const *const helpMessage[] = {
@@ -29,6 +23,7 @@ static char const *const helpMessage[] = {
 	"     -l         perform end of line translation on copy\n",
 	"     -t         perform BASIC token translation\n",
 	"     -r         force rewrite on copy\n",
+	"     -x=path    decb executable to run the commands with\n",
 	NULL
 };
 
@@ -39,12 +34,13 @@ int decbdsave(int argc, char *argv[])
 	char *p = NULL, *q;
 	int i;
 	int count = 0;
-	int rewrite = 0;
-	int execute = 0;
-	int eoltranslate = 0;
-	int basicdetoken = 0;
+	u_int buffer_size = 32768;
+	ts_dsave_options options;
 	char *target = NULL;
 	char *source = NULL;
+
+	memset(&options, 0, sizeof(options));
+	options.program = "decb";
 
 	/* walk command line for options */
 	for (i = 1; i < argc; i++)
@@ -74,19 +70,33 @@ int decbdsave(int argc, char *argv[])
 					break;
 
 				case 'r':
-					rewrite = 1;
+					options.rewrite = 1;
 					break;
 
 				case 'l':
-					eoltranslate = 1;
+					options.eol_translate = 1;
 					break;
 
 				case 't':
-					basicdetoken = 1;
+					options.token_translate = 1;
 					break;
 
 				case 'e':
-					execute = 1;
+					options.execute = 1;
+					break;
+
+				case 'x':
+					if (*(++p) == '=')
+					{
+						p++;
+					}
+					if (*p == '\0')
+					{
+						fprintf(stderr, "%s: -x needs the path of an executable\n", argv[0]);
+						return (1);
+					}
+					options.executable = p;
+					p += strlen(p) - 1;
 					break;
 
 				case 'h':
@@ -141,10 +151,9 @@ int decbdsave(int argc, char *argv[])
 		source = ".";
 	}
 
-	/* do dsave */
-	/* TODO: Possibly use original argv[0] here? */
-	ec = do_dsave("decb", source, target, execute, buffer_size, rewrite,
-		      eoltranslate, basicdetoken);
+	/* do dsave.  decb copy has no use for the buffer size. */
+	(void) buffer_size;
+	ec = TSDSave(&options, source, target);
 	if (ec != 0)
 	{
 		fprintf(stderr, "%s: error %d encountered during dsave\n",

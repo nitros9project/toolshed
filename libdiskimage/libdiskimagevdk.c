@@ -17,7 +17,6 @@
 #define VDK_MIN_HEADER_SIZE	12
 #define VDK_SECTOR_SIZE		256
 #define VDK_MAX_SECTORS		255
-#define VDK_FLAG_WRITE_PROTECT	0x01
 
 
 /* Return the sectors per track if this is a VDK image, or 0 if not. */
@@ -56,11 +55,10 @@ void di_vdk_load(diskimage_id disk, const u_char *header, long long file_size)
 	disk->linear = 1;
 	disk->cylinders = header[8];
 	disk->sides = header[9];
-	disk->write_protected = (header[10] & VDK_FLAG_WRITE_PROTECT) != 0;
+	disk->write_protected = (header[DI_VDK_FLAGS_OFFSET] & DI_VDK_FLAG_WRITE_PROTECT) != 0;
 	disk->sector_size = VDK_SECTOR_SIZE;
 	disk->sectors_per_track = sectors_per_track(header, file_size);
 	disk->first_sector = 1;
 	disk->data_start = header[2] | (header[3] << 8);
-	disk->stream_size = file_size - disk->data_start;
-	disk->total_sectors = (u_int)(disk->stream_size / VDK_SECTOR_SIZE);
+	disk->total_sectors = (u_int)((file_size - disk->data_start) / VDK_SECTOR_SIZE);
 }

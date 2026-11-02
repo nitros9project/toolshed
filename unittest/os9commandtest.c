@@ -9,6 +9,12 @@
 #include "tinytest.h"
 #include <toolshed.h>
 #include <utime.h>
+#include <time.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+/* Enough for the 40 track images of the gap tests */
+#define GAP_IMAGE_MAX	(40 * 18 * 256)
 
 void test_os9_command_format()
 {
@@ -358,6 +364,673 @@ void test_os9_command_no_comma_spec()
 	remove("no_comma.dsk");
 }
 
+static long file_contents(const char *pathname, u_char *buffer, long size)
+{
+	FILE *fp = fopen(pathname, "rb");
+	long got;
+
+	if (fp == NULL)
+	{
+		return -1;
+	}
+	got = (long) fread(buffer, 1, size, fp);
+	fclose(fp);
+
+	return got;
+}
+
+/* A raw path is the whole disk, and has no file descriptor to take details from. */
+void test_os9_command_copy_raw_path()
+{
+	static u_char image[161280], copy[161280];
+	struct stat st;
+	time_t started = time(NULL);
+	error_code ec;
+	long size;
+
+	remove("test_raw.dsk");
+	remove("test_raw.bin");
+
+	ec = system("../os9/os9 format -q -e -t35 -st18 test_raw.dsk > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+
+	ec = system("../os9/os9 copy test_raw.dsk,@ test_raw.bin > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+
+	ASSERT_EQUALS(0, stat("test_raw.bin", &st));
+	ASSERT("the owner can read the copy", (st.st_mode & S_IRUSR) != 0);
+	ASSERT("the copy has no date from the disk", st.st_mtime >= started - 2);
+
+	size = file_contents("test_raw.dsk", image, sizeof(image));
+	ASSERT_EQUALS(161280, size);
+	size = file_contents("test_raw.bin", copy, sizeof(copy));
+	ASSERT_EQUALS(161280, size);
+	ASSERT_EQUALS(0, memcmp(image, copy, sizeof(image)));
+
+	/* The disk says it is longer than the file: a sector it needs is missing. */
+	ASSERT_EQUALS(0, truncate("test_raw.dsk", 100 * 256));
+	remove("test_raw.bin");
+	ec = system("../os9/os9 copy test_raw.dsk,@ test_raw.bin > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, ec);
+
+	remove("test_raw.dsk");
+	remove("test_raw.bin");
+}
+
+/* -l only changes line endings between native files and disk images. */
+void test_os9_command_copy_eol_same_type()
+{
+	static const u_char text[] = "one\rtwo\r";
+	u_char back[sizeof(text)];
+	os9_path_id p;
+	error_code ec;
+	u_int size = sizeof(text) - 1;
+	long got;
+
+	remove("test_eol.dsk");
+	remove("test_eol.txt");
+	remove("test_eol2.txt");
+
+	ec = system("../os9/os9 format -q -e -t35 -st18 test_eol.dsk > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_create(&p, "test_eol.dsk,A", FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_write(p, (void *) text, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	/* Disk image to disk image */
+	ec = system("../os9/os9 copy -l test_eol.dsk,A test_eol.dsk,B > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_open(&p, "test_eol.dsk,B", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(back);
+	ec = _os9_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(text) - 1, size);
+	ASSERT_EQUALS(0, memcmp(text, back, size));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	/* Native file to native file */
+	ec = system("printf 'one\\ntwo\\n' > test_eol.txt");
+	ASSERT_EQUALS(0, ec);
+	ec = system("../os9/os9 copy -l test_eol.txt test_eol2.txt > /dev/null 2>&1");
+	ASSERT_EQUALS(0, ec);
+	got = file_contents("test_eol2.txt", back, sizeof(back));
+	ASSERT_EQUALS(8, got);
+	ASSERT_EQUALS(0, memcmp("one\ntwo\n", back, got));
+
+	remove("test_eol.dsk");
+	remove("test_eol.txt");
+	remove("test_eol2.txt");
+}
+
+/* A copy never replaces a host file that looks like a disk image, even with -r. */
+void test_os9_command_copy_refuses_disk_images()
+{
+	static const char *const commands[] = {
+		"../os9/os9 copy test_guard_src.txt %s > /dev/null 2> test_guard_err.txt",
+		"../os9/os9 copy -r test_guard_src.txt %s > /dev/null 2> test_guard_err.txt",
+	};
+	static const char *const targets[] = { "test_guard.dsk", "test_guard.bin" };
+	static char before[4608], after[4608], message[512];
+	FILE *fp;
+	size_t i, got;
+	int t, status;
+
+	fp = fopen("test_guard_src.txt", "wb");
+	fputs("replacement\n", fp);
+	fclose(fp);
+
+	for (t = 0; t < 2; t++)
+	{
+		char command[256];
+
+		/* One looks like an image by name, the other by its size. */
+		memset(before, 0x5A, sizeof(before));
+		fp = fopen(targets[t], "wb");
+		fwrite(before, 1, sizeof(before), fp);
+		fclose(fp);
+
+		for (i = 0; i < sizeof(commands) / sizeof(commands[0]); i++)
+		{
+			snprintf(command, sizeof(command), commands[i], targets[t]);
+			status = system(command);
+			ASSERT_NEQUALS(0, status);
+
+			fp = fopen("test_guard_err.txt", "rb");
+			got = fread(message, 1, sizeof(message) - 1, fp);
+			fclose(fp);
+			message[got] = 0;
+			ASSERT("it says why", strstr(message, "looks like a disk image") != NULL);
+
+			fp = fopen(targets[t], "rb");
+			got = fread(after, 1, sizeof(after), fp);
+			fclose(fp);
+			ASSERT_EQUALS(sizeof(before), got);
+			ASSERT_EQUALS(0, memcmp(before, after, sizeof(before)));
+		}
+		remove(targets[t]);
+	}
+
+	/* Other files are still written. */
+	fp = fopen("test_guard.txt", "wb");
+	fputs("old\n", fp);
+	fclose(fp);
+	status = system("../os9/os9 copy -r test_guard_src.txt test_guard.txt > /dev/null 2>&1");
+	ASSERT_EQUALS(0, status);
+	fp = fopen("test_guard.txt", "rb");
+	got = fread(after, 1, sizeof(after), fp);
+	fclose(fp);
+	ASSERT_EQUALS(12, got);
+
+	remove("test_guard.txt");
+	remove("test_guard_src.txt");
+	remove("test_guard_err.txt");
+}
+
+/* dsave runs copy, so it refuses too, and its own exit status says so. */
+void test_os9_command_dsave_refuses_disk_images()
+{
+	static char before[4608], after[4608];
+	FILE *fp;
+	size_t got;
+	int status;
+
+	status = system("rm -rf test_dsave_src test_dsave_dst && mkdir test_dsave_src test_dsave_dst"
+			" && echo new > test_dsave_src/x.dsk");
+	ASSERT_EQUALS(0, status);
+	memset(before, 0x5A, sizeof(before));
+	fp = fopen("test_dsave_dst/x.dsk", "wb");
+	fwrite(before, 1, sizeof(before), fp);
+	fclose(fp);
+
+	status = system("PATH=../os9:$PATH ../os9/os9 dsave -e -r test_dsave_src test_dsave_dst > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+	ASSERT_EQUALS(EOS_FAE, WEXITSTATUS(status));
+
+	fp = fopen("test_dsave_dst/x.dsk", "rb");
+	got = fread(after, 1, sizeof(after), fp);
+	fclose(fp);
+	ASSERT_EQUALS(sizeof(before), got);
+	ASSERT_EQUALS(0, memcmp(before, after, sizeof(before)));
+
+	status = system("rm -rf test_dsave_src test_dsave_dst");
+	ASSERT_EQUALS(0, status);
+}
+
+/* -x names the executable, in the commands shown and those run. */
+void test_os9_command_dsave_executable()
+{
+	static char output[4096];
+	FILE *fp;
+	size_t got;
+	int status;
+
+	status = system("rm -rf test_x_src test_x_dst && mkdir test_x_src test_x_dst"
+			" && echo one > test_x_src/one.txt");
+	ASSERT_EQUALS(0, status);
+
+	/* Shown only, under its usual name by default */
+	status = system("../os9/os9 dsave test_x_src test_x_dst > test_x_out.txt 2>&1");
+	ASSERT_EQUALS(0, status);
+	fp = fopen("test_x_out.txt", "rb");
+	got = fread(output, 1, sizeof(output) - 1, fp);
+	fclose(fp);
+	output[got] = 0;
+	ASSERT("it shows the usual name", strncmp(output, "os9 copy 'test_x_src/one.txt' 'test_x_dst/one.txt'", 44) == 0);
+	fp = fopen("test_x_dst/one.txt", "rb");
+	ASSERT("nothing was copied", fp == NULL);
+
+	/* Shown only, under the given name */
+	status = system("../os9/os9 dsave -x=no/such/os9 test_x_src test_x_dst > test_x_out.txt 2>&1");
+	ASSERT_EQUALS(0, status);
+	fp = fopen("test_x_out.txt", "rb");
+	got = fread(output, 1, sizeof(output) - 1, fp);
+	fclose(fp);
+	output[got] = 0;
+	ASSERT("it shows the given name", strncmp(output, "'no/such/os9' copy ", 18) == 0);
+
+	/* An empty search path shows it is not the shell finding it. */
+	status = system("PATH=/nonexistent:/bin:/usr/bin ../os9/os9 dsave -e -x=../os9/os9 test_x_src test_x_dst > /dev/null 2>&1");
+	ASSERT_EQUALS(0, status);
+	fp = fopen("test_x_dst/one.txt", "rb");
+	ASSERT("the file was copied", fp != NULL);
+	got = fread(output, 1, sizeof(output) - 1, fp);
+	fclose(fp);
+	ASSERT_EQUALS(4, got);
+
+	/* One that isn't there fails, and says so in the exit status */
+	status = system("../os9/os9 dsave -e -r -x=no/such/os9 test_x_src test_x_dst > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+	ASSERT_NEQUALS(0, WEXITSTATUS(status));
+
+	/* It needs a path */
+	status = system("../os9/os9 dsave -x test_x_src test_x_dst > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+
+	status = system("rm -rf test_x_src test_x_dst test_x_out.txt");
+	ASSERT_EQUALS(0, status);
+}
+
+/* Check a format makes the format asked for, and a disk that works. */
+static void check_format_format(const char *arguments, const char *pathname, diskimage_format expected)
+{
+	static u_char text[3000], back[3000];
+	char command[256];
+	char pathlist[128];
+	diskimage_format format = DISKIMAGE_UNKNOWN;
+	os9_path_id p;
+	u_int size = sizeof(text);
+	u_int filesystems;
+	error_code ec;
+	int status, i;
+
+	for (i = 0; i < (int) sizeof(text); i++)
+	{
+		text[i] = (u_char) (i * 7);
+	}
+
+	remove(pathname);
+	snprintf(command, sizeof(command), "../os9/os9 format -q %s %s > /dev/null 2>&1", arguments, pathname);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+
+	ec = _diskimage_identify(pathname, &format);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(expected, format);
+
+	ec = _coco_detect_filesystems(pathname, &filesystems);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(COCO_FS_OS9, filesystems);
+
+	snprintf(pathlist, sizeof(pathlist), "%s,FILE", pathname);
+	ec = _os9_create(&p, pathlist, FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_write(p, text, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _os9_open(&p, pathlist, FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(back);
+	ec = _os9_read(p, back, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(sizeof(text), size);
+	ASSERT_EQUALS(0, memcmp(text, back, size));
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	snprintf(command, sizeof(command), "../os9/os9 dcheck %s > /dev/null 2>&1", pathname);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+	remove(pathname);
+}
+
+void test_os9_command_format_formats()
+{
+	int status;
+
+	/* By extension */
+	check_format_format("", "test_fmt.dmk", DISKIMAGE_DMK);
+	check_format_format("", "test_fmt.SDF", DISKIMAGE_SDF);
+	check_format_format("", "test_fmt.vdk", DISKIMAGE_VDK);
+	check_format_format("-e", "test_fmt.dsk", DISKIMAGE_RAW);
+	/* A JVC image of this layout needs no header, and so is raw. */
+	check_format_format("", "test_fmt.jvc", DISKIMAGE_RAW);
+
+	/* The option wins */
+	check_format_format("-fdmk", "test_fmt.dsk", DISKIMAGE_DMK);
+	check_format_format("-e -fraw", "test_fmt.dmk", DISKIMAGE_RAW);
+
+	/* Other layouts */
+	check_format_format("-ds", "test_fmt.dmk", DISKIMAGE_DMK);
+	check_format_format("-t40 -ds", "test_fmt.vdk", DISKIMAGE_VDK);
+	check_format_format("-sz10", "test_fmt.dmk", DISKIMAGE_DMK);
+	check_format_format("-ds -sz10", "test_fmt.dmk", DISKIMAGE_DMK);
+	check_format_format("-bs512 -st9", "test_fmt.dmk", DISKIMAGE_DMK);
+	check_format_format("-st10 -t80 -ds", "test_fmt.jvc", DISKIMAGE_JVC);
+	check_format_format("-dr", "test_fmt.dmk", DISKIMAGE_DMK);
+
+	/* An existing file is not replaced by these formats */
+	remove("test_fmt.dmk");
+	status = system("../os9/os9 format -q test_fmt.dmk > /dev/null 2>&1");
+	ASSERT_EQUALS(0, status);
+	status = system("../os9/os9 format -q test_fmt.dmk > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+	remove("test_fmt.dmk");
+
+	/* A layout the format can't hold, and an unknown format, are refused */
+	status = system("../os9/os9 format -q -sz10 test_fmt.vdk > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+
+	/* 18 sectors of 512 bytes don't fit on a track. */
+	status = system("../os9/os9 format -q -bs512 test_fmt.dmk > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+	status = system("../os9/os9 format -q -sd test_fmt.dmk > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+	status = system("../os9/os9 format -q -fxyz test_fmt.dmk > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+}
+
+/* The commands, not only the library, on an image with tracks. */
+static void check_os9_commands(const char *image)
+{
+	static const char *const steps[] = {
+		"format -q -e %s",
+		"copy test_cmd_src.txt %s,FILE",
+		"copy -l test_cmd_src.txt %s,TEXT",
+		"makdir %s,DIR",
+		"copy test_cmd_src.txt %s,DIR/INNER",
+		"dir -e -r %s,",
+		"dump %s,FILE",
+		"list %s,TEXT",
+		"free %s",
+		"attr %s,FILE",
+		"attr -w %s,FILE",
+		"attr %s,DIR/INNER",
+		"rename %s,FILE RENAMED",
+		"reveal %s 2",
+		"dcheck %s",
+		"copy %s,RENAMED test_cmd_out.bin",
+		"del %s,TEXT",
+		"deldir -q %s,DIR",
+	};
+	char command[256];
+	size_t i;
+	int status;
+
+	remove(image);
+	remove("test_cmd_out.bin");
+	for (i = 0; i < sizeof(steps) / sizeof(steps[0]); i++)
+	{
+		char step[128];
+
+		snprintf(step, sizeof(step), steps[i], image);
+		snprintf(command, sizeof(command), "../os9/os9 %s > test_cmd_log.txt 2>&1", step);
+		status = system(command);
+		if (status != 0)
+		{
+			printf("failed: %s\n", command);
+		}
+		ASSERT_EQUALS(0, status);
+	}
+	status = system("cmp test_cmd_src.txt test_cmd_out.bin");
+	ASSERT_EQUALS(0, status);
+	remove(image);
+	remove("test_cmd_out.bin");
+	remove("test_cmd_log.txt");
+}
+
+void test_os9_commands_on_images_with_tracks()
+{
+	FILE *fp = fopen("test_cmd_src.txt", "wb");
+	int i;
+
+	for (i = 0; i < 200; i++)
+	{
+		fputs("a line of text\n", fp);
+	}
+	fclose(fp);
+
+	check_os9_commands("test_cmd.dmk");
+	check_os9_commands("test_cmd.sdf");
+	check_os9_commands("test_cmd.vdk");
+	remove("test_cmd_src.txt");
+}
+
+/* gen links a boot file and writes the kernel track through a raw path. */
+static void check_os9_gen(const char *image)
+{
+	static char boot[2048], track[4608];
+	os9_path_id p;
+	char command[256];
+	u_char sector[256];
+	error_code ec;
+	FILE *fp;
+	int status;
+
+	memset(boot, 0x87, sizeof(boot));
+	memset(track, 0x4F, sizeof(track));
+	fp = fopen("test_gen_boot.bin", "wb");
+	fwrite(boot, 1, sizeof(boot), fp);
+	fclose(fp);
+	fp = fopen("test_gen_track.bin", "wb");
+	fwrite(track, 1, sizeof(track), fp);
+	fclose(fp);
+
+	remove(image);
+	snprintf(command, sizeof(command), "../os9/os9 format -q -t40 %s > /dev/null 2>&1", image);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+	snprintf(command, sizeof(command),
+		 "../os9/os9 gen -b=test_gen_boot.bin -t=test_gen_track.bin %s > /dev/null 2>&1", image);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+
+	snprintf(command, sizeof(command), "%s,@", image);
+	ec = _os9_open(&p, command, FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_NEQUALS(0, int3(p->lsn0->dd_bt));
+	ASSERT_EQUALS(sizeof(boot), int2(p->lsn0->dd_bsz));
+
+	/* The kernel track is track 34, whatever the image. */
+	ec = _os9_lsn_get(p, 34 * 18, 0, sector, sizeof(sector));
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(0x4F, sector[0]);
+
+	ec = _os9_lsn_get(p, int3(p->lsn0->dd_bt), 0, sector, sizeof(sector));
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(0x87, sector[0]);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	remove(image);
+	remove("test_gen_boot.bin");
+	remove("test_gen_track.bin");
+}
+
+void test_os9_gen_on_images_with_tracks()
+{
+	check_os9_gen("test_gen.dsk");
+	check_os9_gen("test_gen.dmk");
+	check_os9_gen("test_gen.sdf");
+}
+
+static long read_file(const char *pathname, u_char *buffer, size_t size)
+{
+	FILE *fp = fopen(pathname, "rb");
+	long got;
+
+	if (fp == NULL)
+	{
+		return -1;
+	}
+	got = (long) fread(buffer, 1, size, fp);
+	fclose(fp);
+
+	return got;
+}
+
+/* How many bytes in a range are not the value. */
+static long count_other(const u_char *buffer, long start, long end, u_char value)
+{
+	long count = 0;
+	long i;
+
+	for (i = start; i < end; i++)
+	{
+		count += buffer[i] != value;
+	}
+
+	return count;
+}
+
+static void format_gap_image(const char *arguments, const char *image, u_char *before, long *before_size)
+{
+	char command[256];
+	int status;
+
+	remove(image);
+	snprintf(command, sizeof(command), "../os9/os9 format -q %s %s > /dev/null 2>&1", arguments, image);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+	*before_size = read_file(image, before, GAP_IMAGE_MAX);
+}
+
+/* The rest of a sector of a new end of file is $FF, but the sectors skipped
+   to get there are zero, and a sector already in a gap keeps its zeros. */
+void test_os9_raw_extend_of_quick_format()
+{
+	static u_char before[GAP_IMAGE_MAX], after[GAP_IMAGE_MAX];
+	const char *image = "test_gap.dsk";
+	u_char data[32];
+	os9_path_id p;
+	long before_size, after_size;
+	error_code ec;
+
+	format_gap_image("-t40", image, before, &before_size);
+	ASSERT_EQUALS(11 * 256, before_size);
+	memset(data, 0x5C, sizeof(data));
+
+	ec = _os9_open(&p, "test_gap.dsk,@", FAM_READ | FAM_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_lsn_put(p, 100, 16, data, sizeof(data));
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_lsn_put(p, 50, 16, data, sizeof(data));
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_lsn_put(p, 101, 16, data, sizeof(data));
+	ASSERT_EQUALS(0, ec);
+	ec = _os9_close(p);
+	ASSERT_EQUALS(0, ec);
+
+	after_size = read_file(image, after, sizeof(after));
+	ASSERT_EQUALS(102 * 256, after_size);
+	ASSERT_MEM_EQUALS(before, after, before_size);
+
+	/* Past the old end, as far as the sector written back into the gap */
+	ASSERT_EQUALS(0, count_other(after, before_size, 50 * 256 + 16, 0x00));
+	ASSERT_EQUALS(0, count_other(after, 50 * 256 + 16, 50 * 256 + 48, 0x5C));
+	ASSERT_EQUALS(0, count_other(after, 50 * 256 + 48, 100 * 256, 0x00));
+
+	/* The last sectors, past a gap and with none */
+	ASSERT_EQUALS(0, count_other(after, 100 * 256, 100 * 256 + 16, 0xFF));
+	ASSERT_EQUALS(0, count_other(after, 100 * 256 + 16, 100 * 256 + 48, 0x5C));
+	ASSERT_EQUALS(0, count_other(after, 100 * 256 + 48, 101 * 256 + 16, 0xFF));
+	ASSERT_EQUALS(0, count_other(after, 101 * 256 + 16, 101 * 256 + 48, 0x5C));
+	ASSERT_EQUALS(0, count_other(after, 101 * 256 + 48, 102 * 256, 0xFF));
+	remove(image);
+}
+
+/* Neither file fills its last sector, to see what pads each of them. */
+#define GAP_BOOT_SIZE	2100
+#define GAP_TRACK_SIZE	4500
+#define GAP_TRACK_LSN	(34 * 18)
+
+static void write_gen_files(void)
+{
+	static char boot[GAP_BOOT_SIZE], track[GAP_TRACK_SIZE];
+	FILE *fp;
+
+	memset(boot, 0x87, sizeof(boot));
+	memset(track, 0x4F, sizeof(track));
+	fp = fopen("test_gap_boot.bin", "wb");
+	fwrite(boot, 1, sizeof(boot), fp);
+	fclose(fp);
+	fp = fopen("test_gap_track.bin", "wb");
+	fwrite(track, 1, sizeof(track), fp);
+	fclose(fp);
+}
+
+static void run_gen(const char *image)
+{
+	char command[256];
+	int status;
+
+	snprintf(command, sizeof(command),
+		 "../os9/os9 gen -b=test_gap_boot.bin -t=test_gap_track.bin %s > /dev/null 2>&1", image);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+}
+
+/* gen writes the kernel track before OS9Boot, so on a quick format it first
+   extends the image to track 34. */
+void test_os9_gen_on_quick_format()
+{
+	static u_char before[GAP_IMAGE_MAX], after[GAP_IMAGE_MAX];
+	const char *image = "test_gap.dsk";
+	const long track = GAP_TRACK_LSN * 256L;
+	long before_size, after_size, boot, boot_end;
+	int i;
+
+	write_gen_files();
+	format_gap_image("-t40", image, before, &before_size);
+	run_gen(image);
+
+	after_size = read_file(image, after, sizeof(after));
+	ASSERT_EQUALS((GAP_TRACK_LSN + 18) * 256L, after_size);
+
+	/* What was there is kept, but for the sectors gen has to change. */
+	ASSERT_MEM_EQUALS(before + 0x1F, after + 0x1F, 256 - 0x1F);
+	for (i = 0; i < 256; i++)
+	{
+		ASSERT_EQUALS(before[256 + i], after[256 + i] & before[256 + i]);
+	}
+	ASSERT_MEM_EQUALS(before + 3 * 256, after + 3 * 256, 64);
+	ASSERT_EQUALS(0, count_other(after, 4 * 256, before_size, 0x00));
+
+	/* OS9Boot lands in the gap, whose zeros stay after its last byte. */
+	boot = int3(((lsn0_sect *) after)->dd_bt) * 256L;
+	boot_end = boot + GAP_BOOT_SIZE;
+	ASSERT_NEQUALS(0, boot);
+	ASSERT_EQUALS(GAP_BOOT_SIZE, int2(((lsn0_sect *) after)->dd_bsz));
+	ASSERT_EQUALS(0, count_other(after, boot, boot_end, 0x87));
+	ASSERT_EQUALS(0, count_other(after, boot_end, track, 0x00));
+
+	/* The kernel track is the end of the image, and $FF pads its last sector. */
+	ASSERT_EQUALS(0, count_other(after, track, track + GAP_TRACK_SIZE, 0x4F));
+	ASSERT_EQUALS(0, count_other(after, track + GAP_TRACK_SIZE, after_size, 0xFF));
+
+	remove(image);
+	remove("test_gap_boot.bin");
+	remove("test_gap_track.bin");
+}
+
+/* A fully formatted image has no gap: gen changes only what it writes. */
+void test_os9_gen_on_full_format()
+{
+	static u_char before[GAP_IMAGE_MAX], after[GAP_IMAGE_MAX];
+	const char *image = "test_gap.dsk";
+	const long track = GAP_TRACK_LSN * 256L;
+	long before_size, after_size, boot, boot_end;
+
+	write_gen_files();
+	format_gap_image("-e -t40", image, before, &before_size);
+	ASSERT_EQUALS(40 * 18 * 256L, before_size);
+	run_gen(image);
+
+	after_size = read_file(image, after, sizeof(after));
+	ASSERT_EQUALS(before_size, after_size);
+
+	/* Past the root directory, all but OS9Boot, its descriptor before it,
+	   and the kernel track stays as formatted. */
+	boot = int3(((lsn0_sect *) after)->dd_bt) * 256L;
+	boot_end = boot + GAP_BOOT_SIZE;
+	ASSERT_EQUALS(0, count_other(after, boot, boot_end, 0x87));
+	ASSERT_MEM_EQUALS(before + 4 * 256, after + 4 * 256, boot - 256 - 4 * 256);
+	ASSERT_MEM_EQUALS(before + boot_end, after + boot_end, track - boot_end);
+	ASSERT_EQUALS(0, count_other(after, track, track + GAP_TRACK_SIZE, 0x4F));
+	ASSERT_MEM_EQUALS(before + track + GAP_TRACK_SIZE, after + track + GAP_TRACK_SIZE,
+			  after_size - track - GAP_TRACK_SIZE);
+
+	remove(image);
+	remove("test_gap_boot.bin");
+	remove("test_gap_track.bin");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -367,6 +1040,17 @@ int main()
 	RUN(test_os9_command_format_rejects_bad_t0s);
 	RUN(test_os9_command_root_past_short_t0);
 	RUN(test_os9_command_no_comma_spec);
+	RUN(test_os9_command_copy_raw_path);
+	RUN(test_os9_command_copy_eol_same_type);
 
+	RUN(test_os9_command_copy_refuses_disk_images);
+	RUN(test_os9_command_dsave_refuses_disk_images);
+	RUN(test_os9_command_dsave_executable);
+	RUN(test_os9_command_format_formats);
+	RUN(test_os9_commands_on_images_with_tracks);
+	RUN(test_os9_gen_on_images_with_tracks);
+	RUN(test_os9_raw_extend_of_quick_format);
+	RUN(test_os9_gen_on_quick_format);
+	RUN(test_os9_gen_on_full_format);
 	return TEST_REPORT();
 }

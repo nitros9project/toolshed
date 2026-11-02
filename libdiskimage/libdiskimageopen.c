@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 
 #include "libdiskimageint.h"
@@ -76,6 +77,41 @@ static diskimage_format detect_format(const u_char *header, long long file_size,
 }
 
 
+diskimage_format _diskimage_format_named(const char *name)
+{
+	static const struct
+	{
+		const char *name;
+		diskimage_format format;
+	} names[] = {
+		{"raw", DISKIMAGE_RAW},
+		{"jvc", DISKIMAGE_JVC},
+		{"vdk", DISKIMAGE_VDK},
+		{"dmk", DISKIMAGE_DMK},
+		{"sdf", DISKIMAGE_SDF}
+	};
+	size_t i;
+
+	for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+	{
+		if (strcasecmp(name, names[i].name) == 0)
+		{
+			return names[i].format;
+		}
+	}
+
+	return DISKIMAGE_UNKNOWN;
+}
+
+
+diskimage_format _diskimage_format_of_extension(const char *pathname)
+{
+	const char *dot = strrchr(pathname, '.');
+
+	return dot == NULL ? DISKIMAGE_UNKNOWN : _diskimage_format_named(dot + 1);
+}
+
+
 error_code _diskimage_identify(const char *pathname, diskimage_format *format)
 {
 	u_char header[DI_HEADER_PROBE];
@@ -138,17 +174,38 @@ static u_int raw_short_track0(const lsn0_sect *lsn0, long long slots)
 }
 
 
+/* Set how many sector slots a raw image's file has.  Slots in the unused part
+   of a short track 0 are not sectors. */
+void di_raw_set_slots(diskimage_id disk, long long slots)
+{
+	long long total = slots;
+
+	if (disk->raw_missing != 0)
+	{
+		if (slots >= DI_RAW_SECTORS_PER_TRACK)
+		{
+			total = slots - disk->raw_missing;
+		}
+		else if (slots > disk->raw_track0)
+		{
+			total = disk->raw_track0;
+		}
+	}
+
+	disk->raw_slots = slots;
+	disk->total_sectors = (u_int)total;
+}
+
+
 static error_code load_raw(diskimage_id disk, long long file_size)
 {
 	long long slots = file_size / DI_RAW_SECTOR_SIZE;
-	long long total = slots;
 
 	disk->linear = 1;
 	disk->sides = 1;
 	disk->sector_size = DI_RAW_SECTOR_SIZE;
 	disk->sectors_per_track = DI_RAW_SECTORS_PER_TRACK;
 	disk->first_sector = 1;
-	disk->raw_slots = slots;
 	disk->raw_track0 = DI_RAW_SECTORS_PER_TRACK;
 
 	if (slots > 0)
@@ -167,21 +224,10 @@ static error_code load_raw(diskimage_id disk, long long file_size)
 		{
 			disk->raw_track0 = track0;
 			disk->raw_missing = DI_RAW_SECTORS_PER_TRACK - track0;
-
-			/* Slots in the unused part of track 0 are not sectors. */
-			if (slots >= DI_RAW_SECTORS_PER_TRACK)
-			{
-				total = slots - disk->raw_missing;
-			}
-			else if (slots > track0)
-			{
-				total = track0;
-			}
 		}
 	}
 
-	disk->total_sectors = (u_int)total;
-	disk->stream_size = total * DI_RAW_SECTOR_SIZE;
+	di_raw_set_slots(disk, slots);
 
 	return 0;
 }
@@ -262,10 +308,6 @@ error_code _diskimage_close(diskimage_id disk)
 		return EOS_IA;
 	}
 
-	while (disk->streams != NULL)
-	{
-		_diskimage_stream_close(disk->streams);
-	}
 	if (fclose(disk->fd) != 0)
 	{
 		ec = EOS_WRITE;
@@ -274,6 +316,50 @@ error_code _diskimage_close(diskimage_id disk)
 	free(disk);
 
 	return ec;
+}
+
+
+error_code _diskimage_set_write_protect(const char *pathname, int write_protect)
+{
+	diskimage_id disk;
+	long long offset;
+	u_char flag = write_protect ? 0xFF : 0x00;
+	error_code ec = _diskimage_open(&disk, pathname, FAM_READ | FAM_WRITE | DISKIMAGE_IGNORE_WRITE_PROTECT);
+
+	if (ec != 0)
+	{
+		return ec;
+	}
+
+	switch (disk->format)
+	{
+	case DISKIMAGE_DMK:
+		offset = DI_DMK_WRITE_PROTECT_OFFSET;
+		break;
+	case DISKIMAGE_SDF:
+		offset = DI_SDF_WRITE_PROTECT_OFFSET;
+		break;
+	case DISKIMAGE_VDK:
+		offset = DI_VDK_FLAGS_OFFSET;
+		ec = di_read_at(disk, offset, &flag, 1);
+		flag = write_protect ? (flag | DI_VDK_FLAG_WRITE_PROTECT) : (flag & (u_char)~DI_VDK_FLAG_WRITE_PROTECT);
+		break;
+	default:
+		_diskimage_close(disk);
+		return EOS_IA;
+	}
+
+	if (ec == 0)
+	{
+		ec = di_write_at(disk, offset, &flag, 1);
+	}
+	if (ec != 0)
+	{
+		_diskimage_close(disk);
+		return ec;
+	}
+
+	return _diskimage_close(disk);
 }
 
 
@@ -334,7 +420,6 @@ error_code _diskimage_query_geometry(diskimage_id disk, diskimage_geometry *geom
 	geometry->cylinders = disk->cylinders;
 	geometry->sides = disk->sides;
 	geometry->total_sectors = disk->total_sectors;
-	geometry->stream_size = disk->stream_size;
 	geometry->write_protected = disk->write_protected;
 	geometry->extendable = disk->format == DISKIMAGE_RAW;
 
@@ -392,7 +477,6 @@ error_code _diskimage_query_sector(diskimage_id disk, u_int index, diskimage_sec
 		info->sector = disk->first_sector + (u_int)(slot % spt);
 		info->size = disk->sector_size;
 		info->flags = 0;
-		info->stream_offset = (long long)index * disk->sector_size;
 	}
 	else
 	{
@@ -403,7 +487,6 @@ error_code _diskimage_query_sector(diskimage_id disk, u_int index, diskimage_sec
 		info->sector = entry->id;
 		info->size = entry->size;
 		info->flags = entry->flags & DI_FLAG_PUBLIC;
-		info->stream_offset = entry->stream_off;
 	}
 
 	return 0;

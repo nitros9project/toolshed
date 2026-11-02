@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <strings.h>
+#include <sys/stat.h>
 
 #include "cococonv.h"
 #include "cocosys.h"
@@ -222,7 +224,7 @@ error_code _coco_identify_image(char *pathlist, _path_type * type)
 	error_code ec = 0;
 	char *p, *path, *colon;
 	char *tmppathlist;
-	FILE *fp;
+	native_path_id native;
 
 	if (strchr(pathlist, ',') == NULL)
 	{
@@ -279,84 +281,42 @@ error_code _coco_identify_image(char *pathlist, _path_type * type)
 
 	/* 3. Determine if this is an OS-9, DECB or CECB image. */
 
-	fp = fopen(tmppathlist, "rb");
-
-	if (fp != NULL)
+	if (_native_open(&native, tmppathlist, FAM_READ) == 0)
 	{
 		u_char sector_buffer[256];
+		u_int size = sizeof(sector_buffer);
 
 
-		/* 1. Read sector 0. */
+		/* 1. Read the start of the file. */
 
-		if (fread(sector_buffer, 1, 256, fp) < 256)
+		if (_native_read(native, sector_buffer, &size) != 0 || size < sizeof(sector_buffer))
 		{
 			ec = EOS_BPNAM;
 		}
-		else
+
+		_native_close(native);
+
+		if (ec == 0)
 		{
-			Lsn0_sect os9_sector = (Lsn0_sect) sector_buffer;
-			long long dir_sector_offset;
-			int bps = 256;
-			int is_osk = (memcmp(os9_sector->dd_sync, "Cruz", 4) == 0);
-			int spt = int2(os9_sector->dd_spt);
-			int t0s = int2(is_osk ? os9_sector->dd_opt.m68k.pd_t0s
-					      : os9_sector->dd_opt.m6809.pd_t0s);
-			int dir_lsn = int3(os9_sector->dd_dir) + 1;
+			int is_os9 = 0;
 
 			/* 0. Look for WAV file marker */
 
 			if (strncmp((char *) sector_buffer, "RIFF", 4) == 0)
+			{
 				*type = CECB;
+			}
 			else
 			{
 				/* 1. Look for markers that this is an OS-9 disk image. */
 
-				/* First, assume bps value is valid and get it */
+				_os9_identify(tmppathlist, &is_os9);
 
-				if (int1(os9_sector->dd_lsnsize) > 0)
-				{
-					bps = int1(os9_sector->dd_lsnsize) *
-						256;
-				}
+				/* 2. If not, it is probably a DECB or Dragon DOS disk image. */
 
-				/* Then, check out the dir sector for .. and . entries. */
-
-				/* Skip the sectors missing from a short track 0. */
-
-				if (t0s > 0 && t0s < spt && dir_lsn >= t0s)
-				{
-					dir_lsn += spt - t0s;
-				}
-
-				dir_sector_offset = (long long) dir_lsn * bps;
-
-				fseeko(fp, (off_t) dir_sector_offset, SEEK_SET);
-
-				if (fread(sector_buffer, 1, 256, fp) < 256)
-				{
-					*type = not_os9_type(tmppathlist);
-				}
-				else
-				{
-					if (sector_buffer[0] == 0x2E
-					    && sector_buffer[1] == 0xAE
-					    && sector_buffer[32] == 0xAE)
-					{
-						/* 1. This is likely an OS-9 disk image. */
-
-						*type = OS9;
-					}
-					else
-					{
-						/* 1. This is probably a DECB or Dragon DOS disk image. */
-
-						*type = not_os9_type(tmppathlist);
-					}
-				}
+				*type = is_os9 ? OS9 : not_os9_type(tmppathlist);
 			}
 		}
-
-		fclose(fp);
 	}
 	else
 	{
@@ -367,6 +327,165 @@ error_code _coco_identify_image(char *pathlist, _path_type * type)
 
 	return ec;
 }
+
+/*
+ * _coco_detect_filesystems()
+ *
+ * Determine which filesystems a disk image could hold, from a pathname or an
+ * <image,path> pathlist.  What is found is only what could be there: a disk
+ * can hold several filesystems, and Disk BASIC has nothing to identify it. A
+ * file that is not a disk image holds none.
+ */
+error_code _coco_detect_filesystems(const char *pathlist, u_int *filesystems)
+{
+	diskimage_format format;
+	const char *comma = strchr(pathlist, ',');
+	char *image;
+	error_code ec;
+
+	*filesystems = 0;
+
+	image = strdup(pathlist);
+	if (image == NULL)
+	{
+		return EOS_OM;
+	}
+	if (comma != NULL)
+	{
+		image[comma - pathlist] = '\0';
+	}
+
+	ec = _diskimage_identify(image, &format);
+	if (ec == 0 && format != DISKIMAGE_UNKNOWN)
+	{
+		int found = 0;
+
+		if (_os9_identify(image, &found) == 0 && found)
+		{
+			*filesystems |= COCO_FS_OS9;
+		}
+		if (_decb_identify(image, &found) == 0 && found)
+		{
+			*filesystems |= COCO_FS_DECB;
+		}
+		if (_dragondos_identify(image, &found) == 0 && found)
+		{
+			*filesystems |= COCO_FS_DRAGONDOS;
+		}
+	}
+
+	free(image);
+
+	return ec;
+}
+
+
+/*
+ * _coco_filesystem_names()
+ *
+ * Name filesystems, separated by commas.
+ */
+void _coco_filesystem_names(u_int filesystems, char *text, size_t size)
+{
+	snprintf(text, size, "%s%s%s%s%s",
+		 (filesystems & COCO_FS_OS9) ? "OS-9" : "",
+		 (filesystems & COCO_FS_OS9) && (filesystems & ~COCO_FS_OS9) ? ", " : "",
+		 (filesystems & COCO_FS_DECB) ? "Disk BASIC" : "",
+		 (filesystems & COCO_FS_DECB) && (filesystems & COCO_FS_DRAGONDOS) ? ", " : "",
+		 (filesystems & COCO_FS_DRAGONDOS) ? "Dragon DOS" : "");
+}
+
+
+/*
+ * _coco_print_other_filesystems()
+ *
+ * Finish a directory listing of one filesystem by naming any others the
+ * image could hold.
+ */
+void _coco_print_other_filesystems(const char *pathlist, u_int current)
+{
+	u_int filesystems;
+
+	if (_coco_detect_filesystems(pathlist, &filesystems) == 0 && (filesystems & ~current) != 0)
+	{
+		char names[64];
+
+		_coco_filesystem_names(filesystems & ~current, names, sizeof(names));
+		printf("\nOther possible filesystems: %s\n", names);
+	}
+}
+
+
+/* Say why an existing host file might be a disk image, or NULL if it doesn't
+   seem to be.  Raw images have nothing to identify them but a size in whole
+   sectors, which small files often have by chance, so at least a track is
+   needed.  An image cut shorter than that goes unnoticed. */
+static const char *disk_image_suspicion(const char *pathname)
+{
+	static const char *const extensions[] = { ".dsk", ".vdk", ".dmk", ".sdf", ".jvc", ".os9", ".img", ".ima", NULL };
+	const long min_suspect_size = 18 * 256;
+	const char *dot = strrchr(pathname, '.');
+	struct stat existing;
+	diskimage_format format = DISKIMAGE_UNKNOWN;
+	int i;
+
+	if (stat(pathname, &existing) != 0 || S_ISDIR(existing.st_mode))
+	{
+		return NULL;
+	}
+
+	for (i = 0; dot != NULL && extensions[i] != NULL; i++)
+	{
+		if (strcasecmp(dot, extensions[i]) == 0)
+		{
+			return "by its name";
+		}
+	}
+
+	if (_diskimage_identify(pathname, &format) != 0)
+	{
+		return NULL;
+	}
+
+	switch (format)
+	{
+	case DISKIMAGE_DMK:
+		return "it has a DMK header";
+	case DISKIMAGE_SDF:
+		return "it has an SDF header";
+	case DISKIMAGE_VDK:
+		return "it has a VDK header";
+	case DISKIMAGE_JVC:
+		return existing.st_size >= min_suspect_size ? "it has a JVC header" : NULL;
+	case DISKIMAGE_RAW:
+		return existing.st_size >= min_suspect_size ? "its size is a whole number of sectors" : NULL;
+	default:
+		return NULL;
+	}
+}
+
+
+/*
+ * _coco_refuse_disk_image_target()
+ *
+ * -r doesn't change this: forgetting a comma mustn't cost a whole disk.
+ */
+int _coco_refuse_disk_image_target(const char *command, const char *destination)
+{
+	const char *reason = strchr(destination, ',') == NULL ? disk_image_suspicion(destination) : NULL;
+
+	if (reason == NULL)
+	{
+		return 0;
+	}
+
+	fprintf(stderr, "%s: won't overwrite '%s': it looks like a disk image (%s). "
+		"To copy into it, use '%s,'. To replace it, delete it first.\n",
+		command, destination, reason, destination);
+
+	return 1;
+}
+
 
 #define BLOCKSIZE 256
 

@@ -69,6 +69,7 @@ ToolShed v2.6.1
   * [ATTR](#attr_dgndos) - Display or change whether files are protected
   * [COPY](#copy_dgndos) - Copy one or more files to a target file or directory
   * [DIR](#dir_dgndos) - Display the contents of a disk's directory
+  * [DSAVE](#dsave_dgndos) - Copy the contents of a disk or directory
   * [DSKINIT](#dskinit_dgndos) - Create a Dragon DOS image
   * [DUMP](#dump_dgndos) - Display the contents of a binary file
   * [FREE](#free_dgndos) - Display the amount of free space on an image
@@ -182,7 +183,7 @@ On our theoretical host computer, a file exists that you wished to have copied t
 
 Notice the use of the comma at the end of the second parameter. This tells the os9 program that you wish to copy the file test1 over to the root directory of the os9.dsk image.
 
-What happened if you didn't put the comma at the end of the second parameter?  os9 copy would have copied test1 on top of the os9.dsk image, effectively replacing your entire disk image with the contents of test1. This is probably not the intended effect.
+What happens if you don't put the comma at the end of the second parameter?  os9 copy would copy test1 on top of the os9.dsk image, replacing your entire disk image with the contents of test1, so the copy commands refuse to do that. An existing file on the host that is or looks like a disk image is never replaced, even with -r. The copy is refused, and says why. A file looks like one if it has the extension .dsk, .vdk, .dmk, .sdf, .jvc, .os9, .img or .ima, has the header of a disk image format, or is at least a track long (4608 bytes) and a whole number of sectors. This applies to os9, decb, cecb and dgndos copy, and to dsave. To replace such a file, delete it first.
 
 Let's take the example a step further. A file exists in the os9.dsk image file, in RBF format, that you wish to copy to your host file system, in the root directory. The file on the disk image is named test2, and resides in the RBF subdirectory path DIR1/DIR2. How would you copy the file to your host file system's root?
 
@@ -216,7 +217,7 @@ will display the extended directory on the current directory of the host file sy
 
 <h3 id="de_hdb_dos">Support for HDB-DOS</h3>
 
-Toolshed supports specialized path symbols for HDB-DOS hard disk images.
+Toolshed supports specialized path symbols for HDB-DOS hard disk images. A pathlist with a drive number or offset, and `decb dskini -h` with more than one drive, require a raw disk image; on any other image they fail.
 
 The colon allows you to select which disk image is active:
 
@@ -493,11 +494,14 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 <tr><td>-e</td><td>actually execute commands</td></tr>
 <tr><td>-l</td><td>perform end of line translation on copy</td></tr>
 <tr><td>-r</td><td>force rewrite on copy</td></tr>
+<tr><td>-x=path</td><td>os9 executable to run the commands with, rather than the one the shell finds</td></tr>
 </table>
 
 #### Description
 
 The dsave command recursively copies files from a directory to another device.
+
+dsave runs `os9 copy` and `os9 makdir` to do the copying, and by default the shell finds `os9` as it would any command. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
 
 ---
 
@@ -559,6 +563,7 @@ This command is intended to work on the host file system only.
 <tr><td>-bsX</td><td>bytes per sector (default = 256)</td></tr>
 <tr><td>-cX</td><td>cluster size</td></tr>
 <tr><td>-e</td><td>format entire disk (make full sized image)</td></tr>
+<tr><td>-fX</td><td>image format: raw, jvc, vdk, dmk or sdf (default from the disk's extension, otherwise raw)</td></tr>
 <tr><td>-k</td><td>make OS-9/68K LSN0</td></tr>
 <tr><td>-nX</td><td>disk name</td></tr>
 <tr><td>-q</td><td>quiet; do not report format summary</td></tr>
@@ -585,6 +590,8 @@ This command is intended to work on the host file system only.
 </table>
 
 #### Description
+
+Without -f, the format comes from the disk's extension, and otherwise it is raw. A raw image replaces a file that exists, and any other format does not. Those formats always hold the whole disk, with or without -e, and can't be made with every layout: see the limits of each format in diskimage.h.
 
 The format command creates a file on the host file system which itself is an empty RBF disk image. This image ca then be used to hold files and directories.
 
@@ -1025,11 +1032,14 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 <tr><td>-e</td><td>actually execute commands</td></tr>
 <tr><td>-l</td><td>perform end of line translation on copy</td></tr>
 <tr><td>-r</td><td>force rewrite on copy</td></tr>
+<tr><td>-x=path</td><td>decb executable to run the commands with, rather than the one the shell finds</td></tr>
 </table>
 
 #### Description
 
 The dsave command recursively copies files from a directory to another device.
+
+dsave runs `decb copy` and `decb makdir` to do the copying, and by default the shell finds `decb` as it would any command. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
 
 ---
 
@@ -1046,6 +1056,7 @@ This command is intended to work on the host file system only.
 <tr><td>-3</td><td>35 track disk (default)</td></tr>
 <tr><td>-4</td><td>40 track disk</td></tr>
 <tr><td>-8</td><td>80 track disk</td></tr>
+<tr><td>-f<name></td><td>image format: raw, jvc, vdk, dmk or sdf (default from the disk's extension, otherwise raw)</td></tr>
 <tr><td>-h<num></td><td>create <num> HDB-DOS drives</td></tr>
 <tr><td>-n<name></td><td>HDB-DOS disk name</td></tr>
 <tr><td>-s</td><td>create a "skitzo" disk</td></tr>
@@ -1065,6 +1076,11 @@ To create an empty disk image that will fit neatly onto a 35 track single-sided 
     decb dskini ss80.dsk -8
     For a disk image containing 124 HDB-DOS 35 track single-sided virtual drives:
     decb dskini hdbdrives.dsk -h124
+    For a DMK image, by its extension or by asking for it:
+    decb dskini ss35.dmk
+    decb dskini -fdmk ss35.img
+
+Without -f, the format comes from the disk's extension, and otherwise it is raw. Only a raw image can hold more than one HDB-DOS drive. An existing disk in another format than the one asked for is left alone.
 
 ---
 
@@ -1170,7 +1186,7 @@ fstat display detailed information about a file.
 </table>
 #### Description
 
-This command converts an HDB-DOS disk image into a 512-byte sector compatible one.
+This command converts an HDB-DOS disk image into a 512-byte sector compatible one. The source must be a raw disk image, and an existing target that looks like a disk image is not replaced.
 
 ---
 
@@ -1655,11 +1671,14 @@ This tool allows you to process lwasm's listing files to produce a file MAME can
 
 <h2 id="diskinfo">diskinfo</h2>
 
-This is a tool used to report the format and track layout of disk images. It only reads the images.
+This is a tool used to report the format and track layout of disk images, and to set or clear their write protect flag.
 
 #### Syntax and Scope
 
-    diskinfo <file> {<file> ...}
+    diskinfo {[<opts>]} <file> {<file> ...}
+    -p  set the write protect flag of a DMK, SDF or VDK image
+    -u  clear the write protect flag of a DMK, SDF or VDK image
+    -s  report one file's possible filesystems in the exit status
 
 #### Description
 
@@ -1678,6 +1697,31 @@ On a two sided image, a run of tracks is reported once if both sides match, and 
     Tracks 1 to 34, both sides, are 18 sectors (1-18), 256 bytes each.
 
 A file that is not a disk image is reported as such.
+
+If the image could hold an OS-9, Disk BASIC or Dragon DOS filesystem, diskinfo names them. A disk can hold more than one, and Disk BASIC has nothing to identify it, so this is only what could be there.
+
+    test.dsk is a raw disk image.
+    Possible filesystems: OS-9, Disk BASIC
+    Tracks 0 to 34 are 18 sectors (1-18), 256 bytes each.
+
+`os9 dir`, `decb dir` and `dgndos dir` end their listing by naming any other filesystems the image could hold.
+
+    Other possible filesystems: Disk BASIC
+
+With -s, diskinfo prints nothing, and its exit status says which filesystems the one file named could hold. A status that isn't 0 isn't a failure here, so scripts using `set -e` or `&&` need to allow for it.
+
+    0   a disk image, with no filesystem found
+    1   OS-9
+    2   Disk BASIC
+    4   Dragon DOS
+    64  not a disk image, can't be read, or the arguments are wrong
+
+The filesystems add together, so 3 is OS-9 and Disk BASIC. -s takes one file, and can't be used with other options. For example:
+
+    diskinfo -s disk.dmk; fs=$?
+    if [ $((fs & 64)) -ne 0 ]; then echo "error"; elif [ $((fs & 1)) -ne 0 ]; then echo "has OS-9"; fi
+
+With -p or -u, diskinfo changes the write protect flag instead of reporting the layout. Raw and JVC images have no such flag. os9, decb and dgndos can read a write protected image, but cannot change it.
 
     file.txt is not a DMK, SDF, JVC, VDK, nor raw disk image.
 
@@ -1768,6 +1812,36 @@ Each file is listed with its name, extension, a P if it is protected, and its si
     2 files, 682 sectors free (174592 bytes)
 
 Entries in sectors that can't be read don't stop the rest being listed, but the first error is reported afterwards.
+
+---
+
+<h3 id="dsave_dgndos">DSAVE - Copy the contents of a disk or directory</h3>
+
+#### Syntax and Scope
+
+    dsave {[<opts>]} {[<source>]} <target> {[<opts>]}
+
+This command will work on Dragon DOS disk image files as well as host files.
+
+#### Options
+<table>
+<tr><td>-e</td><td>actually execute commands</td></tr>
+<tr><td>-l</td><td>perform end of line translation on copy</td></tr>
+<tr><td>-r</td><td>force rewrite on copy</td></tr>
+<tr><td>-t</td><td>perform BASIC token translation</td></tr>
+<tr><td>-x=path</td><td>dgndos executable to run the commands with, rather than the one the shell finds</td></tr>
+</table>
+
+#### Description
+
+The dsave command copies each file from a disk or directory to another. It runs `dgndos copy` to do the copying, and by default the shell finds `dgndos` as it would any command. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
+
+Dragon DOS has no directories, so a source directory that holds one is refused when dsave reaches it.
+
+#### Examples
+
+    dgndos dsave -e disk.vdk, saved
+    dgndos dsave -e -x=build/unix/dgndos/dgndos saved disk.vdk,
 
 ---
 

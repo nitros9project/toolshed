@@ -4,6 +4,8 @@
  * Tracks with the same layout are reported together.  On a two sided
  * image a run of tracks has one line if both sides match, and a line
  * for each side if not.
+ *
+ * It can also set or clear the write protect flag of an image.
  ********************************************************************/
 #include <stdarg.h>
 #include <stdio.h>
@@ -21,8 +23,14 @@
 static char const *const helpMessage[] = {
 	"diskinfo from Toolshed " TOOLSHED_VERSION "\n",
 	"Report the format and track layout of disk images\n",
-	"Syntax: diskinfo <file> {<file> ...}\n",
-	"The exit status is 0 only if every file is a disk image.\n",
+	"Syntax: diskinfo {[<opts>]} <file> {<file> ...}\n",
+	"Options:\n",
+	"     -p  = set the write protect flag of a DMK, SDF or VDK image\n",
+	"     -s  = report one file's possible filesystems in the exit status,\n",
+	"           adding 1 for OS-9, 2 for Disk BASIC and 4 for Dragon DOS.\n",
+	"           Nothing is printed, and the status is 64 if it is not a disk image.\n",
+	"     -u  = clear the write protect flag of a DMK, SDF or VDK image\n",
+	"Otherwise the exit status is 0 only if every file is a disk image.\n",
 	NULL
 };
 
@@ -306,6 +314,7 @@ static int report_file(const char *pathname)
 {
 	diskimage_geometry geometry;
 	diskimage_id disk;
+	u_int filesystems;
 	error_code ec = _diskimage_open(&disk, pathname, FAM_READ);
 
 	if (ec == EOS_WT)
@@ -323,6 +332,17 @@ static int report_file(const char *pathname)
 	if (ec == 0)
 	{
 		printf("%s is %s disk image.\n", pathname, format_name(geometry.format));
+		if (geometry.write_protected)
+		{
+			printf("It is write protected.\n");
+		}
+		if (_coco_detect_filesystems(pathname, &filesystems) == 0 && filesystems != 0)
+		{
+			char names[64];
+
+			_coco_filesystem_names(filesystems, names, sizeof(names));
+			printf("Possible filesystems: %s\n", names);
+		}
 		ec = report_tracks(disk, &geometry);
 	}
 	_diskimage_close(disk);
@@ -337,9 +357,100 @@ static int report_file(const char *pathname)
 }
 
 
+static int set_write_protect(const char *pathname, int write_protect)
+{
+	error_code ec = _diskimage_set_write_protect(pathname, write_protect);
+
+	if (ec == EOS_IA)
+	{
+		fprintf(stderr, "%s: this kind of image has no write protect flag.\n", pathname);
+		return 1;
+	}
+	if (ec == EOS_WT)
+	{
+		printf("%s is not a DMK, SDF, JVC, VDK, nor raw disk image.\n", pathname);
+		return 1;
+	}
+	if (ec != 0)
+	{
+		fprintf(stderr, "%s: Error: %d - %s\n", pathname, ec, TSReportError(ec));
+		return 1;
+	}
+
+	printf("%s is %s.\n", pathname, write_protect ? "now write protected" : "no longer write protected");
+
+	return 0;
+}
+
+
+/* -s reports through the exit status, with this for anything but an answer. */
+#define FILESYSTEMS_STATUS_ERROR	64
+
+static int filesystems_status(const char *pathname)
+{
+	diskimage_format format;
+	u_int filesystems;
+	error_code ec = _diskimage_identify(pathname, &format);
+
+	if (ec == 0 && format == DISKIMAGE_UNKNOWN)
+	{
+		ec = EOS_WT;
+	}
+	if (ec == 0)
+	{
+		ec = _coco_detect_filesystems(pathname, &filesystems);
+	}
+	if (ec != 0)
+	{
+		fprintf(stderr, "%s: Error: %d - %s\n", pathname, ec, TSReportError(ec));
+		return FILESYSTEMS_STATUS_ERROR;
+	}
+
+	return (int)filesystems;
+}
+
+
+/* A status that means filesystems can't also mean a mistake in the arguments,
+   so with -s they all fail the same way. */
+static int filesystems_command(int argc, char *argv[])
+{
+	const char *pathname = NULL;
+	int i;
+
+	for (i = 1; i < argc; i++)
+	{
+		if (strcmp(argv[i], "-s") == 0)
+		{
+			continue;
+		}
+		if (argv[i][0] == '-')
+		{
+			fprintf(stderr, "diskinfo: -s can't be used with '%s'\n", argv[i]);
+			return FILESYSTEMS_STATUS_ERROR;
+		}
+		if (pathname != NULL)
+		{
+			fprintf(stderr, "diskinfo: -s reports on one file only\n");
+			return FILESYSTEMS_STATUS_ERROR;
+		}
+		pathname = argv[i];
+	}
+
+	if (pathname == NULL)
+	{
+		fprintf(stderr, "diskinfo: -s needs a file\n");
+		return FILESYSTEMS_STATUS_ERROR;
+	}
+
+	return filesystems_status(pathname);
+}
+
+
 int main(int argc, char *argv[])
 {
 	int status = 0;
+	int write_protect = -1;
+	int printed = 0;
 	int i;
 
 	if (argc < 2)
@@ -350,12 +461,28 @@ int main(int argc, char *argv[])
 
 	for (i = 1; i < argc; i++)
 	{
+		if (strcmp(argv[i], "-s") == 0)
+		{
+			return filesystems_command(argc, argv);
+		}
+	}
+
+	for (i = 1; i < argc; i++)
+	{
 		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-?") == 0)
 		{
 			show_help(helpMessage);
 			return 0;
 		}
-		if (argv[i][0] == '-')
+		if (strcmp(argv[i], "-p") == 0)
+		{
+			write_protect = 1;
+		}
+		else if (strcmp(argv[i], "-u") == 0)
+		{
+			write_protect = 0;
+		}
+		else if (argv[i][0] == '-')
 		{
 			fprintf(stderr, "diskinfo: unknown option '%s'\n", argv[i]);
 			return 1;
@@ -364,10 +491,20 @@ int main(int argc, char *argv[])
 
 	for (i = 1; i < argc; i++)
 	{
-		if (i > 1)
+		if (argv[i][0] == '-')
+		{
+			continue;
+		}
+		if (write_protect >= 0)
+		{
+			status |= set_write_protect(argv[i], write_protect);
+			continue;
+		}
+		if (printed)
 		{
 			printf("\n");
 		}
+		printed = 1;
 		status |= report_file(argv[i]);
 	}
 

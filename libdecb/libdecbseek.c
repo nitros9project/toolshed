@@ -18,7 +18,32 @@ error_code _decb_seek(decb_path_id path, int pos, int mode)
 
 	if (path->israw == 1)
 	{
-		ec = fseek(path->fd, pos, mode);
+		long long base = 0;
+
+		if (mode == SEEK_CUR)
+		{
+			base = path->filepos;
+		}
+		else if (mode == SEEK_END)
+		{
+			diskimage_geometry geometry;
+
+			ec = _diskimage_query_geometry(path->disk, &geometry);
+
+			if (ec != 0)
+			{
+				return ec;
+			}
+
+			base = (long long) geometry.cylinders * geometry.sides * geometry.sectors_per_track * 256;
+		}
+
+		if (base + pos < 0)
+		{
+			return EOS_SE;
+		}
+
+		path->filepos = base + pos;
 	}
 	else
 	{
@@ -76,56 +101,3 @@ error_code _decb_seekdir(decb_path_id path, int entry, int mode)
 }
 
 
-
-
-error_code _decb_seeksector(decb_path_id path, int track, int sector)
-{
-	long offset;
-	error_code ec = 0;
-
-//      assert( (track>= 0) && (track<35) );
-//      assert( (sector>0) && (sector<19) );
-
-	/* 1. Compute offset. */
-
-	offset = (track * 18) + (sector - 1);
-	offset *= 256;
-	offset += path->disk_offset;
-
-	/* 2. Seek to offset. */
-
-	ec = fseek(path->fd, offset, SEEK_SET);
-
-	return ec;
-}
-
-error_code _decb_seekgranule(decb_path_id path, int granule)
-{
-	long offset;
-	error_code ec = 0;
-
-//      assert( (granule>= 0) && (granule<68) );
-
-	/* 1. Compute offset. */
-
-	offset = granule * 2304;
-
-
-	/* 2. Account for directory (2 granules) */
-
-	if (granule > 33)
-	{
-		offset += (2304 * 2);
-	}
-
-
-	/* 3. Add in disk offset. */
-
-	offset += path->disk_offset;
-
-	/* 4. Seek to granule. */
-
-	ec = fseek(path->fd, offset, SEEK_SET);
-
-	return ec;
-}

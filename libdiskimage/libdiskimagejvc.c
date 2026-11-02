@@ -75,7 +75,6 @@ error_code di_jvc_load(diskimage_id disk, const di_jvc_header *jvc)
 		disk->linear = 1;
 		disk->data_start = file_offset;
 		disk->total_sectors = (u_int)total;
-		disk->stream_size = total * size;
 		return 0;
 	}
 

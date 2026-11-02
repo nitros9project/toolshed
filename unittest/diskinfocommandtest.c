@@ -1,10 +1,12 @@
 /* Tests for the diskinfo command. */
 
 #include <string.h>
+#include <sys/wait.h>
 
 #include "tinytest.h"
 #include "cocopath.h"
 #include "diskimage.h"
+#include "imagedamage.h"
 
 #define TEST_IMAGE "diskinfo_test.dsk"
 #define TEST_OTHER "diskinfo_other.dsk"
@@ -393,6 +395,155 @@ static void test_usage(void)
 	ASSERT("unknown option named", strstr(errors, "-x") != NULL);
 }
 
+static void test_set_write_protect(void)
+{
+	diskimage_geometry geometry;
+	diskimage_id disk;
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_DMK, 1, 2, 256, 18, 0, 0, 0xFF));
+
+	ASSERT_CALL(0, run_diskinfo("-p " TEST_IMAGE));
+	ASSERT("reported as protected", strstr(output, "is now write protected.") != NULL);
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &geometry));
+	ASSERT_EQUALS(1, geometry.write_protected);
+	_diskimage_close(disk);
+
+	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE));
+	ASSERT("the report says so", strstr(output, "It is write protected.\n") != NULL);
+
+	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE " -u"));
+	ASSERT("reported as not protected", strstr(output, "no longer write protected.") != NULL);
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_geometry(disk, &geometry));
+	ASSERT_EQUALS(0, geometry.write_protected);
+	_diskimage_close(disk);
+	remove(TEST_IMAGE);
+
+	/* A raw image has no flag to set. */
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_RAW, 1, 2, 256, 18, 0, 0, 0xFF));
+	ASSERT_NEQUALS(0, run_diskinfo("-p " TEST_IMAGE));
+	ASSERT("no flag reported", strstr(errors, "no write protect flag") != NULL);
+	remove(TEST_IMAGE);
+}
+
+static void test_possible_filesystems(void)
+{
+	ASSERT_CALL(0, run_diskinfo("\"../../../unittest/testdata/os9 mame.dmk\""));
+	ASSERT("OS-9 is named", strstr(output, "is a DMK disk image.\nPossible filesystems: OS-9\nTracks") != NULL);
+
+	ASSERT_CALL(0, run_diskinfo("\"../../../unittest/testdata/dragondos mame.vdk\""));
+	ASSERT("Dragon DOS is named", strstr(output, "Possible filesystems: Dragon DOS\n") != NULL);
+}
+
+static int filesystems_status(const char *arguments)
+{
+	int status = run_diskinfo(arguments);
+
+	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+static void test_filesystems_status(void)
+{
+	static const char *const combinations[] = { "-s", "-s -p", "-p -s", "-s -x" };
+	unsigned int total_sectors, total_bytes;
+	int cluster_size = 0;
+	diskimage_id disk;
+	u_char sector[256];
+	FILE *fp;
+	int number;
+	size_t i;
+
+	/* Real disks, printing nothing */
+	ASSERT_CALL(COCO_FS_OS9, filesystems_status("-s \"../../../unittest/testdata/os9 mame.dmk\""));
+	ASSERT_STRING_EQUALS("", output);
+	ASSERT_STRING_EQUALS("", errors);
+	ASSERT_CALL(COCO_FS_DRAGONDOS, filesystems_status("\"../../../unittest/testdata/dragondos mame.vdk\" -s"));
+
+	/* A disk image with nothing on it is not an error. */
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_RAW, 1, 35, 256, 18, 0, 0, 0xFF));
+	ASSERT_CALL(0, filesystems_status("-s " TEST_IMAGE));
+	remove(TEST_IMAGE);
+
+	/* Disk BASIC, then OS-9 with a Disk BASIC track too */
+	ASSERT_CALL(0, _decb_dskini(TEST_IMAGE, 35, NULL, 1, 256, 0));
+	ASSERT_CALL(COCO_FS_DECB, filesystems_status("-s " TEST_IMAGE));
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _os9_format(TEST_IMAGE, 0, 35, 18, 18, 1, 256, &cluster_size, "Test", 8, 8, 1, 1, 0, 0, 3,
+				   &total_sectors, &total_bytes));
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ | FAM_WRITE));
+	memset(sector, 0, sizeof(sector));
+	memset(sector, 0xFF, 68);
+	ASSERT_CALL(0, _diskimage_write_sector(disk, 17, 0, 2, sector, sizeof(sector)));
+	memset(sector, 0xFF, sizeof(sector));
+	for (number = 3; number <= 11; number++)
+	{
+		ASSERT_CALL(0, _diskimage_write_sector(disk, 17, 0, number, sector, sizeof(sector)));
+	}
+	_diskimage_close(disk);
+	ASSERT_CALL(COCO_FS_OS9 | COCO_FS_DECB, filesystems_status("-s " TEST_IMAGE));
+
+	/* Several files are an error, as is no file */
+	ASSERT_CALL(64, filesystems_status("-s " TEST_IMAGE " " TEST_IMAGE));
+	ASSERT("it says why", strstr(errors, "one file only") != NULL);
+	ASSERT_CALL(64, filesystems_status("-s"));
+
+	/* And so is any other option, so that a status always means filesystems. */
+	for (i = 1; i < sizeof(combinations) / sizeof(combinations[0]); i++)
+	{
+		char arguments[64];
+
+		snprintf(arguments, sizeof(arguments), "%s " TEST_IMAGE, combinations[i]);
+		ASSERT_CALL(64, filesystems_status(arguments));
+	}
+	remove(TEST_IMAGE);
+
+	/* Not a disk image, or not there */
+	fp = fopen(TEST_OTHER, "wb");
+	fputs("not a disk image", fp);
+	fclose(fp);
+	ASSERT_CALL(64, filesystems_status("-s " TEST_OTHER));
+	remove(TEST_OTHER);
+	ASSERT_CALL(64, filesystems_status("-s diskinfo_no_such_file.dsk"));
+
+	/* Without -s nothing changes. */
+	ASSERT_CALL(0, run_diskinfo("\"../../../unittest/testdata/os9 mame.dmk\""));
+	ASSERT("the report is printed", strstr(output, "Possible filesystems: OS-9") != NULL);
+}
+
+/* A bad CRC doesn't stop a disk being recognized, and detection doesn't warn. */
+static void test_detection_on_bad_crc(void)
+{
+	unsigned int total_sectors, total_bytes;
+	int cluster_size = 0;
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _os9_format_image(TEST_IMAGE, DISKIMAGE_DMK, 0, 35, 18, 18, 1, 256, &cluster_size, "Test", 8, 48, 1, 1,
+					 0, 0, 3, &total_sectors, &total_bytes));
+	image_damage_sector(TEST_IMAGE, 0, 0, 3);
+	ASSERT_CALL(COCO_FS_OS9, filesystems_status("-s " TEST_IMAGE));
+	ASSERT_STRING_EQUALS("", errors);
+
+	/* LSN0 is still read.  Its first byte isn't one that detection looks at. */
+	image_damage_sector(TEST_IMAGE, 0, 0, 1);
+	ASSERT_CALL(COCO_FS_OS9, filesystems_status("-s " TEST_IMAGE));
+	ASSERT_STRING_EQUALS("", errors);
+
+	/* The root directory's first byte is, so now it isn't OS-9, still quietly. */
+	image_damage_sector(TEST_IMAGE, 0, 0, 4);
+	ASSERT_CALL(0, filesystems_status("-s " TEST_IMAGE));
+	ASSERT_STRING_EQUALS("", errors);
+	remove(TEST_IMAGE);
+
+	ASSERT_CALL(0, _decb_dskini_format(TEST_IMAGE, DISKIMAGE_SDF, 35, NULL, 1, 256, 0));
+	image_damage_sector(TEST_IMAGE, 17, 0, 3);
+	ASSERT_CALL(COCO_FS_DECB, filesystems_status("-s " TEST_IMAGE));
+	ASSERT_STRING_EQUALS("", errors);
+	remove(TEST_IMAGE);
+}
+
 int main(void)
 {
 	RUN(test_dmk_report);
@@ -406,6 +557,10 @@ int main(void)
 	RUN(test_several_files);
 	RUN(test_one_bad_file_sets_status);
 	RUN(test_usage);
+	RUN(test_set_write_protect);
 
+	RUN(test_possible_filesystems);
+	RUN(test_filesystems_status);
+	RUN(test_detection_on_bad_crc);
 	return TEST_REPORT();
 }

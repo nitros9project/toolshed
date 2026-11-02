@@ -376,6 +376,21 @@ error_code TSMoveFile(char *srcfile, char *dstfile)
 }
 
 
+/* A path to a whole disk image rather than a file in it. */
+static int is_raw_path(coco_path_id path)
+{
+	switch (path->type)
+	{
+	case OS9:
+		return path->path.os9->israw == 1;
+	case DECB:
+		return path->path.decb->israw == 1;
+	default:
+		return 0;
+	}
+}
+
+
 error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 		      int rewrite, int owner, int owner_set, char *buffer,
 		      u_int buffer_size)
@@ -383,6 +398,8 @@ error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 	error_code ec = 0;
 	coco_path_id path;
 	coco_path_id destpath;
+	error_code eof_ec;
+	error_code close_ec;
 	coco_file_stat fdesc;
 	int mode = FAM_NOCREATE | FAM_WRITE;
 	coco_file_stat fstat;
@@ -419,7 +436,7 @@ error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 	}
 
 
-	while (_coco_gs_eof(path) == 0)
+	while ((eof_ec = _coco_gs_eof(path)) == 0)
 	{
 		char *newBuffer;
 		u_int newSize;
@@ -461,6 +478,12 @@ error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 				free(newBuffer);
 				newBuffer = NULL;
 			}
+			else
+			{
+				/* Both ends use the same EOLs -- no translation needed. */
+
+				ec = _coco_write(destpath, buffer, &size);
+			}
 		}
 		else
 		{
@@ -476,9 +499,18 @@ error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 	}
 
 
-	/* Copy meta data from file descriptor of source to destination */
+	/* Not being able to tell where the source ends is a failed read. */
 
-	_coco_gs_fd(path, &fdesc);
+	if (ec == 0 && eof_ec != 0 && eof_ec != EOS_EOF)
+	{
+		ec = eof_ec;
+	}
+
+
+	/* Copy meta data from file descriptor of source to destination. A raw
+	 * path has no file descriptor, so the destination keeps its own. */
+
+	_coco_gs_fd(is_raw_path(path) ? destpath : path, &fdesc);
 
 	if ((owner_set == 1) || (path->type == NATIVE))
 	{
@@ -492,7 +524,12 @@ error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 	 * buffered writes and causes the OS to update mtime, which would
 	 * overwrite any utime() call made before it. Instead, close first,
 	 * then reopen briefly just to apply the metadata (mtime, perms). */
-	_coco_close(destpath);
+	close_ec = _coco_close(destpath);
+
+	if (ec == 0)
+	{
+		ec = close_ec;
+	}
 
 	/* --- Intercept for Reproducible Builds --- */
 	{
@@ -865,6 +902,15 @@ error_code TSDECBFree(char *pathlist, u_int * free_granules)
 
 
 	/* 4. Walk the FAT. */
+	if (path->fat_ec != 0)
+	{
+		ec = path->fat_ec;
+
+		_decb_close(path);
+
+		return ec;
+	}
+
 	*free_granules = 0;
 	for (i = 0; i < 256; i++)
 	{
@@ -932,6 +978,15 @@ error_code TSRBFFree(char *file, char *dname, u_int * month, u_int * day,
 	}
 
 	*bps = path->bps;
+
+	if (path->bitmap_ec != 0)
+	{
+		ec = path->bitmap_ec;
+
+		_os9_close(path);
+
+		return ec;
+	}
 
 	/* seek to the beginning of the disk */
 	_os9_seek(path, 0, SEEK_SET);

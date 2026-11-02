@@ -34,14 +34,16 @@ error_code _os9_readln(os9_path_id path, void *buffer, u_int * size)
 	}
 
 
-	/* 2. Seek to FD LSN of pathlist */
+	/* 2. Read the file descriptor sector */
 
-	_os9_lsn_fseek(path, path->pl_fd_lsn);
+	ec = _os9_lsn_get(path, path->pl_fd_lsn, 0, &fd_sector, sizeof(fd_stats));
 
+	if (ec != 0)
+	{
+		*size = 0;
 
-	/* 3. Read the file descriptor sector */
-
-	fread(&fd_sector, 1, sizeof(fd_stats), path->fd);
+		return ec;
+	}
 
 
 	/* 4. Point to segment list */
@@ -138,9 +140,17 @@ error_code _os9_readln(os9_path_id path, void *buffer, u_int * size)
 
 		/* 3. Read from the offset within the segment. */
 
-		_os9_lsn_read(path, int3(segptr[i].lsn),
-			      path->filepos - (accum_size - seg_size_bytes),
-			      buf_ptr, read_size);
+		ec = _os9_lsn_get(path, int3(segptr[i].lsn),
+				  path->filepos - (accum_size - seg_size_bytes),
+				  buf_ptr, read_size);
+
+		if (ec != 0)
+		{
+			*size -= bytes_left;
+
+			return ec;
+		}
+
 
 
 		/* 4. Look for line terminator in this fresh buffer. */

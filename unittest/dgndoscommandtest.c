@@ -696,6 +696,59 @@ static void test_dump_decodes_binaries(void)
 	clean_up();
 }
 
+/* dsave copies a whole disk to a directory and back, and has no directories to make. */
+static void test_dsave(void)
+{
+	int status;
+	long size;
+
+	clean_up();
+	status = system("rm -rf dgndoscmd_save && mkdir dgndoscmd_save");
+	ASSERT_EQUALS(0, status);
+
+	ASSERT_RUN(0, DGNDOS "dskinit " TEST_IMAGE);
+	write_native(NATIVE_FILE, 1000);
+	ASSERT_RUN(0, DGNDOS "copy " NATIVE_FILE " " TEST_IMAGE ",ONE.BIN");
+	ASSERT_RUN(0, DGNDOS "copy " NATIVE_FILE " " TEST_IMAGE ",TWO.BIN");
+
+	/* Without -e it only shows the commands. */
+	ASSERT_RUN(0, DGNDOS "dsave " TEST_IMAGE ", dgndoscmd_save" CAPTURE);
+	read_output();
+	ASSERT("the command is shown", strstr(output, "dgndos copy '" TEST_IMAGE ",ONE.BIN' 'dgndoscmd_save/ONE.BIN'") != NULL);
+	size = file_size("dgndoscmd_save/ONE.BIN", back, sizeof(back));
+	ASSERT_EQUALS(-1, size);
+
+	/* The disk to a directory */
+	ASSERT_RUN(0, DGNDOS "dsave -e -x=../dgndos/dgndos " TEST_IMAGE ", dgndoscmd_save" QUIET);
+	size = file_size("dgndoscmd_save/ONE.BIN", back, sizeof(back));
+	ASSERT_EQUALS(1000, size);
+	size = file_size("dgndoscmd_save/TWO.BIN", back, sizeof(back));
+	ASSERT_EQUALS(1000, size);
+
+	/* That directory to a new disk */
+	remove(TEST_IMAGE);
+	ASSERT_RUN(0, DGNDOS "dskinit " TEST_IMAGE);
+	ASSERT_RUN(0, DGNDOS "dsave -e -x=../dgndos/dgndos dgndoscmd_save " TEST_IMAGE "," QUIET);
+	ASSERT_RUN(0, DGNDOS "dir " TEST_IMAGE CAPTURE);
+	read_output();
+	ASSERT("the first file came back", strstr(output, "ONE") != NULL);
+	ASSERT("the second file came back", strstr(output, "TWO") != NULL);
+
+	/* The disk with no comma isn't a disk here, and a directory has nowhere to go. */
+	status = system("mkdir dgndoscmd_save/SUB");
+	ASSERT_EQUALS(0, status);
+	remove("dgndoscmd_save/ONE.BIN");
+	remove("dgndoscmd_save/TWO.BIN");
+	status = run(DGNDOS "dsave -e -x=../dgndos/dgndos dgndoscmd_save " TEST_IMAGE "," CAPTURE);
+	ASSERT_NEQUALS(0, status);
+	read_output();
+	ASSERT("it says why", strstr(output, "has no directories") != NULL);
+
+	status = system("rm -rf dgndoscmd_save");
+	ASSERT_EQUALS(0, status);
+	clean_up();
+}
+
 int main(void)
 {
 	RUN(test_help);
@@ -714,5 +767,6 @@ int main(void)
 	RUN(test_copy_refuses_to_overwrite_disk_images);
 	RUN(test_copy_replaces_other_host_files);
 	RUN(test_dump_decodes_binaries);
+	RUN(test_dsave);
 	return TEST_REPORT();
 }

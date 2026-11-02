@@ -5,6 +5,7 @@
 *.wav
 filldisk.dsk
 AGENTS.md
+CLAUDE.md
 
 # Ignore built files
 build/unix/ar2/ar2

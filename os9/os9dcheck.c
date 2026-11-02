@@ -173,6 +173,13 @@ static int do_dcheck(char **argv, char *p)
 
 	/* open a path to the device */
 	ec = _os9_open(&os9_path, os9pathlist, FAM_READ);
+
+	if (ec == 0 && os9_path->bitmap_ec != 0)
+	{
+		ec = os9_path->bitmap_ec;
+
+		_os9_close(os9_path);
+	}
 	if (ec != 0)
 	{
 		fprintf(stderr, "%s: error %d opening '%s'\n", argv[0], ec,

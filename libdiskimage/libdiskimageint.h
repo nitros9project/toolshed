@@ -16,7 +16,6 @@
 
 #define DI_RAW_SECTOR_SIZE	256
 #define DI_RAW_SECTORS_PER_TRACK	18
-#define DI_RAW_FILL		0xFF
 #define DI_RAW_MAX_SECTORS	0x1000000	/* limit of a 3 byte LSN */
 #define DI_MAX_SECTOR_SIZE	1024
 #define DI_MAX_TRACK_IDS	256
@@ -35,7 +34,6 @@ typedef struct
 {
 	long long data_off;	/* file offset of the first data byte */
 	long long status_off;	/* file offset of the SDF data offset field or JVC attribute */
-	long long stream_off;
 	unsigned short cylinder;
 	unsigned short size;
 	u_char side;
@@ -54,6 +52,12 @@ typedef struct
 	long long id_end;
 } di_track_id;
 
+/* Where each format records write protection */
+#define DI_DMK_WRITE_PROTECT_OFFSET	0
+#define DI_SDF_WRITE_PROTECT_OFFSET	6
+#define DI_VDK_FLAGS_OFFSET		10
+#define DI_VDK_FLAG_WRITE_PROTECT	0x01
+
 struct _diskimage_path
 {
 	FILE *fd;
@@ -63,7 +67,6 @@ struct _diskimage_path
 	u_int cylinders;
 	u_int sides;
 	u_int total_sectors;
-	long long stream_size;
 
 	/* Linear images */
 	int linear;
@@ -81,15 +84,6 @@ struct _diskimage_path
 	/* Other images */
 	di_sector *table;
 	u_int table_capacity;
-
-	struct _diskimage_stream *streams;
-};
-
-struct _diskimage_stream
-{
-	diskimage_id disk;
-	long long position;
-	struct _diskimage_stream *next;
 };
 
 typedef struct
@@ -126,6 +120,7 @@ void di_raw_stamp_lsn0(u_char *sector, const di_layout *layout, long long total)
 unsigned short di_crc16(unsigned short crc, const u_char *data, size_t size);
 error_code di_read_at(diskimage_id disk, long long offset, void *buffer, size_t size);
 error_code di_write_at(diskimage_id disk, long long offset, const void *buffer, size_t size);
+void di_raw_set_slots(diskimage_id disk, long long slots);
 error_code di_table_append(diskimage_id disk, const di_sector *sector);
 error_code di_table_add_track(diskimage_id disk, di_track_id *ids, int count);
 long long di_table_find(diskimage_id disk, u_int cylinder, u_int side, u_int id);
