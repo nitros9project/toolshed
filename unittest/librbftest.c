@@ -1797,7 +1797,9 @@ static u_char real_os9_byte(int seed, u_int offset)
 
 static void real_os9_pathlist(char *pathlist, size_t size, const char *image, const char *directory, const char *name)
 {
-	snprintf(pathlist, size, "%s,%s%s%s", image, directory, directory[0] != '\0' ? "/" : "", name);
+	int length = snprintf(pathlist, size, "%s,%s%s%s", image, directory, directory[0] != '\0' ? "/" : "", name);
+
+	ASSERT("the pathlist fits", length >= 0 && (size_t) length < size);
 }
 
 /* Read a whole file, as an empty one too. */
