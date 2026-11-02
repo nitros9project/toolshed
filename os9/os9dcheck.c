@@ -362,14 +362,9 @@ static error_code BuildSecondaryAllocationMap(os9_path_id os9_path,
 		count = 0;
 		i = 0;
 
-		while (int3(dir_fd->fd_seg[i].lsn) != 0)
+		while (i < NUM_SEGS && int3(dir_fd->fd_seg[i].lsn) != 0)
 		{
 			theSeg = &(dir_fd->fd_seg[i]);
-
-			if (i > NUM_SEGS)
-			{
-				break;
-			}
 
 			if (count > fd_siz)
 			{
@@ -518,15 +513,9 @@ static error_code ParseFDSegList(fd_stats * fd, u_int dd_tot, char *path,
 	Fd_seg theSeg;
 	u_int num, curLSN;
 
-	while (int3(fd->fd_seg[i].lsn) != 0)
+	while (i < NUM_SEGS && int3(fd->fd_seg[i].lsn) != 0)
 	{
 		u_int mapSector;
-
-		if (i > NUM_SEGS)
-		{
-			i++;
-			break;
-		}
 
 		theSeg = &(fd->fd_seg[i]);
 		num = int2(theSeg->num);

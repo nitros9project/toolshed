@@ -1187,6 +1187,168 @@ void test_os9_dcheck_after_changing_real_disk()
 	remove("test_real_os9.dmk");
 }
 
+/*
+ * OS-9 stops a file at 47 segments, but follows a 48th if a disk has one.  Tandy's
+ * OS-9 read this one back, its dcheck said the file structure was intact, and
+ * its free said 137 sectors with a largest block of 84.  It refused to add a
+ * sector with E$SLF, and its del left the 48th segment allocated.
+ */
+#define FULL_LIST_IMAGE "test_48_segments.dmk"
+
+static u_char pattern_byte(int seed, u_int offset)
+{
+	return (u_char) (seed + ((offset & 255) ^ (offset >> 8)));
+}
+
+/* Give FULLSEGS, of 47 one-sector segments and 12032 bytes, a 48th at LSN 600. */
+static void add_48th_segment(void)
+{
+	u_char sector[256];
+	os9_path_id p;
+	fd_stats fd;
+	int i, status;
+
+	status = system("cp " REAL_OS9 " " FULL_LIST_IMAGE);
+	ASSERT_EQUALS(0, status);
+	ASSERT_EC(0, _os9_open(&p, FULL_LIST_IMAGE ",FULLSEGS", FAM_READ | FAM_WRITE));
+	ASSERT_EC(0, _os9_gs_fd(p, sizeof(fd), &fd));
+	ASSERT_EQUALS(0, int3(fd.fd_seg[47].lsn));
+	for (i = 0; i < 256; i++)
+	{
+		sector[i] = pattern_byte(13, 12032 + i);
+	}
+	ASSERT_EC(0, _os9_lsn_put(p, 600, 0, sector, sizeof(sector)));
+	_os9_allbit(p->bitmap, 600, 1);
+	_int3(600, fd.fd_seg[47].lsn);
+	_int2(1, fd.fd_seg[47].num);
+	_int4(12288, fd.fd_siz);
+	ASSERT_EC(0, _os9_lsn_put(p, p->pl_fd_lsn, 0, &fd, sizeof(fd)));
+	ASSERT_EC(0, _os9_close(p));
+}
+
+void test_os9_48_segments_read()
+{
+	static u_char data[13000];
+	static char output[4096];
+	os9_path_id p;
+	u_int size = sizeof(data), i;
+	int status;
+
+	add_48th_segment();
+	ASSERT_EC(0, _os9_open(&p, FULL_LIST_IMAGE ",FULLSEGS", FAM_READ));
+	ASSERT_EC(0, _os9_read(p, data, &size));
+	ASSERT_EQUALS(12288, size);
+	for (i = 0; i < size; i++)
+	{
+		ASSERT_EQUALS(pattern_byte(13, i), data[i]);
+	}
+	size = sizeof(data);
+	ASSERT_EC(EOS_EOF, _os9_read(p, data, &size));
+	ASSERT_EC(0, _os9_close(p));
+
+	status = real_os9_command("free " FULL_LIST_IMAGE ",", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("as OS-9 said", strstr(output, "137 Free sectors, largest block 84 sectors\n") != NULL);
+	remove(FULL_LIST_IMAGE);
+}
+
+void test_os9_48_segments_dcheck()
+{
+	static char output[4096];
+	int status;
+
+	add_48th_segment();
+	status = real_os9_command("dcheck " FULL_LIST_IMAGE, output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("as OS-9 said", strstr(output, "'FILES' file structure is intact\n") != NULL);
+	ASSERT("no bad descriptor", strstr(output, "0 bad file decriptor sector\n") != NULL);
+	ASSERT("nothing lost", strstr(output, "0 clusters in allocation map but not in file structure\n") != NULL
+	       && strstr(output, "0 clusters in file structure but not in allocation map\n") != NULL);
+	remove(FULL_LIST_IMAGE);
+}
+
+/* The same in the loop that walks a directory: EMPTYDIR with 47 more segments. */
+void test_os9_48_segments_directory_dcheck()
+{
+	static u_char sector[256];
+	static char output[4096];
+	os9_path_id p;
+	fd_stats fd;
+	int first, count, i, status;
+
+	status = system("cp " REAL_OS9 " " FULL_LIST_IMAGE);
+	ASSERT_EQUALS(0, status);
+	ASSERT_EC(0, _os9_open(&p, FULL_LIST_IMAGE ",EMPTYDIR", FAM_DIR | FAM_READ | FAM_WRITE));
+	ASSERT_EC(0, _os9_gs_fd(p, sizeof(fd), &fd));
+	first = int3(fd.fd_seg[0].lsn);
+	count = int2(fd.fd_seg[0].num);
+	ASSERT_EQUALS(0, int3(fd.fd_seg[1].lsn));
+	for (i = 1; i < count; i++)
+	{
+		ASSERT_EC(0, _os9_lsn_put(p, first + i, 0, sector, sizeof(sector)));
+	}
+	for (i = 1; i < NUM_SEGS; i++)
+	{
+		int lsn = 516 + (i - 1) * 2;
+
+		ASSERT_EC(0, _os9_lsn_put(p, lsn, 0, sector, sizeof(sector)));
+		_os9_allbit(p->bitmap, lsn, 1);
+		_int3(lsn, fd.fd_seg[i].lsn);
+		_int2(1, fd.fd_seg[i].num);
+	}
+	_int4((count + NUM_SEGS - 1) * 256, fd.fd_siz);
+	ASSERT_EC(0, _os9_lsn_put(p, p->pl_fd_lsn, 0, &fd, sizeof(fd)));
+	ASSERT_EC(0, _os9_close(p));
+
+	status = real_os9_command("dcheck " FULL_LIST_IMAGE, output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("intact", strstr(output, "'FILES' file structure is intact\n") != NULL);
+	ASSERT("no bad descriptor", strstr(output, "0 bad file decriptor sector\n") != NULL);
+	ASSERT("nothing lost", strstr(output, "0 clusters in allocation map but not in file structure\n") != NULL
+	       && strstr(output, "0 clusters in file structure but not in allocation map\n") != NULL);
+	remove(FULL_LIST_IMAGE);
+}
+
+/* Like OS-9, a full list refuses another sector, and the file stays as it was. */
+void test_os9_48_segments_cannot_grow()
+{
+	static u_char more[256], data[13000];
+	os9_path_id p;
+	u_int size = sizeof(more), i;
+
+	add_48th_segment();
+	ASSERT_EC(0, _os9_open(&p, FULL_LIST_IMAGE ",FULLSEGS", FAM_READ | FAM_WRITE));
+	ASSERT_EC(0, _os9_seek(p, 12288, SEEK_SET));
+	ASSERT_EC(EOS_SF, _os9_write(p, more, &size));
+	ASSERT_EC(0, _os9_close(p));
+
+	ASSERT_EC(0, _os9_open(&p, FULL_LIST_IMAGE ",FULLSEGS", FAM_READ));
+	size = sizeof(data);
+	ASSERT_EC(0, _os9_read(p, data, &size));
+	ASSERT_EC(0, _os9_close(p));
+	ASSERT_EQUALS(12288, size);
+	for (i = 0; i < size; i++)
+	{
+		ASSERT_EQUALS(pattern_byte(13, i), data[i]);
+	}
+	remove(FULL_LIST_IMAGE);
+}
+
+/* OS-9's del leaves the 48th segment allocated, at 185 free.  This frees it. */
+void test_os9_48_segments_delete()
+{
+	static char output[4096];
+	int status;
+
+	add_48th_segment();
+	status = real_os9_command("del " FULL_LIST_IMAGE ",FULLSEGS", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	status = real_os9_command("free " FULL_LIST_IMAGE ",", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("all 48 and the file descriptor", strstr(output, "186 Free sectors, largest block 114 sectors\n") != NULL);
+	remove(FULL_LIST_IMAGE);
+}
+
 #define REAL_CLUSTERS "\"../../../unittest/testdata/os9 clusters mame.dmk\""
 
 /* What OS-9's free and dcheck said of a disk with 2-sector clusters. */
@@ -1276,6 +1438,11 @@ int main()
 	RUN(test_os9_dcheck_of_real_disk);
 	RUN(test_os9_ident_of_real_disk);
 	RUN(test_os9_dcheck_after_changing_real_disk);
+	RUN(test_os9_48_segments_read);
+	RUN(test_os9_48_segments_dcheck);
+	RUN(test_os9_48_segments_directory_dcheck);
+	RUN(test_os9_48_segments_cannot_grow);
+	RUN(test_os9_48_segments_delete);
 	RUN(test_os9_real_clusters);
 	RUN(test_os9_real_clusters_delete);
 	return TEST_REPORT();
