@@ -1678,6 +1678,1002 @@ void test_os9_bad_lsn0_on_tracks()
 	remove(OS9_IMAGE);
 }
 
+/*
+ * "os9 files mame.dmk" was made by OS-9 Level Two VR 02.00.01 under MAME's coco3,
+ * booted from OS9L2V2M.DSK with the clock set to 87/02/14 12:00:00.  Its format
+ * command formatted the disk as FILES, a 6809 module written for the purpose
+ * filled it through RBF, and DIRCMD is its CMDS/dir, copied after that.  The
+ * clock loses time during disk access, so the dates are as OS-9 wrote them.
+ *
+ * Except for TEXT, files hold seed + (lo(i) ^ hi(i)) at offset i.  ZIGA and ZIGB
+ * were written in turn, 2048 bytes at a time.  FULLSEGS and TEETH were written in
+ * turn a sector at a time, with PD.SAS set to 1 by SS.Opt, until RBF refused
+ * FULLSEGS a 48th segment with E$SLF.  TEETH was then deleted, and REFILL took
+ * 20 of the holes that left.  RBF refused the names 9LIVES and _LEAD with E$BPNam.
+ *
+ * What this expects of the directories, free space and DIRCMD is what its dir e,
+ * free and ident said.  Its dcheck said the file structure was intact.
+ */
+#define REAL_OS9 "../../../unittest/testdata/os9 files mame.dmk"
+#define REAL_OS9_COPY "test_real_os9.dmk"
+#define REAL_OS9_FREE 138
+#define REAL_OS9_LARGEST 114
+
+typedef struct
+{
+	const char *directory;
+	const char *name;
+	int lsn;
+	u_int size;
+	int attributes;
+	int owner;
+	int year, month, day, hour, minute;
+} real_os9_entry;
+
+static const real_os9_entry real_os9_entries[] = {
+	{ "", "EMPTY", 0xA, 0x0, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "ONEBYTE", 0xB, 0x1, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "S255", 0xD, 0xFF, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "S256", 0xF, 0x100, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "S257", 0x11, 0x101, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "LARGE", 0x14, 0x3A98, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "ZIGA", 0x50, 0x2800, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "ZIGB", 0x51, 0x2800, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "SHRUNK", 0xA2, 0x3E8, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "SPARSE", 0xA7, 0xC1C, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "TEXT", 0xB5, 0x589, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "ATTRALL", 0xBC, 0x12C, 0x3F, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "ATTRNONE", 0xBF, 0x12C, 0x00, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "ATTREXEC", 0xC2, 0x12C, 0x2D, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "READONLY", 0xC5, 0x12C, 0x09, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "A", 0xC8, 0x14, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "ABCDEFGHIJKLMNOPQRSTUVWXYZ123", 0xCA, 0x15, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "MixedCase", 0xCC, 0x17, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "file.with.dots", 0xCE, 0x18, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "under_score", 0xD0, 0x19, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "DEEP", 0xD2, 0x80, 0xBF, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "EMPTYDIR", 0x122, 0x40, 0xBF, 0x0000, 87, 2, 14, 12, 13 },
+	{ "", "DELS", 0x12B, 0xC0, 0xBF, 0x0000, 87, 2, 14, 12, 13 },
+	{ "", "ALLGONE", 0x135, 0x80, 0xBF, 0x0000, 87, 2, 14, 12, 14 },
+	{ "", "BIGDIR", 0x137, 0x900, 0xBF, 0x0000, 87, 2, 14, 12, 14 },
+	{ "", "FULLSEGS", 0x1A0, 0x2F00, 0x1B, 0x0000, 87, 2, 14, 12, 17 },
+	{ "", "REFILL", 0x1A1, 0x1400, 0x1B, 0x0000, 87, 2, 14, 12, 21 },
+	{ "", "OWNED", 0x1CB, 0x64, 0x1B, 0x0102, 87, 2, 14, 12, 22 },
+	{ "", "DIRCMD", 0x1CD, 0x36B, 0x2F, 0x0000, 87, 2, 13, 11, 11 },
+	{ "DEEP", "FILE", 0xEF, 0x200, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "DEEP", "L2", 0xF2, 0x80, 0xBF, 0x0000, 87, 2, 14, 12, 12 },
+	{ "DEEP/L2", "FILE", 0xFB, 0x200, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "DEEP/L2", "L3", 0xFE, 0x80, 0xBF, 0x0000, 87, 2, 14, 12, 13 },
+	{ "DEEP/L2/L3", "FILE", 0x107, 0x200, 0x1B, 0x0000, 87, 2, 14, 12, 13 },
+	{ "DEEP/L2/L3", "L4", 0x10A, 0x80, 0xBF, 0x0000, 87, 2, 14, 12, 13 },
+	{ "DEEP/L2/L3/L4", "FILE", 0x113, 0x200, 0x1B, 0x0000, 87, 2, 14, 12, 13 },
+	{ "DEEP/L2/L3/L4", "L5", 0x116, 0x60, 0xBF, 0x0000, 87, 2, 14, 12, 13 },
+	{ "DEEP/L2/L3/L4/L5", "FILE", 0x11F, 0x200, 0x1B, 0x0000, 87, 2, 14, 12, 13 },
+	{ "DELS", "REUSED", 0x134, 0x258, 0x1B, 0x0000, 87, 2, 14, 12, 13 },
+	{ "DELS", "AFTERGONE", 0x138, 0x258, 0x1B, 0x0000, 87, 2, 14, 12, 13 },
+	{ "DELS", "AFTERDEAD", 0x136, 0x258, 0x1B, 0x0000, 87, 2, 14, 12, 13 },
+};
+
+static const struct
+{
+	const char *pathlist;
+	int seed;
+	u_int size;
+	int segments;
+} real_os9_patterns[] = {
+	{ "EMPTY", 1, 0, 0 },
+	{ "ONEBYTE", 2, 1, 1 },
+	{ "S255", 3, 255, 1 },
+	{ "S256", 4, 256, 1 },
+	{ "S257", 5, 257, 1 },
+	{ "LARGE", 6, 15000, 1 },
+	{ "ATTRALL", 7, 300, 1 },
+	{ "ATTREXEC", 9, 300, 1 },
+	{ "READONLY", 10, 300, 1 },
+	{ "ZIGA", 11, 10240, 5 },
+	{ "ZIGB", 12, 10240, 5 },
+	{ "FULLSEGS", 13, 12032, 47 },
+	{ "REFILL", 15, 5120, 20 },
+	{ "A", 20, 20, 1 },
+	{ "ABCDEFGHIJKLMNOPQRSTUVWXYZ123", 21, 21, 1 },
+	{ "MixedCase", 23, 23, 1 },
+	{ "file.with.dots", 24, 24, 1 },
+	{ "under_score", 25, 25, 1 },
+	{ "OWNED", 37, 100, 1 },
+	{ "DEEP/FILE", 50, 512, 1 },
+	{ "DEEP/L2/FILE", 51, 512, 1 },
+	{ "DEEP/L2/L3/FILE", 52, 512, 1 },
+	{ "DEEP/L2/L3/L4/FILE", 53, 512, 1 },
+	{ "DEEP/L2/L3/L4/L5/FILE", 54, 512, 1 },
+	{ "DELS/REUSED", 32, 600, 1 },
+	{ "DELS/AFTERGONE", 31, 600, 1 },
+	{ "DELS/AFTERDEAD", 34, 600, 1 },
+};
+
+static u_char real_os9_byte(int seed, u_int offset)
+{
+	return (u_char) (seed + ((offset & 255) ^ (offset >> 8)));
+}
+
+static void real_os9_pathlist(char *pathlist, size_t size, const char *image, const char *directory, const char *name)
+{
+	int length = snprintf(pathlist, size, "%s,%s%s%s", image, directory, directory[0] != '\0' ? "/" : "", name);
+
+	ASSERT("the pathlist fits", length >= 0 && (size_t) length < size);
+}
+
+/* Read a whole file, as an empty one too. */
+static error_code real_os9_read(const char *image, const char *name, u_char *buffer, u_int capacity, u_int *size)
+{
+	char pathlist[128];
+	os9_path_id p;
+	error_code ec;
+
+	real_os9_pathlist(pathlist, sizeof(pathlist), image, "", name);
+	ec = _os9_open(&p, pathlist, FAM_READ);
+	if (ec != 0)
+	{
+		return ec;
+	}
+	*size = capacity;
+	ec = _os9_read(p, buffer, size);
+	if (ec == EOS_EOF)
+	{
+		*size = 0;
+		ec = 0;
+	}
+	_os9_close(p);
+
+	return ec;
+}
+
+/* The names in a directory, in slot order, with "" for a deleted entry. */
+static error_code real_os9_slots(const char *image, const char *directory, char names[][32], int capacity, int *count)
+{
+	char pathlist[128];
+	os9_path_id p;
+	error_code ec = 0;
+
+	real_os9_pathlist(pathlist, sizeof(pathlist), image, directory, "");
+	if (directory[0] != '\0')
+	{
+		pathlist[strlen(pathlist) - 1] = '\0';
+	}
+	else
+	{
+		strcat(pathlist, ".");
+	}
+	ec = _os9_open(&p, pathlist, FAM_DIR | FAM_READ);
+	if (ec != 0)
+	{
+		return ec;
+	}
+	*count = 0;
+	while (_os9_gs_eof(p) == 0 && *count < capacity)
+	{
+		os9_dir_entry entry;
+
+		ec = _os9_readdir(p, &entry);
+		if (ec != 0)
+		{
+			break;
+		}
+		memset(names[*count], 0, 32);
+		memcpy(names[*count], entry.name, 29);
+		OS9StringToCString((u_char *) names[*count]);
+		(*count)++;
+	}
+	_os9_close(p);
+
+	return ec;
+}
+
+static void check_real_free(const char *image, u_int expected_spc, u_int expected_free, u_int expected_largest)
+{
+	char dname[64];
+	u_int month, day, year, bps, total, bytes_free, free_sectors, largest, spc, largest_count, sector_count;
+
+	ASSERT_EC(0, TSRBFFree((char *) image, dname, &month, &day, &year, &bps, &total, &bytes_free, &free_sectors,
+			       &largest, &spc, &largest_count, &sector_count));
+	ASSERT_EQUALS(630, total);
+	ASSERT_EQUALS(expected_spc, spc);
+	ASSERT_EQUALS(expected_free, free_sectors);
+	if (expected_largest != 0)
+	{
+		ASSERT_EQUALS(expected_largest, largest);
+	}
+	ASSERT_EQUALS(expected_free * 256, bytes_free);
+}
+
+static void check_real_os9_free(const char *image, u_int expected_free, u_int expected_largest)
+{
+	check_real_free(image, 1, expected_free, expected_largest);
+}
+
+/* Every entry OS-9 listed, in its order, with no others. */
+static void check_real_entries(const char *image, const char *const *directories, size_t directory_count,
+			       const real_os9_entry *entries, size_t entry_count)
+{
+	static char names[80][32];
+	size_t d, e = 0;
+
+	for (d = 0; d < directory_count; d++)
+	{
+		int count = 0, slot;
+
+		ASSERT_EC(0, real_os9_slots(image, directories[d], names, 80, &count));
+		for (slot = 0; slot < count; slot++)
+		{
+			char pathlist[128];
+			fd_stats fd;
+
+			if (names[slot][0] == '\0' || strcmp(names[slot], ".") == 0 || strcmp(names[slot], "..") == 0)
+			{
+				continue;
+			}
+			ASSERT("no more entries than dir e showed", e < entry_count);
+			ASSERT_STRING_EQUALS(entries[e].directory, directories[d]);
+			ASSERT_STRING_EQUALS(entries[e].name, names[slot]);
+			real_os9_pathlist(pathlist, sizeof(pathlist), image, directories[d], names[slot]);
+			ASSERT_EC(0, _os9_gs_fd_pathlist(pathlist, sizeof(fd), &fd));
+			ASSERT_EQUALS(entries[e].size, int4(fd.fd_siz));
+			ASSERT_EQUALS(entries[e].attributes, fd.fd_att);
+			ASSERT_EQUALS(entries[e].owner, int2(fd.fd_own));
+			ASSERT_EQUALS(entries[e].year, fd.fd_dat[0]);
+			ASSERT_EQUALS(entries[e].month, fd.fd_dat[1]);
+			ASSERT_EQUALS(entries[e].day, fd.fd_dat[2]);
+			ASSERT_EQUALS(entries[e].hour, fd.fd_dat[3]);
+			ASSERT_EQUALS(entries[e].minute, fd.fd_dat[4]);
+			e++;
+		}
+	}
+	ASSERT_EQUALS(entry_count, e);
+}
+
+static void check_real_os9_entries(const char *image)
+{
+	static const char *const directories[] = {
+		"", "DEEP", "DEEP/L2", "DEEP/L2/L3", "DEEP/L2/L3/L4", "DEEP/L2/L3/L4/L5", "DELS"
+	};
+
+	check_real_entries(image, directories, sizeof(directories) / sizeof(directories[0]),
+			   real_os9_entries, sizeof(real_os9_entries) / sizeof(real_os9_entries[0]));
+}
+
+static void check_real_os9_contents(const char *image)
+{
+	static u_char data[20000];
+	size_t f;
+	u_int size, i;
+
+	for (f = 0; f < sizeof(real_os9_patterns) / sizeof(real_os9_patterns[0]); f++)
+	{
+		char pathlist[128];
+		fd_stats fd;
+		int segments = 0;
+
+		ASSERT_EC(0, real_os9_read(image, real_os9_patterns[f].pathlist, data, sizeof(data), &size));
+		ASSERT_EQUALS(real_os9_patterns[f].size, size);
+		for (i = 0; i < size; i++)
+		{
+			ASSERT_EQUALS(real_os9_byte(real_os9_patterns[f].seed, i), data[i]);
+		}
+		real_os9_pathlist(pathlist, sizeof(pathlist), image, "", real_os9_patterns[f].pathlist);
+		ASSERT_EC(0, _os9_gs_fd_pathlist(pathlist, sizeof(fd), &fd));
+		while (segments < NUM_SEGS && int3(fd.fd_seg[segments].lsn) != 0)
+		{
+			segments++;
+		}
+		ASSERT_EQUALS(real_os9_patterns[f].segments, segments);
+	}
+
+	/* RBF allocated every sector up to the seek, and left the gap alone. */
+	ASSERT_EC(0, real_os9_read(image, "SPARSE", data, sizeof(data), &size));
+	ASSERT_EQUALS(3100, size);
+	for (i = 3000; i < size; i++)
+	{
+		ASSERT_EQUALS(real_os9_byte(17, i), data[i]);
+	}
+
+	/* Cut to 1000 bytes while open, and RBF then flushed the sector it was
+	   holding for offset 3840 over the last one kept.  This is what it did. */
+	ASSERT_EC(0, real_os9_read(image, "SHRUNK", data, sizeof(data), &size));
+	ASSERT_EQUALS(1000, size);
+	for (i = 0; i < 768; i++)
+	{
+		ASSERT_EQUALS(real_os9_byte(16, i), data[i]);
+	}
+	for (i = 0; i < 160; i++)
+	{
+		ASSERT_EQUALS(real_os9_byte(16, 3840 + i), data[768 + i]);
+	}
+}
+
+/* Copy every sector into a new image of another format. */
+static void copy_real_disk(const char *source, diskimage_format format, const char *pathname)
+{
+	diskimage_id from, to;
+	u_char sector[256];
+	int cylinder, s;
+
+	remove(pathname);
+	ASSERT_EC(0, _diskimage_create(pathname, format, 1, 35, 256, 18, 0, 0, 0xFF));
+	ASSERT_EC(0, _diskimage_open(&from, source, FAM_READ));
+	ASSERT_EC(0, _diskimage_open(&to, pathname, FAM_READ | FAM_WRITE));
+	for (cylinder = 0; cylinder < 35; cylinder++)
+	{
+		for (s = 1; s <= 18; s++)
+		{
+			u_int size = sizeof(sector);
+
+			ASSERT_EC(0, _diskimage_read_sector(from, cylinder, 0, s, sector, &size));
+			ASSERT_EQUALS(256, size);
+			ASSERT_EC(0, _diskimage_write_sector(to, cylinder, 0, s, sector, size));
+		}
+	}
+	ASSERT_EC(0, _diskimage_close(from));
+	ASSERT_EC(0, _diskimage_close(to));
+}
+
+void test_real_os9_is_recognized()
+{
+	u_int filesystems = 0;
+	_path_type type;
+	os9_path_id p;
+
+	ASSERT_EC(0, _coco_detect_filesystems(REAL_OS9, &filesystems));
+	ASSERT_EQUALS(COCO_FS_OS9, filesystems);
+	ASSERT_EC(0, _coco_identify_image(REAL_OS9 ",", &type));
+	ASSERT_EQUALS(OS9, type);
+
+	ASSERT_EC(0, _os9_open(&p, REAL_OS9 ",@", FAM_READ));
+	ASSERT_EQUALS(630, int3(p->lsn0->dd_tot));
+	ASSERT_EQUALS(18, int1(p->lsn0->dd_tks));
+	ASSERT_EQUALS(79, int2(p->lsn0->dd_map));
+	ASSERT_EQUALS(1, int2(p->lsn0->dd_bit));
+	ASSERT_EQUALS(2, int3(p->lsn0->dd_dir));
+	ASSERT_EQUALS(87, p->lsn0->dd_dat[0]);
+	ASSERT_EQUALS(2, p->lsn0->dd_dat[1]);
+	ASSERT_EQUALS(14, p->lsn0->dd_dat[2]);
+	ASSERT_MEM_EQUALS("FILE\xD3", p->lsn0->dd_nam, 5);
+	ASSERT_EC(0, _os9_close(p));
+}
+
+void test_real_os9_directories_match_the_machine()
+{
+	static char names[80][32];
+	char name[8];
+	int count = 0, i;
+
+	check_real_os9_entries(REAL_OS9);
+
+	/* A slot freed and reused, then one freed and left. */
+	ASSERT_EC(0, real_os9_slots(REAL_OS9, "DELS", names, 80, &count));
+	ASSERT_EQUALS(6, count);
+	ASSERT_STRING_EQUALS("..", names[0]);
+	ASSERT_STRING_EQUALS(".", names[1]);
+	ASSERT_STRING_EQUALS("REUSED", names[2]);
+	ASSERT_STRING_EQUALS("AFTERGONE", names[3]);
+	ASSERT_STRING_EQUALS("", names[4]);
+	ASSERT_STRING_EQUALS("AFTERDEAD", names[5]);
+
+	/* Only deleted entries, and none. */
+	ASSERT_EC(0, real_os9_slots(REAL_OS9, "ALLGONE", names, 80, &count));
+	ASSERT_EQUALS(4, count);
+	ASSERT_STRING_EQUALS("", names[2]);
+	ASSERT_STRING_EQUALS("", names[3]);
+	ASSERT_EC(0, real_os9_slots(REAL_OS9, "EMPTYDIR", names, 80, &count));
+	ASSERT_EQUALS(2, count);
+
+	/* More entries than the first segment of a directory holds. */
+	ASSERT_EC(0, real_os9_slots(REAL_OS9, "BIGDIR", names, 80, &count));
+	ASSERT_EQUALS(72, count);
+	for (i = 0; i < 70; i++)
+	{
+		snprintf(name, sizeof(name), "F%02d", i);
+		ASSERT_STRING_EQUALS(name, names[i + 2]);
+	}
+}
+
+void test_real_os9_free_matches_the_machine()
+{
+	check_real_os9_free(REAL_OS9, REAL_OS9_FREE, REAL_OS9_LARGEST);
+}
+
+void test_real_os9_files_match_their_patterns()
+{
+	check_real_os9_contents(REAL_OS9);
+}
+
+/* Reads in small pieces and seeks go across segments. */
+void test_real_os9_reads_across_segments()
+{
+	static u_char data[13000];
+	os9_path_id p;
+	u_int total = 0, size, i;
+	fd_stats fd;
+	int s;
+	error_code ec;
+
+	ASSERT_EC(0, _os9_open(&p, REAL_OS9 ",FULLSEGS", FAM_READ));
+	for (;;)
+	{
+		size = 37;
+		ec = _os9_read(p, data + total, &size);
+		if (ec != 0)
+		{
+			break;
+		}
+		total += size;
+	}
+	ASSERT_EQUALS(EOS_EOF, ec);
+	ASSERT_EQUALS(12032, total);
+	for (i = 0; i < total; i++)
+	{
+		ASSERT_EQUALS(real_os9_byte(13, i), data[i]);
+	}
+
+	/* Each segment is a sector, and two bytes straddle each pair of them. */
+	ASSERT_EC(0, _os9_gs_fd(p, sizeof(fd), &fd));
+	for (s = 1; s < 47; s++)
+	{
+		ASSERT_EQUALS(1, int2(fd.fd_seg[s].num));
+		ASSERT_EC(0, _os9_seek(p, s * 256 - 1, SEEK_SET));
+		size = 2;
+		ASSERT_EC(0, _os9_read(p, data, &size));
+		ASSERT_EQUALS(2, size);
+		ASSERT_EQUALS(real_os9_byte(13, s * 256 - 1), data[0]);
+		ASSERT_EQUALS(real_os9_byte(13, s * 256), data[1]);
+	}
+	ASSERT_EC(0, _os9_close(p));
+	ASSERT_EQUALS(0, int3(fd.fd_seg[47].lsn));
+}
+
+void test_real_os9_reads_lines()
+{
+	static const u_int lengths[] = { 0, 1, 2, 80, 254, 255, 256, 257, 300 };
+	char line[400];
+	os9_path_id p;
+	u_int size;
+	size_t l;
+
+	ASSERT_EC(0, _os9_open(&p, REAL_OS9 ",TEXT", FAM_READ));
+	for (l = 0; l < sizeof(lengths) / sizeof(lengths[0]); l++)
+	{
+		u_int i;
+
+		size = sizeof(line);
+		ASSERT_EC(0, _os9_readln(p, line, &size));
+		ASSERT_EQUALS(lengths[l] + 1, size);
+		for (i = 0; i < lengths[l]; i++)
+		{
+			ASSERT_EQUALS('A' + (int) l, line[i]);
+		}
+		ASSERT_EQUALS('\r', line[lengths[l]]);
+	}
+
+	/* The last line has no CR. */
+	size = sizeof(line);
+	ASSERT_EC(0, _os9_readln(p, line, &size));
+	ASSERT_EQUALS(3, size);
+	ASSERT_MEM_EQUALS("END", line, 3);
+	size = sizeof(line);
+	ASSERT_EC(EOS_EOF, _os9_readln(p, line, &size));
+	ASSERT_EC(0, _os9_close(p));
+}
+
+/* OS-9's name search ignores case: "list /d1/mixedcase" found it. */
+void test_real_os9_names_ignore_case()
+{
+	os9_path_id p;
+
+	ASSERT_EC(0, _os9_open(&p, REAL_OS9 ",mixedcase", FAM_READ));
+	ASSERT_EC(0, _os9_close(p));
+	ASSERT_EC(0, _os9_open(&p, REAL_OS9 ",MIXEDCASE", FAM_READ));
+	ASSERT_EC(0, _os9_close(p));
+	ASSERT_EC(0, _os9_open(&p, REAL_OS9 ",deep/l2/FILE", FAM_READ));
+	ASSERT_EC(0, _os9_close(p));
+}
+
+void test_real_os9_permissions()
+{
+	char pathlist[] = REAL_OS9 ",ATTRNONE";
+	os9_path_id p;
+	fd_stats fd;
+
+	/* The file descriptor of a file nobody can read can still be read. */
+	ASSERT_EC(EOS_FNA, _os9_open(&p, REAL_OS9 ",ATTRNONE", FAM_READ));
+	ASSERT_EC(0, _os9_gs_fd_pathlist(pathlist, sizeof(fd), &fd));
+	ASSERT_EQUALS(0, fd.fd_att);
+	ASSERT_EQUALS(300, int4(fd.fd_siz));
+
+	ASSERT_EC(EOS_FNA, _os9_open(&p, REAL_OS9 ",READONLY", FAM_WRITE));
+	ASSERT_EC(0, _os9_open(&p, REAL_OS9 ",READONLY", FAM_READ));
+	ASSERT_EC(0, _os9_close(p));
+}
+
+/* Change a copy, and what was not changed stays as it was. */
+void test_real_os9_delete()
+{
+	static char names[80][32];
+	static u_char data[20000];
+	os9_path_id p;
+	u_int size, i;
+	int count = 0;
+
+	copy_file(REAL_OS9, REAL_OS9_COPY);
+
+	/* OS-9 reported these two numbers after del /d1/ONEBYTE. */
+	ASSERT_EC(0, _os9_delete(REAL_OS9_COPY ",ONEBYTE"));
+	check_real_os9_free(REAL_OS9_COPY, 140, 114);
+
+	/* Its 47 segments and its file descriptor go back. */
+	ASSERT_EC(0, _os9_delete(REAL_OS9_COPY ",FULLSEGS"));
+	check_real_os9_free(REAL_OS9_COPY, 188, 0);
+	ASSERT_EC(EOS_PNNF, _os9_open(&p, REAL_OS9_COPY ",FULLSEGS", FAM_READ));
+	ASSERT_EC(0, real_os9_read(REAL_OS9_COPY, "REFILL", data, sizeof(data), &size));
+	ASSERT_EQUALS(5120, size);
+	for (i = 0; i < size; i++)
+	{
+		ASSERT_EQUALS(real_os9_byte(15, i), data[i]);
+	}
+
+	/* A new file takes the first slot that is free. */
+	ASSERT_EC(0, _os9_create(&p, REAL_OS9_COPY ",DELS/NEW", FAM_WRITE, FAP_READ | FAP_WRITE));
+	ASSERT_EC(0, _os9_close(p));
+	ASSERT_EC(0, real_os9_slots(REAL_OS9_COPY, "DELS", names, 80, &count));
+	ASSERT_EQUALS(6, count);
+	ASSERT_STRING_EQUALS("NEW", names[4]);
+	ASSERT_STRING_EQUALS("AFTERDEAD", names[5]);
+	remove(REAL_OS9_COPY);
+}
+
+void test_real_os9_rename_and_makdir()
+{
+	static char names[80][32];
+	static u_char data[1000];
+	u_int size;
+	int count = 0;
+
+	copy_file(REAL_OS9, REAL_OS9_COPY);
+	ASSERT_EC(0, _os9_rename(REAL_OS9_COPY ",S256", "RENAMED"));
+	ASSERT_EC(0, real_os9_read(REAL_OS9_COPY, "RENAMED", data, sizeof(data), &size));
+	ASSERT_EQUALS(256, size);
+	ASSERT_EQUALS(real_os9_byte(4, 255), data[255]);
+
+	ASSERT_EC(0, _os9_makdir(REAL_OS9_COPY ",DEEP/L2/NEWDIR"));
+	ASSERT_EC(0, real_os9_slots(REAL_OS9_COPY, "DEEP/L2/NEWDIR", names, 80, &count));
+	ASSERT_EQUALS(2, count);
+	remove(REAL_OS9_COPY);
+}
+
+/* A file with room to grow keeps what it had, and takes sectors from the holes. */
+void test_real_os9_extend_and_truncate()
+{
+	static u_char more[1000], data[20000];
+	os9_path_id p;
+	u_int size, i;
+
+	memset(more, 0x5A, sizeof(more));
+	copy_file(REAL_OS9, REAL_OS9_COPY);
+	ASSERT_EC(0, _os9_open(&p, REAL_OS9_COPY ",ZIGA", FAM_READ | FAM_WRITE));
+	ASSERT_EC(0, _os9_seek(p, 10240, SEEK_SET));
+	size = sizeof(more);
+	ASSERT_EC(0, _os9_write(p, more, &size));
+	ASSERT_EC(0, _os9_close(p));
+	ASSERT_EC(0, real_os9_read(REAL_OS9_COPY, "ZIGA", data, sizeof(data), &size));
+	ASSERT_EQUALS(11240, size);
+	for (i = 0; i < 10240; i++)
+	{
+		ASSERT_EQUALS(real_os9_byte(11, i), data[i]);
+	}
+	ASSERT_MEM_EQUALS(more, data + 10240, sizeof(more));
+	ASSERT_EC(0, real_os9_read(REAL_OS9_COPY, "ZIGB", data, sizeof(data), &size));
+	for (i = 0; i < size; i++)
+	{
+		ASSERT_EQUALS(real_os9_byte(12, i), data[i]);
+	}
+
+	/* Cutting a fragmented file frees its last sectors. */
+	ASSERT_EC(0, _os9_open(&p, REAL_OS9_COPY ",REFILL", FAM_READ | FAM_WRITE));
+	ASSERT_EC(0, _os9_ss_size(p, 1000));
+	ASSERT_EC(0, _os9_close(p));
+	ASSERT_EC(0, real_os9_read(REAL_OS9_COPY, "REFILL", data, sizeof(data), &size));
+	ASSERT_EQUALS(1000, size);
+	for (i = 0; i < size; i++)
+	{
+		ASSERT_EQUALS(real_os9_byte(15, i), data[i]);
+	}
+	remove(REAL_OS9_COPY);
+}
+
+/* RBF stopped this file at 47 segments with E$SLF, so nothing may add a 48th. */
+void test_real_os9_segment_list_is_full()
+{
+	static u_char sector[256], data[13000];
+	u_int size, i;
+	os9_path_id p;
+	fd_stats fd;
+	char pathlist[] = REAL_OS9_COPY ",FULLSEGS";
+
+	copy_file(REAL_OS9, REAL_OS9_COPY);
+	ASSERT_EC(0, _os9_open(&p, REAL_OS9_COPY ",FULLSEGS", FAM_READ | FAM_WRITE));
+	ASSERT_EC(0, _os9_seek(p, 12032, SEEK_SET));
+	size = sizeof(sector);
+	ASSERT_EC(EOS_SF, _os9_write(p, sector, &size));
+	ASSERT_EC(0, _os9_close(p));
+
+	ASSERT_EC(0, _os9_gs_fd_pathlist(pathlist, sizeof(fd), &fd));
+	ASSERT_EQUALS(0, int3(fd.fd_seg[47].lsn));
+	ASSERT_EC(0, real_os9_read(REAL_OS9_COPY, "FULLSEGS", data, sizeof(data), &size));
+	ASSERT_EQUALS(12032, size);
+	for (i = 0; i < size; i++)
+	{
+		ASSERT_EQUALS(real_os9_byte(13, i), data[i]);
+	}
+	remove(REAL_OS9_COPY);
+}
+
+/* The same disk in the other formats reads the same. */
+void test_real_os9_all_formats()
+{
+	static const struct
+	{
+		diskimage_format format;
+		const char *pathname;
+	} formats[] = {
+		{ DISKIMAGE_RAW, "test_real_os9.dsk" },
+		{ DISKIMAGE_DMK, "test_real_os9_copy.dmk" },
+		{ DISKIMAGE_SDF, "test_real_os9.sdf" },
+		{ DISKIMAGE_VDK, "test_real_os9.vdk" },
+	};
+	size_t f;
+
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+	{
+		copy_real_disk(REAL_OS9, formats[f].format, formats[f].pathname);
+		check_real_os9_entries(formats[f].pathname);
+		check_real_os9_contents(formats[f].pathname);
+		check_real_os9_free(formats[f].pathname, REAL_OS9_FREE, REAL_OS9_LARGEST);
+		remove(formats[f].pathname);
+	}
+}
+
+/*
+ * "os9 clusters mame.dmk" has 2-sector clusters, and was made the same way by the
+ * same OS-9, booted from a copy of OS9L2V2M.DSK.  That disk's format, edition 22,
+ * ignores /2/ on its command line, so the copy had the byte at offset $17E of
+ * CMDS/format changed from 1 to 2, its default cluster size, and its CRC redone.
+ * Nothing else was changed, and RBF wrote all the files.  They were written by a
+ * 6809 module written for the purpose, and hold the same pattern.
+ *
+ * ZIGA and ZIGB were written in turn, 2048 bytes at a time.  ODDA and ODDB were
+ * written in turn, 300 bytes at a time, and COMB and TEETH 512 bytes at a time,
+ * all with PD.SAS set to 1.  TEETH was then deleted, and REFILL took 4 of the
+ * holes.  UNCUT is as written, and CUT* were written alike, closed, opened again
+ * and cut with SS.Size.
+ *
+ * RBF starts a file's first segment in the second sector of the cluster that
+ * holds its file descriptor, and ends every segment at the end of a cluster.  So
+ * a first segment is an odd number of sectors, and even an empty file has one.
+ *
+ * What this expects is what its dir e and free said, and dcheck said the file
+ * structure was intact.  What it expects of deleting files is what free said on
+ * a copy after del of each of EMPTY, UNCUT, COMB, ODDA and CUT1100, in that order.
+ */
+#define REAL_CLUSTERS "../../../unittest/testdata/os9 clusters mame.dmk"
+#define REAL_CLUSTERS_COPY "test_real_clusters.dmk"
+#define REAL_CLUSTERS_FREE 226
+#define REAL_CLUSTERS_LARGEST 214
+
+static const real_os9_entry real_clusters_entries[] = {
+	{ "", "EMPTY", 0xA, 0x0, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "ONEBYTE", 0xC, 0x1, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "S256", 0xE, 0x100, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "S257", 0x10, 0x101, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "S512", 0x14, 0x200, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "S513", 0x18, 0x201, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "LARGE", 0x1C, 0x1770, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "UNCUT", 0x36, 0xBB8, 0x1B, 0x0000, 87, 2, 14, 12, 11 },
+	{ "", "CUT1100", 0x44, 0x44C, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "CUT1024", 0x52, 0x400, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "CUT1", 0x60, 0x1, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "CUT0", 0x6E, 0x0, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "ZIGA", 0x4A, 0x1800, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "ZIGB", 0x4C, 0x1800, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "ODDA", 0x4E, 0x4B0, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "ODDB", 0x50, 0x4B0, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "SUB", 0x94, 0x80, 0xBF, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "DELS", 0x15C, 0xC0, 0xBF, 0x0000, 87, 2, 14, 12, 12 },
+	{ "", "COMB", 0x160, 0x1800, 0x1B, 0x0000, 87, 2, 14, 12, 13 },
+	{ "", "REFILL", 0x168, 0x800, 0x1B, 0x0000, 87, 2, 14, 12, 14 },
+	{ "", "DIRCMD", 0x180, 0x36B, 0x2F, 0x0000, 87, 2, 13, 11, 11 },
+	{ "SUB", "FILE", 0x96, 0x2BC, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "SUB", "DEEP", 0x9A, 0x60, 0xBF, 0x0000, 87, 2, 14, 12, 12 },
+	{ "SUB/DEEP", "FILE", 0x158, 0x2BC, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "DELS", "REUSED", 0x15E, 0x258, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "DELS", "AFTERGONE", 0x162, 0x258, 0x1B, 0x0000, 87, 2, 14, 12, 12 },
+	{ "DELS", "AFTERDEAD", 0x16A, 0x258, 0x1B, 0x0000, 87, 2, 14, 12, 13 },
+};
+
+static const struct
+{
+	const char *pathlist;
+	int seed;
+	u_int size;
+	int segments;
+	int sectors[16];
+} real_clusters_files[] = {
+	{ "EMPTY", 1, 0, 1, { 1 } },
+	{ "ONEBYTE", 2, 1, 1, { 1 } },
+	{ "S256", 3, 256, 1, { 1 } },
+	{ "S257", 4, 257, 1, { 3 } },
+	{ "S512", 5, 512, 1, { 3 } },
+	{ "S513", 6, 513, 1, { 3 } },
+	{ "LARGE", 7, 6000, 1, { 25 } },
+	{ "UNCUT", 16, 3000, 1, { 13 } },
+	{ "CUT1100", 16, 1100, 1, { 5 } },
+	{ "CUT1024", 16, 1024, 1, { 5 } },
+	{ "CUT1", 16, 1, 1, { 1 } },
+	{ "CUT0", 16, 0, 1, { 1 } },
+	{ "ZIGA", 11, 6144, 4, { 1, 8, 8, 8 } },
+	{ "ZIGB", 12, 6144, 4, { 1, 8, 8, 8 } },
+	{ "ODDA", 13, 1200, 3, { 1, 2, 2 } },
+	{ "ODDB", 14, 1200, 3, { 1, 2, 2 } },
+	{ "COMB", 15, 6144, 13, { 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 } },
+	{ "REFILL", 18, 2048, 5, { 1, 2, 2, 2, 2 } },
+	{ "SUB/FILE", 20, 700, 1, { 3 } },
+	{ "SUB/DEEP/FILE", 21, 700, 1, { 3 } },
+	{ "DELS/REUSED", 32, 600, 2, { 1, 2 } },
+	{ "DELS/AFTERGONE", 31, 600, 1, { 3 } },
+	{ "DELS/AFTERDEAD", 34, 600, 1, { 3 } },
+};
+
+void test_real_clusters_is_recognized()
+{
+	u_int filesystems = 0;
+	os9_path_id p;
+
+	ASSERT_EC(0, _coco_detect_filesystems(REAL_CLUSTERS, &filesystems));
+	ASSERT_EQUALS(COCO_FS_OS9, filesystems);
+
+	ASSERT_EC(0, _os9_open(&p, REAL_CLUSTERS ",@", FAM_READ));
+	ASSERT_EQUALS(630, int3(p->lsn0->dd_tot));
+	ASSERT_EQUALS(40, int2(p->lsn0->dd_map));
+	ASSERT_EQUALS(2, int2(p->lsn0->dd_bit));
+	ASSERT_EQUALS(2, int3(p->lsn0->dd_dir));
+	ASSERT_EQUALS(2, p->spc);
+	ASSERT_EQUALS(512, p->cs);
+	ASSERT_MEM_EQUALS("CLUSTER\xB2", p->lsn0->dd_nam, 8);
+	ASSERT_EC(0, _os9_close(p));
+}
+
+static void check_real_clusters_entries(const char *image)
+{
+	static const char *const directories[] = { "", "SUB", "SUB/DEEP", "DELS" };
+
+	check_real_entries(image, directories, sizeof(directories) / sizeof(directories[0]),
+			   real_clusters_entries, sizeof(real_clusters_entries) / sizeof(real_clusters_entries[0]));
+}
+
+void test_real_clusters_directories_match_the_machine()
+{
+	static char names[80][32];
+	int count = 0;
+
+	check_real_clusters_entries(REAL_CLUSTERS);
+
+	ASSERT_EC(0, real_os9_slots(REAL_CLUSTERS, "DELS", names, 80, &count));
+	ASSERT_EQUALS(6, count);
+	ASSERT_STRING_EQUALS("REUSED", names[2]);
+	ASSERT_STRING_EQUALS("AFTERGONE", names[3]);
+	ASSERT_STRING_EQUALS("", names[4]);
+	ASSERT_STRING_EQUALS("AFTERDEAD", names[5]);
+}
+
+void test_real_clusters_free_matches_the_machine()
+{
+	check_real_free(REAL_CLUSTERS, 2, REAL_CLUSTERS_FREE, REAL_CLUSTERS_LARGEST);
+}
+
+static void check_real_clusters_files(const char *image)
+{
+	static u_char data[20000];
+	size_t f;
+
+	for (f = 0; f < sizeof(real_clusters_files) / sizeof(real_clusters_files[0]); f++)
+	{
+		char pathlist[128];
+		fd_stats fd;
+		u_int size, i;
+		int s;
+
+		ASSERT_EC(0, real_os9_read(image, real_clusters_files[f].pathlist, data, sizeof(data), &size));
+		ASSERT_EQUALS(real_clusters_files[f].size, size);
+		for (i = 0; i < size; i++)
+		{
+			ASSERT_EQUALS(real_os9_byte(real_clusters_files[f].seed, i), data[i]);
+		}
+
+		real_os9_pathlist(pathlist, sizeof(pathlist), image, "", real_clusters_files[f].pathlist);
+		ASSERT_EC(0, _os9_gs_fd_pathlist(pathlist, sizeof(fd), &fd));
+		for (s = 0; s < real_clusters_files[f].segments; s++)
+		{
+			ASSERT_NEQUALS(0, int3(fd.fd_seg[s].lsn));
+			ASSERT_EQUALS(real_clusters_files[f].sectors[s], int2(fd.fd_seg[s].num));
+			/* Every segment ends at the end of a cluster. */
+			ASSERT_EQUALS(0, (int3(fd.fd_seg[s].lsn) + int2(fd.fd_seg[s].num)) % 2);
+		}
+		ASSERT_EQUALS(0, int3(fd.fd_seg[s].lsn));
+	}
+}
+
+void test_real_clusters_files_match_the_machine()
+{
+	check_real_clusters_files(REAL_CLUSTERS);
+}
+
+/* The two bytes at each end of a segment are where sector arithmetic goes wrong. */
+void test_real_clusters_reads_across_segments()
+{
+	u_char data[2];
+	os9_path_id p;
+	fd_stats fd;
+	u_int position = 0, size;
+	int s;
+
+	ASSERT_EC(0, _os9_open(&p, REAL_CLUSTERS ",COMB", FAM_READ));
+	ASSERT_EC(0, _os9_gs_fd(p, sizeof(fd), &fd));
+	for (s = 0; int3(fd.fd_seg[s + 1].lsn) != 0; s++)
+	{
+		position += int2(fd.fd_seg[s].num) * 256;
+		ASSERT_EC(0, _os9_seek(p, position - 1, SEEK_SET));
+		size = sizeof(data);
+		ASSERT_EC(0, _os9_read(p, data, &size));
+		ASSERT_EQUALS(2, size);
+		ASSERT_EQUALS(real_os9_byte(15, position - 1), data[0]);
+		ASSERT_EQUALS(real_os9_byte(15, position), data[1]);
+	}
+	ASSERT_EC(0, _os9_close(p));
+}
+
+/* Each step leaves what OS-9's free said after the same del. */
+void test_real_clusters_delete_matches_the_machine()
+{
+	static const struct
+	{
+		const char *pathlist;
+		u_int free;
+	} steps[] = {
+		{ REAL_CLUSTERS_COPY ",EMPTY", 228 },
+		{ REAL_CLUSTERS_COPY ",UNCUT", 242 },
+		{ REAL_CLUSTERS_COPY ",COMB", 268 },
+		{ REAL_CLUSTERS_COPY ",ODDA", 274 },
+		{ REAL_CLUSTERS_COPY ",CUT1100", 280 },
+	};
+	size_t i;
+
+	copy_file(REAL_CLUSTERS, REAL_CLUSTERS_COPY);
+	for (i = 0; i < sizeof(steps) / sizeof(steps[0]); i++)
+	{
+		ASSERT_EC(0, _os9_delete((char *) steps[i].pathlist));
+		check_real_free(REAL_CLUSTERS_COPY, 2, steps[i].free, REAL_CLUSTERS_LARGEST);
+	}
+	remove(REAL_CLUSTERS_COPY);
+}
+
+/* UNCUT cut to each size has the segment and frees the sectors that RBF's did. */
+void test_real_clusters_truncate_matches_the_machine()
+{
+	static const struct
+	{
+		int size;
+		int sectors;
+	} cuts[] = {
+		{ 1100, 5 },
+		{ 1024, 5 },
+		{ 1, 1 },
+		{ 0, 1 },
+	};
+	static u_char data[4000];
+	size_t c;
+
+	for (c = 0; c < sizeof(cuts) / sizeof(cuts[0]); c++)
+	{
+		char pathlist[] = REAL_CLUSTERS_COPY ",UNCUT";
+		os9_path_id p;
+		fd_stats fd;
+		u_int size;
+		int i;
+
+		copy_file(REAL_CLUSTERS, REAL_CLUSTERS_COPY);
+		ASSERT_EC(0, _os9_open(&p, pathlist, FAM_READ | FAM_WRITE));
+		ASSERT_EC(0, _os9_ss_size(p, cuts[c].size));
+		ASSERT_EC(0, _os9_close(p));
+
+		ASSERT_EC(0, _os9_gs_fd_pathlist(pathlist, sizeof(fd), &fd));
+		ASSERT_EQUALS(cuts[c].size, int4(fd.fd_siz));
+		ASSERT_EQUALS(cuts[c].sectors, int2(fd.fd_seg[0].num));
+		check_real_free(REAL_CLUSTERS_COPY, 2, REAL_CLUSTERS_FREE + 13 - cuts[c].sectors, REAL_CLUSTERS_LARGEST);
+
+		ASSERT_EC(0, real_os9_read(REAL_CLUSTERS_COPY, "UNCUT", data, sizeof(data), &size));
+		ASSERT_EQUALS(cuts[c].size, size);
+		for (i = 0; i < cuts[c].size; i++)
+		{
+			ASSERT_EQUALS(real_os9_byte(16, i), data[i]);
+		}
+	}
+	remove(REAL_CLUSTERS_COPY);
+}
+
+/* A segment ends at the end of a cluster, whatever sector it started on. */
+void test_real_clusters_extend()
+{
+	static u_char more[2000], data[4000];
+	char pathlist[] = REAL_CLUSTERS_COPY ",ONEBYTE";
+	os9_path_id p;
+	fd_stats fd;
+	u_int size, i;
+	int s, sectors = 0;
+
+	memset(more, 0x5A, sizeof(more));
+	copy_file(REAL_CLUSTERS, REAL_CLUSTERS_COPY);
+
+	ASSERT_EC(0, _os9_open(&p, pathlist, FAM_READ | FAM_WRITE));
+	ASSERT_EC(0, _os9_seek(p, 1, SEEK_SET));
+	size = sizeof(more);
+	ASSERT_EC(0, _os9_write(p, more, &size));
+	ASSERT_EQUALS(sizeof(more), size);
+	ASSERT_EC(0, _os9_close(p));
+
+	ASSERT_EC(0, real_os9_read(REAL_CLUSTERS_COPY, "ONEBYTE", data, sizeof(data), &size));
+	ASSERT_EQUALS(2001, size);
+	ASSERT_EQUALS(real_os9_byte(2, 0), data[0]);
+	ASSERT_MEM_EQUALS(more, data + 1, sizeof(more));
+
+	ASSERT_EC(0, _os9_gs_fd_pathlist(pathlist, sizeof(fd), &fd));
+	for (s = 0; s < NUM_SEGS && int3(fd.fd_seg[s].lsn) != 0; s++)
+	{
+		ASSERT_EQUALS(0, (int3(fd.fd_seg[s].lsn) + int2(fd.fd_seg[s].num)) % 2);
+		sectors += int2(fd.fd_seg[s].num);
+	}
+	ASSERT("room for what it holds", sectors * 256 >= 2001);
+
+	/* What the file took came from the free clusters, and nothing else moved. */
+	check_real_free(REAL_CLUSTERS_COPY, 2, REAL_CLUSTERS_FREE - (sectors - 1), 0);
+	ASSERT_EC(0, real_os9_read(REAL_CLUSTERS_COPY, "S256", data, sizeof(data), &size));
+	ASSERT_EQUALS(256, size);
+	for (i = 0; i < size; i++)
+	{
+		ASSERT_EQUALS(real_os9_byte(3, i), data[i]);
+	}
+	remove(REAL_CLUSTERS_COPY);
+}
+
+/* The same disk in the other formats reads the same. */
+void test_real_clusters_all_formats()
+{
+	static const struct
+	{
+		diskimage_format format;
+		const char *pathname;
+	} formats[] = {
+		{ DISKIMAGE_RAW, "test_real_clusters.dsk" },
+		{ DISKIMAGE_SDF, "test_real_clusters.sdf" },
+		{ DISKIMAGE_VDK, "test_real_clusters.vdk" },
+	};
+	size_t f;
+
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+	{
+		copy_real_disk(REAL_CLUSTERS, formats[f].format, formats[f].pathname);
+		check_real_clusters_entries(formats[f].pathname);
+		check_real_clusters_files(formats[f].pathname);
+		check_real_free(formats[f].pathname, 2, REAL_CLUSTERS_FREE, REAL_CLUSTERS_LARGEST);
+		remove(formats[f].pathname);
+	}
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -1715,5 +2711,29 @@ int main()
 	RUN(test_os9_round_trip_all_formats);
 	RUN(test_os9_write_protect_all_formats);
 	RUN(test_os9_bad_lsn0_on_tracks);
+
+	RUN(test_real_os9_is_recognized);
+	RUN(test_real_os9_directories_match_the_machine);
+	RUN(test_real_os9_free_matches_the_machine);
+	RUN(test_real_os9_files_match_their_patterns);
+	RUN(test_real_os9_reads_across_segments);
+	RUN(test_real_os9_reads_lines);
+	RUN(test_real_os9_names_ignore_case);
+	RUN(test_real_os9_permissions);
+	RUN(test_real_os9_delete);
+	RUN(test_real_os9_rename_and_makdir);
+	RUN(test_real_os9_extend_and_truncate);
+	RUN(test_real_os9_segment_list_is_full);
+	RUN(test_real_os9_all_formats);
+
+	RUN(test_real_clusters_is_recognized);
+	RUN(test_real_clusters_directories_match_the_machine);
+	RUN(test_real_clusters_free_matches_the_machine);
+	RUN(test_real_clusters_files_match_the_machine);
+	RUN(test_real_clusters_reads_across_segments);
+	RUN(test_real_clusters_delete_matches_the_machine);
+	RUN(test_real_clusters_truncate_matches_the_machine);
+	RUN(test_real_clusters_extend);
+	RUN(test_real_clusters_all_formats);
 	return TEST_REPORT();
 }

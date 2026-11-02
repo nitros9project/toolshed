@@ -215,7 +215,7 @@ static int do_dcheck(char **argv, char *p)
    It also makes it easier to determine if sectors are allocated multiple times.
 */
 	secondaryBitmap =
-		(unsigned char *) malloc((int3(os9_path->lsn0->dd_tot) + 1) /
+		(unsigned char *) malloc((int3(os9_path->lsn0->dd_tot) + 7) /
 					 8);
 
 	if (secondaryBitmap == NULL)
@@ -224,7 +224,7 @@ static int do_dcheck(char **argv, char *p)
 		return -1;
 	}
 
-	memset(secondaryBitmap, 0, (int3(os9_path->lsn0->dd_tot) + 1) / 8);
+	memset(secondaryBitmap, 0, (int3(os9_path->lsn0->dd_tot) + 7) / 8);
 
 	/* Allocate LSN0 in secondary bitmap */
 	_os9_allbit(secondaryBitmap, 0, 1);
@@ -362,14 +362,9 @@ static error_code BuildSecondaryAllocationMap(os9_path_id os9_path,
 		count = 0;
 		i = 0;
 
-		while (int3(dir_fd->fd_seg[i].lsn) != 0)
+		while (i < NUM_SEGS && int3(dir_fd->fd_seg[i].lsn) != 0)
 		{
 			theSeg = &(dir_fd->fd_seg[i]);
-
-			if (i > NUM_SEGS)
-			{
-				break;
-			}
 
 			if (count > fd_siz)
 			{
@@ -518,15 +513,9 @@ static error_code ParseFDSegList(fd_stats * fd, u_int dd_tot, char *path,
 	Fd_seg theSeg;
 	u_int num, curLSN;
 
-	while (int3(fd->fd_seg[i].lsn) != 0)
+	while (i < NUM_SEGS && int3(fd->fd_seg[i].lsn) != 0)
 	{
 		u_int mapSector;
-
-		if (i > NUM_SEGS)
-		{
-			i++;
-			break;
-		}
 
 		theSeg = &(fd->fd_seg[i]);
 		num = int2(theSeg->num);

@@ -1014,8 +1014,8 @@ error_code TSRBFFree(char *file, char *dname, u_int * month, u_int * day,
 			if (*largest_count > *largest_free_block)
 			{
 				*largest_free_block = *largest_count;
-				*largest_count = 0;
 			}
+			*largest_count = 0;
 		}
 		else
 		{

@@ -670,9 +670,12 @@ static error_code _os9_truncate_seg_list(os9_path_id path)
 	file_size = int4(fd_sector.fd_siz);
 
 
-	/* 4. Get number of bytes when rounded to next cluster. */
+	/* 4. Get number of bytes when rounded to next sector.  What this keeps is
+	 * whole clusters from the end of the segment list, as RBF does, and its
+	 * first segment need not start at the start of a cluster.
+	 */
 
-	rounded_size = NextHighestMultiple(file_size, path->cs);
+	rounded_size = NextHighestMultiple(file_size, path->bps);
 
 
 	/* 5. Get number of bytes as currently represented by segment list. */
