@@ -10,6 +10,7 @@ ToolShed v2.6.1
 ---
 
 * [Introduction](#introduction)
+* [Modular Architecture and Library Reuse](#libraries)
 * [A Tutorial On Disk Images](#tutorial)
   * [Disk Extraction Under Windows/DOS](#de_win)
   * [Disk Extraction Under Linux](#de_linux)
@@ -133,6 +134,100 @@ This is a tool used to report the format and track layout of DMK, SDF, JVC, VDK 
 ### dgndos
 
 This is a tool used to manipulate, inspect and copy files on disk images formatted under Dragon DOS.
+
+---
+<h2 id="libraries">Modular Architecture and Library Reuse</h2>
+
+ToolShed is more than a collection of command-line programs. Its disk, filesystem and cassette operations are implemented in reusable C libraries. The command-line tools provide argument handling and presentation, while the libraries handle image formats, directories, file allocation and data transfer. Another application can call these libraries directly without running the ToolShed commands or parsing their output.
+
+### Library Layers
+
+Image formats and filesystems are separate concerns. For example, DMK describes how tracks and sectors are stored in a host file, while Disk BASIC describes how files are organized within those sectors. The same filesystem code can therefore work with several image formats.
+
+The main layers are:
+
+* **Image access:** `libdiskimage` reads and writes sectors in supported disk-image containers.
+* **Filesystem and cassette access:** `librbf`, `libdecb`, `libdragondos` and `libcecb` interpret files and directories; `libnative` accesses the host filesystem.
+* **Common file access:** `libcoco` presents a shared interface over those backends.
+* **Shared tool operations:** `libtoolshed` builds higher-level operations on the common interface.
+* **Supporting routines:** `libmisc` and `libsys` supply conversions, checksums and other common services.
+
+These are cooperating libraries, not isolated packages: callers must also link the dependencies of the layer they use.
+
+### Libraries and Their Uses
+
+The library source directories are at the project root. Their public headers are in `include/`; the Unix build produces static archives in the corresponding `build/unix/` directories.
+
+| Library | Main headers | Purpose and use |
+| --- | --- | --- |
+| `libdiskimage` | `diskimage.h` | Identifies, creates and accesses raw, JVC, VDK, DMK and SDF images. Provides geometry queries, sector enumeration, sector reads and writes, and write-protection handling. Used by the disk filesystem libraries and `diskinfo`; useful independently for image inspectors, sector editors and emulator utilities. |
+| `librbf` | `os9path.h`, `rbfutil.h` | Implements OS-9/NitrOS-9 RBF filesystems, including directories, allocation bitmaps, file attributes, formatting and file I/O. Supplies the filesystem operations behind `os9` and the OS-9 backend of `libcoco`. |
+| `libdecb` | `decbpath.h`, `decbutil.h` | Implements Disk BASIC filesystems, FAT/granule allocation, directory entries, formatting and HDB-DOS drive/offset access. Also supplies BASIC token conversion and binary conversion helpers. Used by `decb` and the Disk BASIC backend of `libcoco`. |
+| `libdragondos` | `dragondospath.h` | Implements Dragon DOS directories, allocation, file access, protection attributes, formatting and BASIC token conversion. Used by `dgndos` and the Dragon DOS backend of `libcoco`. |
+| `libcecb` | `cecbpath.h` | Implements cassette file access for WAV, CAS and C10 containers, including cassette blocks and BASIC token conversion. Used by `cecb` and the cassette backend of `libcoco`; it does not use the disk-sector layer. |
+| `libnative` | `nativepath.h` | Wraps host files and directories in a path-based API similar to the image backends. Enables transfers between host files and image contents through `libcoco`. |
+| `libcoco` | `cocopath.h` | Dispatches common open, read, write, seek, directory and metadata operations to native, OS-9, Disk BASIC, Dragon DOS or cassette paths. Also detects possible disk filesystems, including multiple filesystems in one image. Used by shared copy operations and applications that work across several backends. |
+| `libtoolshed` | `toolshed.h`, `cocodump.h` | Supplies shared operations such as file copying, line-ending conversion, ROM padding, hex dumps and DSAVE command generation/execution. Used by command-line tools to avoid duplicating higher-level behavior. Some routines print output or invoke commands, so use the lower-level file APIs when an application needs full control of presentation and execution. |
+| `libmisc` | `cococonv.h`, `queue.h`, `util.h` | Supplies byte-order and string conversions, queues, host-to-CoCo error mapping and miscellaneous utility routines used throughout the libraries and tools. |
+| `libsys` | `cocosys.h` | Supplies OS-9-style CRC and pathname-parsing routines used by other ToolShed components. |
+
+### Using the Libraries in Other Projects
+
+Choose the lowest layer that meets the application's needs:
+
+* A sector viewer can use `libdiskimage` without interpreting any filesystem.
+* An OS-9 image editor can use the `_os9_*` API in `os9path.h`; a Disk BASIC or Dragon DOS editor can use `_decb_*` or `_dragondos_*` respectively.
+* A file browser or extraction utility supporting several systems can use `_coco_open()`, `_coco_read()`, `_coco_readdir()` and related calls. Paths such as `disk.dsk,FILE.TXT` identify a file inside an image; host paths identify native files. See [Pathname Elements](#path_elements) for the syntax.
+* A build tool can use shared copy or conversion routines to place generated files into images.
+
+For images containing more than one filesystem, `_coco_detect_filesystems()` returns a bitmask of possible filesystems. Automatic selection is not a substitute for choosing the intended filesystem: use its specific API when that choice matters. Image-format detection and filesystem detection are separate operations.
+
+Build the libraries with `make -C build/unix`, add `include/` to the compiler's header search path, and link the required archives from `build/unix/lib*/`. With static linking, put dependent libraries before the libraries that supply their dependencies. The application and unit-test Makefiles show working link configurations for the complete file-access stack. The normal Unix install target installs tools and documentation, not a separate library development package.
+
+For example, this small program queries an image's geometry without opening a filesystem. Save it as `image_geometry.c`:
+
+```c
+#include <stdio.h>
+#include <cocopath.h> /* FAM_READ */
+#include <diskimage.h>
+
+int main(int argc, char **argv)
+{
+    diskimage_id disk;
+    diskimage_geometry geometry;
+    error_code ec;
+    error_code close_ec;
+
+    if (argc != 2)
+        return 1;
+
+    ec = _diskimage_open(&disk, argv[1], FAM_READ);
+    if (ec != 0)
+        return 1;
+
+    ec = _diskimage_query_geometry(disk, &geometry);
+    if (ec == 0)
+        printf("%u cylinders, %u sides, %u logical sectors\n",
+               geometry.cylinders, geometry.sides, geometry.total_sectors);
+
+    close_ec = _diskimage_close(disk);
+    return ec != 0 || close_ec != 0;
+}
+```
+
+From the ToolShed root, compile and run it on a Unix-like host with:
+
+```sh
+cc -Iinclude image_geometry.c \
+    build/unix/libdiskimage/libdiskimage.a \
+    build/unix/libmisc/libmisc.a \
+    build/unix/libsys/libsys.a -lm -o image_geometry
+./image_geometry disk.dsk
+```
+
+The headers describe the APIs and data structures; `unittest/` contains examples of opening, creating, reading and modifying images. Most I/O routines return an `error_code` (`0` for success), and read/write calls use an in/out size parameter. Check each call's documented behavior, handle errors and short transfers, and close every successfully opened path. Some routines may also emit diagnostics.
+
+An application can alternatively compile the required library sources into its own build. DiskShed, the wxWidgets GUI in `gui/wx/`, demonstrates this approach: its CMake configuration builds the filesystem sources into a static library and links a C++ application against it. Use the public headers rather than private implementation headers, retain the applicable license notices, and consult the current source and tests when updating an integration.
 
 ---
 <h2 id="tutorial">A Tutorial On Disk Images</h2>
