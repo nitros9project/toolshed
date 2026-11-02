@@ -964,10 +964,22 @@ This command is intended for RBF disk image files only.
 
 Reveal takes an LSN (and, optionally, a byte offset within that sector) or an absolute byte offset into the image, and explains, in plain English, exactly what lives at that location: a field of LSN0, a bitmap byte and the cluster/LSN range it tracks, a file descriptor and which field of it, a segment entry, a directory entry (and which byte of its name or LSN pointer), or a byte inside a file's data. If the LSN doesn't map to anything reveal recognizes, it reports whether the bitmap marks it allocated or free, and whether it falls within the boot track.
 
+With `-b`, the offset is a byte position in the actual container file, including image headers and inter-sector data. Reveal recognizes image and track headers, sector ID fields, data address marks, sector data, data CRCs, JVC attribute bytes, and unused raw-image slots on a short track zero. A byte inside a logical sector's data is translated to its filesystem LSN and described as above. Other bytes are described at the container level, without interpreting them as filesystem data. Duplicated single-density bytes map to the same decoded sector byte.
+
+For gaps, reveal reports the distances to the nearest preceding and following sector fields in physical file order, with sector numbers, cylinders and sides. These need not be consecutive sector numbers on an interleaved disk. For example:
+
+    Byte 495 is in inter-sector data, 6 bytes after the last byte of sector 1's data CRC (cylinder 0, side 0), and 30 bytes before sector 7's ID field (cylinder 0, side 0).
+
+Distances are measured from the preceding field's last byte and the following field's first byte. Sector numbers in these descriptions are on-disk IDs, not OS-9 LSNs. Missing sectors do not renumber later LSNs. IDs and data belonging to rejected sectors can still be described as container structures, but are not interpreted as live filesystem sectors. Image headers and gaps can be examined even if the container does not hold a readable OS-9 filesystem.
+
+Without `-b`, `LSN[:offset]` continues to address filesystem sector data; the optional offset must be smaller than the filesystem's bytes per sector. Numeric inputs accept decimal or a `0x` hexadecimal prefix.
+
 Options:
 
     -b    Treat <offset> as an absolute byte offset from the start
           of the disk image, rather than an LSN[:offset] pair.
+          Describe container fields and gaps, or filesystem contents
+          when the byte is inside logical sector data.
     -d    Dragon disk (used to find the location of a boot track)
 
 #### Example

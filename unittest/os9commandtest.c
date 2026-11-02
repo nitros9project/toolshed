@@ -1058,6 +1058,191 @@ static int real_os9_command(const char *arguments, char *output, size_t capacity
 	return status;
 }
 
+/* Independently obtain data positions from the test containers. */
+static void reveal_data_offset(const char *image, diskimage_format format,
+			       unsigned int cylinder, unsigned int side, unsigned int sector, long *result)
+{
+	FILE *fp = fopen(image, "rb");
+	long offset, record;
+	u_char bytes[4];
+	diskimage_id disk;
+	diskimage_geometry geometry;
+
+	ASSERT("open reveal image", fp != NULL);
+	if (format == DISKIMAGE_DMK)
+		offset = damage_dmk_id(fp, cylinder, side, sector) + 45;
+	else if (format == DISKIMAGE_SDF)
+	{
+		offset = damage_sdf_entry(fp, cylinder, side, sector, &record);
+		fseek(fp, offset + 2, SEEK_SET);
+		fread(bytes, 1, 2, fp);
+		offset = record + ((bytes[0] | (bytes[1] << 8)) & 0x3FFF);
+	}
+	else
+	{
+		ASSERT_EC(0, _diskimage_open(&disk, image, FAM_READ));
+		ASSERT_EC(0, _diskimage_query_geometry(disk, &geometry));
+		ASSERT_EC(0, _diskimage_close(disk));
+		offset = ((cylinder * geometry.sides + side) * geometry.sectors_per_track + sector - 1) * geometry.sector_size;
+		if (format == DISKIMAGE_VDK)
+		{
+			fread(bytes, 1, 4, fp);
+			offset += bytes[2] | (bytes[3] << 8);
+		}
+		else if (format == DISKIMAGE_JVC)
+		{
+			fseek(fp, 0, SEEK_END);
+			offset += ftell(fp) % 256;
+		}
+	}
+	fclose(fp);
+	*result = offset;
+}
+
+void test_os9_reveal_container_data()
+{
+	static const struct {
+		const char *image;
+		const char *options;
+		diskimage_format format;
+	} cases[] = {
+		{ "test_reveal.dsk", "-e", DISKIMAGE_RAW },
+		{ "test_reveal.dsk", "-e -sz10", DISKIMAGE_RAW },
+		{ "test_reveal.vdk", "", DISKIMAGE_VDK },
+		{ "test_reveal.jvc", "-ds -st10", DISKIMAGE_JVC },
+		{ "test_reveal.dmk", "-ds", DISKIMAGE_DMK },
+		{ "test_reveal.sdf", "", DISKIMAGE_SDF },
+		{ "test_reveal.dmk", "-sz10", DISKIMAGE_DMK },
+		{ "test_reveal.dmk", "-bs512 -st9", DISKIMAGE_DMK }
+	};
+	char arguments[192], output[4096], expected[4096], pathlist[80];
+	os9_path_id path;
+	unsigned int bps, root, total, targets[5], spt, t0s, sides;
+	size_t i, j;
+	int status;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+	{
+		remove(cases[i].image);
+		snprintf(arguments, sizeof(arguments), "format -q %s %s", cases[i].options, cases[i].image);
+		status = real_os9_command(arguments, output, sizeof(output));
+		ASSERT_EQUALS(0, status);
+		snprintf(pathlist, sizeof(pathlist), "%s,@", cases[i].image);
+		ASSERT_EC(0, _os9_open(&path, pathlist, FAM_READ));
+		bps = path->bps;
+		root = int3(path->lsn0->dd_dir);
+		total = int3(path->lsn0->dd_tot);
+		spt = path->spt;
+		t0s = path->t0s;
+		sides = path->sides;
+		ASSERT_EC(0, _os9_close(path));
+		targets[0] = 0;
+		targets[1] = 1;
+		targets[2] = root;
+		targets[3] = root + 1;
+		targets[4] = total - 1;
+		for (j = 0; j < sizeof(targets) / sizeof(targets[0]); j++)
+		{
+			unsigned int lsn = targets[j];
+			unsigned int track = lsn < t0s ? 0 : (lsn - t0s) / spt + 1;
+			unsigned int sector = lsn < t0s ? lsn + 1 : (lsn - t0s) % spt + 1;
+			long offset = -1;
+			char *description;
+
+			reveal_data_offset(cases[i].image, cases[i].format, track / sides, track % sides, sector, &offset);
+			ASSERT("sector data offset found", offset >= 0);
+
+			snprintf(arguments, sizeof(arguments), "reveal %s %u:%u", cases[i].image, lsn, bps - 1);
+			status = real_os9_command(arguments, expected, sizeof(expected));
+			ASSERT_EQUALS(0, status);
+			description = strstr(expected, "This is");
+			if (description == NULL)
+				description = strstr(expected, "doesn't currently map");
+			ASSERT("filesystem description found", description != NULL);
+			snprintf(arguments, sizeof(arguments), "reveal -b %s %ld", cases[i].image, offset + bps - 1);
+			status = real_os9_command(arguments, output, sizeof(output));
+			ASSERT_EQUALS(0, status);
+			ASSERT("container data maps to the same filesystem location", strstr(output, description) != NULL);
+		}
+		remove(cases[i].image);
+	}
+}
+
+void test_os9_reveal_container_fields()
+{
+	char arguments[128], output[4096];
+	long first, second, next_track;
+	int status;
+	struct stat st;
+
+	remove("test_reveal.dmk");
+	status = real_os9_command("format -q test_reveal.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	reveal_data_offset("test_reveal.dmk", DISKIMAGE_DMK, 0, 0, 1, &first);
+	reveal_data_offset("test_reveal.dmk", DISKIMAGE_DMK, 0, 0, 7, &second);
+	status = real_os9_command("reveal -b test_reveal.dmk 0", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("image header", strstr(output, "image header") != NULL);
+	ASSERT("not LSN0", strstr(output, "Examining LSN") == NULL);
+	status = real_os9_command("reveal -b test_reveal.dmk 16", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("track header", strstr(output, "track header") != NULL);
+	snprintf(arguments, sizeof(arguments), "reveal -b test_reveal.dmk %ld", first - 45);
+	status = real_os9_command(arguments, output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("sector ID", strstr(output, "sector 1's ID field") != NULL);
+	snprintf(arguments, sizeof(arguments), "reveal -b test_reveal.dmk %ld", first + 256);
+	status = real_os9_command(arguments, output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("sector CRC", strstr(output, "sector 1's data CRC") != NULL);
+	snprintf(arguments, sizeof(arguments), "reveal -b test_reveal.dmk %ld", first + 263);
+	status = real_os9_command(arguments, output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("gap after physical sector", strstr(output, "6 bytes after the last byte of sector 1's data CRC") != NULL);
+	snprintf(arguments, sizeof(arguments), "%ld bytes before sector 7's ID field", second - 45 - (first + 263));
+	ASSERT("next physical sector, not next logical sector", strstr(output, arguments) != NULL);
+	ASSERT("gap is not filesystem data", strstr(output, "Examining LSN") == NULL);
+
+	/* Missing sectors do not shift LSNs, and their IDs remain describable. */
+	reveal_data_offset("test_reveal.dmk", DISKIMAGE_DMK, 1, 0, 1, &next_track);
+	image_remove_sector("test_reveal.dmk", 1, 0, 1);
+	snprintf(arguments, sizeof(arguments), "reveal -b test_reveal.dmk %ld", next_track);
+	status = real_os9_command(arguments, output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("rejected sector", strstr(output, "not a logical sector") != NULL);
+	ASSERT("no filesystem interpretation", strstr(output, "Examining LSN") == NULL);
+	reveal_data_offset("test_reveal.dmk", DISKIMAGE_DMK, 1, 0, 2, &next_track);
+	snprintf(arguments, sizeof(arguments), "reveal -b test_reveal.dmk %ld", next_track);
+	status = real_os9_command(arguments, output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("following LSN unchanged", strstr(output, "Examining LSN 19") != NULL);
+	stat("test_reveal.dmk", &st);
+	snprintf(arguments, sizeof(arguments), "reveal -b test_reveal.dmk %lld", (long long)st.st_size);
+	status = real_os9_command(arguments, output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("file boundary", strstr(output, "past the physical end") != NULL);
+	status = real_os9_command("reveal -b test_reveal.dmk 12junk", output, sizeof(output));
+	ASSERT_NEQUALS(0, status);
+	remove("test_reveal.dmk");
+
+	/* A header can be explained without an OS-9 filesystem at all. */
+	ASSERT_EC(0, _diskimage_create("test_reveal.vdk", DISKIMAGE_VDK, 1, 1, 256, 18, 18, 1, 0xFF));
+	status = real_os9_command("reveal -b test_reveal.vdk 1", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("container alone", strstr(output, "image header") != NULL);
+	remove("test_reveal.vdk");
+
+	status = real_os9_command("format -q -e -sz10 test_reveal.dsk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	status = real_os9_command("reveal -b test_reveal.dsk 2560", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("unused raw track-zero slot", strstr(output, "unused slot on short track zero") != NULL);
+	ASSERT("unused slot is not an LSN", strstr(output, "Examining LSN") == NULL);
+	status = real_os9_command("reveal test_reveal.dsk 0:256", output, sizeof(output));
+	ASSERT_NEQUALS(0, status);
+	remove("test_reveal.dsk");
+}
+
 static int count_lines(const char *text)
 {
 	int lines = 0;
@@ -1427,6 +1612,8 @@ int main()
 	RUN(test_os9_command_dsave_executable);
 	RUN(test_os9_command_format_formats);
 	RUN(test_os9_commands_on_images_with_tracks);
+	RUN(test_os9_reveal_container_data);
+	RUN(test_os9_reveal_container_fields);
 	RUN(test_os9_gen_on_images_with_tracks);
 	RUN(test_os9_raw_extend_of_quick_format);
 	RUN(test_os9_gen_on_quick_format);

@@ -2266,6 +2266,137 @@ static void test_format_names(void)
 	ASSERT_EQUALS(DISKIMAGE_UNKNOWN, _diskimage_format_of_extension("x"));
 }
 
+static void check_byte_tracks(int sdf, int single_density)
+{
+	test_sector sectors[] = {
+		{0, 0, 7, 1, 0, 0x77, 0, -1},
+		{0, 0, 12, 1, 0, 0xCC, 0, -1},
+		{0, 0, 25, 1, 0, 0xDD, 0, -1, 1}
+	};
+	diskimage_id disk;
+	diskimage_byte_info info;
+	long long ids[3], data, crc_end, gap;
+	int base = sdf ? 512 : 16;
+	int step = single_density == 1 ? 2 : 1;
+	int i;
+
+	for (i = 0; i < 3; i++)
+		sectors[i].single_density = single_density;
+	if (sdf)
+		build_sdf(1, 1, 0, sectors, 3);
+	else
+		build_dmk(1, 1, DMK_FLAG_SINGLE_SIDED | (single_density == 2 ? DMK_FLAG_SD_ONE_BYTE : 0), 0, sectors, 3);
+	for (i = 0; i < 3; i++)
+	{
+		int p = base + (sdf ? 8 + i * 8 : i * 2);
+		ids[i] = base + ((image[p] | (image[p + 1] << 8)) & 0x3FFF) - (sdf ? step : 0);
+	}
+	data = ids[0] + (single_density ? 25 * step : 45);
+	crc_end = data + (256 + 2) * step;
+	gap = crc_end + 5;
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_byte(disk, 0, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_HEADER, info.region.kind);
+	ASSERT_EQUALS(base, info.region.end);
+	ASSERT_CALL(0, _diskimage_query_byte(disk, base, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_TRACK_HEADER, info.region.kind);
+	for (i = 0; i < 7 * step; i++)
+	{
+		ASSERT_CALL(0, _diskimage_query_byte(disk, ids[0] + i, &info));
+		ASSERT_EQUALS(DISKIMAGE_BYTE_ID, info.region.kind);
+		ASSERT_EQUALS(step, info.region.step);
+		ASSERT_EQUALS(7, info.region.sector.sector);
+		ASSERT_EQUALS(1, info.region.logical);
+	}
+	ASSERT_CALL(0, _diskimage_query_byte(disk, data - 1, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_DATA_MARK, info.region.kind);
+	ASSERT_CALL(0, _diskimage_query_byte(disk, data, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_DATA, info.region.kind);
+	ASSERT_EQUALS(data, info.region.start);
+	ASSERT_EQUALS(data + 256 * step, info.region.end);
+	ASSERT_CALL(0, _diskimage_query_byte(disk, data + 256 * step - 1, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_DATA, info.region.kind);
+	ASSERT_CALL(0, _diskimage_query_byte(disk, data + 256 * step, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_CRC, info.region.kind);
+	ASSERT_CALL(0, _diskimage_query_byte(disk, crc_end - 1, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_CRC, info.region.kind);
+	ASSERT_CALL(0, _diskimage_query_byte(disk, gap, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_GAP, info.region.kind);
+	ASSERT_EQUALS(1, info.has_previous);
+	ASSERT_EQUALS(1, info.has_next);
+	ASSERT_EQUALS(7, info.previous.sector.sector);
+	ASSERT_EQUALS(crc_end, info.previous.end);
+	ASSERT_EQUALS(DISKIMAGE_BYTE_CRC, info.previous.kind);
+	ASSERT_EQUALS(12, info.next.sector.sector);
+	ASSERT_EQUALS(ids[1], info.next.start);
+	ASSERT_EQUALS(DISKIMAGE_BYTE_ID, info.next.kind);
+	/* A rejected ID remains part of the container, but not the filesystem. */
+	ASSERT_CALL(0, _diskimage_query_byte(disk, ids[2], &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_ID, info.region.kind);
+	ASSERT_EQUALS(25, info.region.sector.sector);
+	ASSERT_EQUALS(0, info.region.logical);
+	ASSERT_CALL(0, _diskimage_query_byte(disk, ids[2] + (single_density ? 25 * step : 45), &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_DATA, info.region.kind);
+	ASSERT_EQUALS(0, info.region.logical);
+	ASSERT_CALL(EOS_EOF, _diskimage_query_byte(disk, base + (sdf ? SDF_RECORD : DMK_TRACK_LENGTH), &info));
+	ASSERT_CALL(EOS_IA, _diskimage_query_byte(disk, -1, &info));
+	ASSERT_CALL(EOS_IA, _diskimage_query_byte(disk, 0, NULL));
+	ASSERT_CALL(0, _diskimage_close(disk));
+	remove(TEST_IMAGE);
+}
+
+static void test_byte_tracks(void)
+{
+	check_byte_tracks(0, 0);
+	check_byte_tracks(1, 0);
+	check_byte_tracks(0, 1);
+	check_byte_tracks(1, 1);
+	check_byte_tracks(0, 2);
+}
+
+static void test_byte_linear(void)
+{
+	static const u_char header[] = {16, 1, 1, 1, 1};
+	diskimage_id disk;
+	diskimage_byte_info info;
+	int i;
+
+	/* Attribute images must have a multiple of 256 sector records. */
+	memcpy(image, header, sizeof(header));
+	for (i = 0; i < 256; i++)
+	{
+		image[5 + i * 257] = i == 3 ? 0x10 : 0;
+		memset(&image[6 + i * 257], i, 256);
+	}
+	write_image(5 + 256 * 257);
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_byte(disk, 4, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_HEADER, info.region.kind);
+	ASSERT_CALL(0, _diskimage_query_byte(disk, 5, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_ATTRIBUTE, info.region.kind);
+	ASSERT_CALL(0, _diskimage_query_byte(disk, 6, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_DATA, info.region.kind);
+	ASSERT_EQUALS(6, info.region.start);
+	ASSERT_EQUALS(1, info.region.logical);
+	ASSERT_CALL(0, _diskimage_query_byte(disk, 6 + 3 * 257, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_DATA, info.region.kind);
+	ASSERT_EQUALS(4, info.region.sector.sector);
+	ASSERT_EQUALS(0, info.region.logical);
+	ASSERT_CALL(0, _diskimage_close(disk));
+	remove(TEST_IMAGE);
+
+	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_RAW, 1, 2, 256, 18, 10, 0, 0));
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
+	ASSERT_CALL(0, _diskimage_query_byte(disk, 10 * 256, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_UNUSED, info.region.kind);
+	ASSERT_CALL(0, _diskimage_query_byte(disk, 18 * 256, &info));
+	ASSERT_EQUALS(DISKIMAGE_BYTE_DATA, info.region.kind);
+	ASSERT_EQUALS(1, info.region.sector.cylinder);
+	ASSERT_EQUALS(1, info.region.sector.sector);
+	ASSERT_CALL(0, _diskimage_close(disk));
+	remove(TEST_IMAGE);
+}
+
 int main(void)
 {
 	RUN(test_identify_missing_file);
@@ -2344,5 +2475,7 @@ int main(void)
 	RUN(test_create_rejects);
 
 	RUN(test_format_names);
+	RUN(test_byte_tracks);
+	RUN(test_byte_linear);
 	return TEST_REPORT();
 }

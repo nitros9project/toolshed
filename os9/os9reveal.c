@@ -20,7 +20,8 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <sys/stat.h>
+#include <errno.h>
+#include <limits.h>
 #include <cocotypes.h>
 #include <cocopath.h>
 #include <rbfutil.h>
@@ -64,23 +65,11 @@ static char const *const helpMessage[] = {
 	"Options:\n",
 	"  -b    Treat <offset> as an absolute byte offset from the start\n",
 	"        of the disk image, rather than an LSN[:offset] pair.\n",
+	"        Describe container headers, ID fields, CRCs and gaps,\n",
+	"        or filesystem contents when the byte is sector data.\n",
 	"  -d    Dragon disk\n",
 	NULL
 };
-
-static long get_image_byte_size(os9_path_id path)
-{
-	struct stat st;
-
-	if (path->imgfile == NULL)
-		return (-1);
-
-	if (stat(path->imgfile, &st) != 0)
-		return (-1);
-
-	return ((long) st.st_size);
-}
-
 
 /* ------------------------------------------------------------------
  * small helpers
@@ -365,7 +354,7 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 	}
 
 	/* A corrupt directory entry or segment can claim an LSN that's
-	 * beyond the physical file or the declared format size. The
+	 * beyond the declared format size. The
 	 * actual target LSN is already known to be in-bounds (reveal()
 	 * checked that before calling us at all), so this can only ever
 	 * reject a bogus reference, never the real target. */
@@ -378,9 +367,8 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 		return (1);
 	}
 
-	/* read_lsn() returns the number of bytes read on success, not an
-	 * error_code -- 0 (or negative) means the read failed. */
-	if (read_lsn(path, fd_lsn, &fd) <= 0)
+	/* The descriptor is 256 bytes even when sectors are larger. */
+	if (_os9_lsn_get(path, fd_lsn, 0, &fd, sizeof(fd)) != 0)
 		return (0);
 
 	is_dir = (fd.fd_att & FAP_DIR) ? 1 : 0;
@@ -574,8 +562,7 @@ static int reveal_examine_fd(os9_path_id path, unsigned int fd_lsn,
 					free(childname);
 
 					/* skip a clearly bogus child reference
-					 * (out past both the physical file and
-					 * the declared format size) rather than
+					 * (out past the declared format size) rather than
 					 * wasting a read attempt on it */
 					if (childlsn > tgt->max_valid_lsn)
 					{
@@ -614,10 +601,8 @@ static void reveal(os9_path_id path, reveal_target *tgt)
 	unsigned int	bitmapSectors;
 	unsigned int	rootDirLsn;
 	unsigned int	logicalTotalSectors;
-	unsigned int	physSectors = 0;
-	unsigned int	bound;
-	long		imageBytes;
-	unsigned long	targetByteOffset;
+	u_char		targetByte;
+	error_code	ec;
 
 	printf("\nExamining LSN %s", format_num(tgt->target_lsn));
 	if (tgt->target_offset != 0)
@@ -625,9 +610,6 @@ static void reveal(os9_path_id path, reveal_target *tgt)
 	printf(" of '%s'...\n\n", path->imgfile);
 
 	logicalTotalSectors = int3(l0->dd_tot);
-	imageBytes = get_image_byte_size(path);
-	targetByteOffset = (unsigned long) tgt->target_lsn * path->bps +
-		tgt->target_offset;
 
 	/* logical end of the formatted filesystem -- LSN0 itself says
 	 * this disk doesn't contain this LSN at all (dd_tot). This is
@@ -640,44 +622,28 @@ static void reveal(os9_path_id path, reveal_target *tgt)
 		return;
 	}
 
-	/* physical end of the container file. A host image is allowed
-	 * to be shorter than the sectors LSN0 declares -- that's normal
-	 * for a dynamically-growing/sparse image, and just means those
-	 * trailing sectors haven't been referred to (allocated) yet. It
-	 * only becomes a real problem if the bitmap disagrees -- i.e.
-	 * something in this filesystem claims a sector that the file
-	 * doesn't actually contain. */
-	if (imageBytes >= 0 && targetByteOffset >= (unsigned long) imageBytes)
+	/* Container bytes cannot establish LSN bounds: they include headers
+	 * and gaps, and an individual sector can be missing in mid-track. */
+	ec = _os9_lsn_get(path, tgt->target_lsn, tgt->target_offset, &targetByte, 1);
+	if (ec != 0)
 	{
 		int allocated = _os9_ckbit(path->bitmap, tgt->target_lsn);
 
-		printf("LSN %s is past the physical end of the image file '%s' (which is %s bytes / %s sectors long).",
-		       format_num(tgt->target_lsn), path->imgfile,
-		       format_num((unsigned long) imageBytes),
-		       format_num((unsigned long) (path->bps ?
-						    (unsigned long) imageBytes / path->bps : 0)));
+		printf("LSN %s, byte %s is not available as sector data in '%s' (error %d).",
+		       format_num(tgt->target_lsn), format_num(tgt->target_offset), path->imgfile, ec);
 
 		if (allocated)
-			printf(" The bitmap marks it ALLOCATED, though -- something in this filesystem references a sector the container file doesn't actually contain. That's inconsistent, and likely means the image is truncated or corrupt.\n");
+			printf(" The bitmap marks it ALLOCATED -- the sector may be missing, unreadable, or truncated.\n");
+		else if (path->raw_image)
+			printf(" The bitmap marks it UNALLOCATED, so this may simply be space that hasn't been grown into yet in a dynamically-growing image.\n");
 		else
-			printf(" The bitmap marks it UNALLOCATED, so this is simply space that hasn't been grown into yet -- expected for a dynamically-growing image, not a problem.\n");
+			printf(" The bitmap marks it UNALLOCATED.\n");
 
 		return;
 	}
 
-	/* Bound used deeper in the walk (reveal_examine_fd) to skip
-	 * obviously-corrupt LSNs -- e.g. a directory entry or segment
-	 * pointing somewhere that can't exist -- without wasting a read
-	 * attempt on them. 0xFFFFFFFF means "no bound known". */
-	if (imageBytes >= 0 && path->bps > 0)
-		physSectors = (unsigned int) ((unsigned long) imageBytes / path->bps);
-
-	bound = 0xFFFFFFFFu;
-	if (physSectors > 0 && physSectors < bound)
-		bound = physSectors;
-	if (logicalTotalSectors > 0 && logicalTotalSectors < bound)
-		bound = logicalTotalSectors;
-	tgt->max_valid_lsn = (bound == 0xFFFFFFFFu) ? bound : bound - 1;
+	/* Bound the walk by the filesystem; sector reads check availability. */
+	tgt->max_valid_lsn = logicalTotalSectors > 0 ? logicalTotalSectors - 1 : INT_MAX;
 
 	if (tgt->target_lsn == 0)
 	{
@@ -739,35 +705,130 @@ static void reveal(os9_path_id path, reveal_target *tgt)
  * argument parsing / entry point
  * ------------------------------------------------------------------ */
 
-static void parse_target(const char *arg, int byte_mode, os9_path_id path,
-			  reveal_target *tgt)
+static const char *container_field(diskimage_byte_kind kind)
 {
-	if (byte_mode)
+	switch (kind)
 	{
-		unsigned long byteoff = strtoul(arg, NULL, 0);
+	case DISKIMAGE_BYTE_HEADER: return "image header";
+	case DISKIMAGE_BYTE_TRACK_HEADER: return "track header / sector pointer table";
+	case DISKIMAGE_BYTE_ID: return "ID field";
+	case DISKIMAGE_BYTE_DATA_MARK: return "data address mark";
+	case DISKIMAGE_BYTE_DATA: return "data field";
+	case DISKIMAGE_BYTE_CRC: return "data CRC";
+	case DISKIMAGE_BYTE_ATTRIBUTE: return "attribute byte";
+	case DISKIMAGE_BYTE_UNUSED: return "unused slot on short track zero";
+	default: return "inter-sector data";
+	}
+}
 
-		tgt->target_lsn    = (unsigned int) (byteoff / path->bps);
-		tgt->target_offset = (unsigned int) (byteoff % path->bps);
+
+static void describe_container_byte(long long byteoff, const diskimage_byte_info *info)
+{
+	const diskimage_byte_region *r = &info->region;
+
+	printf("Byte %lld is ", byteoff);
+	if (r->kind == DISKIMAGE_BYTE_GAP)
+	{
+		printf("in inter-sector data");
+		if (info->has_previous)
+		{
+			const diskimage_byte_region *p = &info->previous;
+			printf(", %lld bytes after the last byte of sector %u's %s (cylinder %u, side %u)",
+				byteoff - (p->end - 1), p->sector.sector, container_field(p->kind),
+				p->sector.cylinder, p->sector.side);
+		}
+		if (info->has_next)
+		{
+			const diskimage_byte_region *n = &info->next;
+			printf(", and %lld bytes before sector %u's %s (cylinder %u, side %u)",
+				n->start - byteoff, n->sector.sector, container_field(n->kind),
+				n->sector.cylinder, n->sector.side);
+		}
+		printf(".\n");
+		return;
+	}
+	if (r->kind == DISKIMAGE_BYTE_HEADER || r->kind == DISKIMAGE_BYTE_UNUSED)
+		printf("in the %s (byte %lld of %lld).\n", container_field(r->kind),
+			byteoff - r->start, r->end - r->start);
+	else if (r->kind == DISKIMAGE_BYTE_TRACK_HEADER)
+		printf("in the %s for cylinder %u, side %u (byte %lld of %lld).\n",
+			container_field(r->kind), r->sector.cylinder, r->sector.side,
+			byteoff - r->start, r->end - r->start);
+	else
+	{
+		printf("byte %lld of sector %u's %s (cylinder %u, side %u).\n",
+			(byteoff - r->start) / r->step, r->sector.sector, container_field(r->kind),
+			r->sector.cylinder, r->sector.side);
+		if (r->step == 2)
+			printf("This is copy %lld of a duplicated single-density byte.\n", (byteoff - r->start) % 2 + 1);
+		if (!r->logical)
+			printf("This sector is not a logical sector used by filesystem reads.\n");
+	}
+}
+
+
+/* Invert the RBF sector addressing, not the container's sorted sector
+ * indexes: missing IDs do not renumber the filesystem LSNs after them. */
+static int container_target(long long byteoff, const diskimage_byte_region *r,
+			    os9_path_id path, reveal_target *tgt)
+{
+	long long lsn;
+
+	if (path->raw_image)
+	{
+		lsn = byteoff / path->bps;
+		if (lsn >= path->t0s && lsn < path->spt)
+			return (-1);
+		if (lsn >= path->spt)
+			lsn -= path->spt - path->t0s;
+		tgt->target_offset = (unsigned int)(byteoff % path->bps);
 	}
 	else
 	{
-		char *copy = strdup(arg);
-		char *colon = strchr(copy, ':');
+		long long track = (long long)r->sector.cylinder * path->sides + r->sector.side;
+		unsigned int index;
 
-		if (colon != NULL)
-		{
-			*colon = '\0';
-			tgt->target_lsn    = (unsigned int) strtoul(copy, NULL, 0);
-			tgt->target_offset = (unsigned int) strtoul(colon + 1, NULL, 0);
-		}
-		else
-		{
-			tgt->target_lsn    = (unsigned int) strtoul(copy, NULL, 0);
-			tgt->target_offset = 0;
-		}
-
-		free(copy);
+		if (r->sector.size != path->bps || r->sector.sector < path->first_sector)
+			return (-1);
+		index = r->sector.sector - path->first_sector;
+		if (index >= (track == 0 ? path->t0s : path->spt))
+			return (-1);
+		lsn = track == 0 ? index : path->t0s + (track - 1) * path->spt + index;
+		tgt->target_offset = (unsigned int)((byteoff - r->start) / r->step);
 	}
+	if (lsn > INT_MAX)
+		return (-1);
+	tgt->target_lsn = (unsigned int)lsn;
+	return (0);
+}
+
+
+static int parse_target(const char *arg, os9_path_id path,
+			  reveal_target *tgt)
+{
+	char *end;
+	unsigned long value;
+
+	errno = 0;
+	if (*arg == '-' || *arg == '\0')
+		return (-1);
+	value = strtoul(arg, &end, 0);
+	if (errno != 0 || end == arg || value > INT_MAX)
+		return (-1);
+	tgt->target_lsn = (unsigned int)value;
+	tgt->target_offset = 0;
+	if (*end == ':')
+	{
+		arg = end + 1;
+		if (*arg == '-' || *arg == '\0')
+			return (-1);
+		errno = 0;
+		value = strtoul(arg, &end, 0);
+		if (errno != 0 || end == arg || value >= path->bps)
+			return (-1);
+		tgt->target_offset = (unsigned int)value;
+	}
+	return *end == '\0' ? 0 : -1;
 }
 
 
@@ -781,6 +842,8 @@ int os9reveal(int argc, char *argv[])
 	os9_path_id	path;
 	reveal_target	tgt;
 	struct personality *hwtype = &coco;
+	diskimage_byte_info byteinfo;
+	long long byteoff = 0;
 
 	for (i = 1; i < argc; i++)
 	{
@@ -829,6 +892,41 @@ int os9reveal(int argc, char *argv[])
 		return (0);
 	}
 
+	if (byte_mode)
+	{
+		diskimage_id disk;
+		char *end;
+
+		errno = 0;
+		byteoff = strtoll(targetspec, &end, 0);
+		if (errno != 0 || end == targetspec || *end != '\0' || byteoff < 0)
+		{
+			fprintf(stderr, "%s: invalid image byte offset '%s'\n", argv[0], targetspec);
+			return (EOS_IA);
+		}
+		ec = _diskimage_open(&disk, imgpath, FAM_READ);
+		if (ec != 0)
+		{
+			fprintf(stderr, "%s: error %d opening '%s'\n", argv[0], ec, imgpath);
+			return (ec);
+		}
+		ec = _diskimage_query_byte(disk, byteoff, &byteinfo);
+		_diskimage_close(disk);
+		if (ec == EOS_EOF)
+		{
+			printf("Byte %lld is past the physical end of '%s' (%lld bytes).\n", byteoff, imgpath, byteinfo.file_size);
+			return (0);
+		}
+		if (ec != 0)
+		{
+			fprintf(stderr, "%s: error %d locating byte %lld\n", argv[0], ec, byteoff);
+			return (ec);
+		}
+		describe_container_byte(byteoff, &byteinfo);
+		if (byteinfo.region.kind != DISKIMAGE_BYTE_DATA || !byteinfo.region.logical)
+			return (0);
+	}
+
 	strcpy(os9pathlist, imgpath);
 	strcat(os9pathlist, ",@");
 
@@ -842,7 +940,7 @@ int os9reveal(int argc, char *argv[])
 
 	/* A corrupted LSN0 could yield a bytes-per-sector of 0, which
 	 * would otherwise crash later on division/modulo (bitmap sector
-	 * count, -b byte-offset math). Bail out cleanly instead. */
+	 * count, container-to-LSN conversions). Bail out cleanly instead. */
 	if (path->bps == 0)
 	{
 		fprintf(stderr,
@@ -866,7 +964,22 @@ int os9reveal(int argc, char *argv[])
 		return (-1);
 	}
 
-	parse_target(targetspec, byte_mode, path, &tgt);
+	if (byte_mode)
+	{
+		if (container_target(byteoff, &byteinfo.region, path, &tgt) != 0)
+		{
+			printf("This sector data does not map to an LSN in this filesystem's geometry.\n");
+			_os9_close(path);
+			return (0);
+		}
+	}
+	else if (parse_target(targetspec, path, &tgt) != 0)
+	{
+		fprintf(stderr, "%s: invalid LSN[:offset] '%s'; sector offsets must be 0 through %u\n",
+			argv[0], targetspec, path->bps - 1);
+		_os9_close(path);
+		return (EOS_IA);
+	}
 	tgt.hwtype = hwtype;
 
 	reveal(path, &tgt);

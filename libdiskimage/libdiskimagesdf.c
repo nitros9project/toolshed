@@ -100,10 +100,10 @@ static void parse_entry(di_track_id *entry, const u_char *record, const u_char *
 	int step;
 	u_char mark;
 
-	if ((id_word & SDF_ID_BAD_CRC) || table_entry[4] != cylinder)
-	{
-		return;
-	}
+	sector->cylinder = (unsigned short)cylinder;
+	sector->side = (u_char)side;
+	sector->id = table_entry[6];
+	sector->size = (unsigned short)size;
 	if (data < SDF_TRACK_HEADER_SIZE + 1)
 	{
 		return;
@@ -141,7 +141,7 @@ static void parse_entry(di_track_id *entry, const u_char *record, const u_char *
 	{
 		sector->flags |= DISKIMAGE_SECTOR_CRC_ERROR;
 	}
-	entry->valid = 1;
+	entry->valid = !(id_word & SDF_ID_BAD_CRC) && table_entry[4] == cylinder;
 }
 
 
@@ -155,6 +155,9 @@ error_code di_sdf_load(diskimage_id disk, const u_char *header)
 	disk->cylinders = header[4];
 	disk->sides = header[5];
 	disk->write_protected = header[6] == 0xFF;
+	disk->data_start = SDF_HEADER_SIZE;
+	disk->track_size = SDF_TRACK_RECORD_SIZE;
+	disk->track_header_size = SDF_TRACK_HEADER_SIZE;
 
 	for (cylinder = 0; cylinder < disk->cylinders; cylinder++)
 	{
@@ -209,6 +212,8 @@ error_code di_sdf_load(diskimage_id disk, const u_char *header)
 				ids[count].id_end = ids[count].id_start + 7 * step;
 				parse_entry(&ids[count], record, table_entry, file_offset,
 					    file_offset + table_offset + 2, cylinder, side, id_word);
+				if (ids[count].sector.step == 0)
+					ids[count].sector.step = (u_char)step;
 				count++;
 			}
 
