@@ -9,7 +9,6 @@ setopt NO_LIST_BEEP     # optional: silence the bell entirely
 
 _decb() {
     local -a commands
-    local -a global_opts
 
     commands=(
         'attr:Display or modify file attributes'
@@ -27,28 +26,20 @@ _decb() {
         'rename:Give a file a new filename'
     )
 
-    global_opts=(
-        '-g[Granule count in FAT]:granule count:(68 78 156)'
-    )
-
-    # Find the command word
-    if (( CURRENT == 2 )); then
-        _arguments \
-			'-g[Granule count in FAT]:granule count:(68 78 156)' \
-			'1:command:->commands'
-
-        case $state in
-            commands)
-                _describe -t commands 'decb command' commands
-                ;;
-        esac
-        return
-    fi
-
-    # The first non-option argument is the subcommand
-    local cmd
-    cmd=${words[(I)${commands%%:*}]}
-    cmd=${words[2]}
+    local context state state_descr line
+    typeset -A opt_args
+    _arguments -C \
+        '-g-[Granule count in FAT]:granule count:(68 78 156)' \
+        '-h[show help]' \
+        '-?[show help]' \
+        '1:command:->command' \
+        '*::subcommand args:->args'
+    case $state in
+        command) _describe -t commands 'decb command' commands; return ;;
+        args) ;;
+        *) return ;;
+    esac
+    local cmd="$words[1]"
 
     case $cmd in
         attr)
@@ -83,18 +74,26 @@ _decb() {
                 '*:file:_files'
             ;;
 
-        dir|free|kill|fstat|list)
+        dir|free|kill|fstat)
             _arguments \
+                '*:file:_files'
+            ;;
+
+        list)
+            _arguments \
+                '-t[perform BASIC token translation]' \
+                '-s[perform S-Record encoding]' \
                 '*:file:_files'
             ;;
 
         dsave)
             _arguments \
-                '-b[size of copy buffer]' \
+                '-b=-[size of copy buffer]:size' \
                 '-e[Execute commands]' \
                 '-l[Perform end of line translation]' \
                 '-t[Perform BASIC token translation]' \
                 '-r[Force rewrite]' \
+                '-x=-[executable to run commands with]:executable:_files' \
                 '*:file:_files'
             ;;
 
@@ -102,11 +101,11 @@ _decb() {
             _arguments \
                 '-a[dump output in assembler format (hex)]' \
                 '-b[dump output in assembler format (binary)]' \
-                '-c[don't display ASCII character data' \
-                '-e[dump output in C format' \
-                '-t[don't display header]' \
-                '-h[don't display header (DEPRECATED)]' \
-                '-l[don't display line label/count]' \
+                "-c[don't display ASCII character data]" \
+                '-e[dump output in C format]' \
+                "-t[don't display header]" \
+                "-h[don't display header (DEPRECATED)]" \
+                "-l[don't display line label/count]" \
                 '-z[decode DECB binary]' \
                 '*:file:_files'
             ;;
@@ -116,8 +115,9 @@ _decb() {
                 '-3[35 track disk]' \
                 '-4[40 track disk]' \
                 '-8[80 track disk]' \
-                '-h[number of HDB-DOS drives]:drives' \
-                '-n[disk name]:name' \
+                '-f-[image format]:format:(raw jvc vdk dmk sdf)' \
+                '-h-[number of HDB-DOS drives]:drives' \
+                '-n-[disk name]:name' \
                 '-s[Create skitzo disk]' \
                 '*:disk image:_files'
             ;;

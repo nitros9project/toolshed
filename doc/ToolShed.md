@@ -1843,6 +1843,8 @@ The following pages document the commands built into the dgndos tool. Its interf
 
 Issuing the dgndos command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using the subcommand.
 
+Bash and Zsh completion definitions are provided in **dgndos/dgndos-completion.bash** and **dgndos/dgndos_zsh.txt**. Source the Bash file from `~/.bashrc` or install it in your Bash completion directory. For Zsh, copy **dgndos_zsh.txt** to a directory on `$fpath` as **_dgndos**, then run `compinit`. Completion offers subcommands, options and host filenames; it does not list files inside disk images.
+
 Use dgndos to copy files to and from Dragon DOS formatted disk images and your host file system. It works on raw, JVC, VDK, DMK and SDF images, and an image can lack any sectors a command doesn't need. A file on a disk is named `<disk>,<file>`.
 
 Filenames follow the rules of Dragon DOS: up to 8 of A-Z, 0-9 and "-", then optionally "." or "/" and up to 3 more. Lower case is made upper. Extra characters in the first part are ignored, along with all that follows them. Extra characters in the extension are an error.

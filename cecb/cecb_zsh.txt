@@ -18,6 +18,8 @@ _cecb() {
         '-n+[Set near-zero threshold]:threshold:'
         '-s+[Start at sample/bit]:offset:'
         '-z[Suggest MC-10 mode]'
+        '-h[show help]'
+        '-?[show help]'
     )
 
     local -a commands
@@ -29,6 +31,7 @@ _cecb() {
         'dump:Display the contents of a file in hexadecimal'
         'fstat:Display file information'
         'leader:Analyze WAV leaders'
+        'list:Display BASIC or S-record contents'
     )
 
     # Use *:: to shift $words so $words[1] becomes the subcommand in the nested state
@@ -48,16 +51,14 @@ _cecb() {
             case "$cmd" in
                 bulkerase)
                     _arguments -s \
-                        $global_opts \
-                        '-s+[Sample rate]:sample rate:(11025 22050 44100 48000 96000)' \
-                        '-b+[Bits per sample]:bits:(8 16 24 32)' \
-                        '-l+[Leader silence length]:seconds:' \
+                        '-s-[Sample rate]:sample rate:(11025 22050 44100 48000 96000)' \
+                        '-b-[Bits per sample]:bits:(8 16 24 32)' \
+                        '-l-[Leader silence length]:seconds:' \
                         '*:file:_files'
                     ;;
 
                 copy)
                     _arguments -s \
-                        $global_opts \
                         '-0[BASIC program]' \
                         '-1[BASIC data file]' \
                         '-2[Machine-language program]' \
@@ -66,8 +67,8 @@ _cecb() {
                         '-b[Binary data]' \
                         '-g[Write gaps]' \
                         '-n[No gaps]' \
-                        '-d+[Load address]:address:' \
-                        '-e+[Execution address]:address:' \
+                        '-d-[Load address]:address:' \
+                        '-e-[Execution address]:address:' \
                         '-l[Translate line endings]' \
                         '-t[Entokenize BASIC text]' \
                         '-k[Detokenize BASIC program]' \
@@ -80,13 +81,11 @@ _cecb() {
 
                 dir)
                     _arguments -s \
-                        $global_opts \
                         '*:image:_files'
                     ;;
 
                 dump)
                     _arguments -s \
-                        $global_opts \
                         '-a[dump output in assembler format (hex)]' \
                         '-b[dump output in assembler format (binary)]' \
                         "-c[don't display ASCII character data]" \
@@ -98,25 +97,35 @@ _cecb() {
                         '*:file:_files'
                     ;;
 
+                list)
+                    _arguments \
+                        '-t[perform BASIC token translation]' \
+                        '-s[perform S-Record encoding]' \
+                        '*:file:_files'
+                    ;;
+
                 dumpblock)
                     _arguments -s \
-                        $global_opts \
+                        '-a[assembler hex output]' \
+                        '-b[assembler binary output]' \
+                        '-e[C output]' \
+                        '-c[omit ASCII character data]' \
+                        '-t[omit header]' \
+                        '-l[omit line labels]' \
                         '-h[Show help]' \
                         '*:image:_files'
                     ;;
 
                 fstat)
                     _arguments -s \
-                        $global_opts \
                         '*:file:_files'
                     ;;
 
                 leader)
                     _arguments -s \
-                        $global_opts \
                         '*:wave file:_files'
                     ;;
-            case)
+                *)
                     _message "unknown cecb command: $cmd"
                     ;;
             esac

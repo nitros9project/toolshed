@@ -1,126 +1,54 @@
-# Bash completion for the `cecb` ToolShed command (CECB File Tools Executive)
-# Source this file (e.g. from ~/.bashrc) or drop it in
-# /etc/bash_completion.d/ or /usr/local/etc/bash_completion.d/
+# Bash completion for the `cecb` ToolShed command.
+# Source from ~/.bashrc or install in a bash_completion.d directory.
+# Values shown as option prefixes must be attached (e.g. -b=8192).
 
 _cecb()
 {
-    local cur prev cmd
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    local cmd= opts= candidate i
     COMPREPLY=()
 
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
-
-    # Global options
-    local global_opts="
-        -r
-        -t
-        -n
-        -s
-        -z
-    "
-
-    # Subcommands
-    local commands="
-        bulkerase
-        copy
-        dir
-        dumpblock
-        fstat
-        leader
-    "
-
-    #
-    # Find the subcommand (first non-option argument).
-    #
-    cmd=
+    # Executive options precede the first non-option word.
     for ((i=1; i<COMP_CWORD; i++)); do
         case "${COMP_WORDS[i]}" in
-            -*)
-                ;;
-            *)
-                cmd="${COMP_WORDS[i]}"
-                break
-                ;;
+            -r|-t|-n|-s) ((i++)) ;;
+            -*) ;;
+            *) cmd="${COMP_WORDS[i]}"; break ;;
         esac
     done
+    # CECB also accepts separate values for its executive options.
+    if (( i > COMP_CWORD )); then
+        return 0
+    fi
 
-    #
-    # No subcommand yet.
-    #
     if [[ -z "$cmd" ]]; then
         if [[ "$cur" == -* ]]; then
-            COMPREPLY=( $(compgen -W "$global_opts" -- "$cur") )
+            COMPREPLY=( $(compgen -W "-r -t -n -s -z -h -?" -- "$cur") )
         else
-            COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+            COMPREPLY=( $(compgen -W "bulkerase copy dir dump dumpblock fstat leader list" -- "$cur") )
         fi
-        return
+        return 0
     fi
 
     case "$cmd" in
-        bulkerase)
-            case "$prev" in
-                -s)
-                    COMPREPLY=( $(compgen -W "11025 22050 44100 48000 96000" -- "$cur") )
-                    return
-                    ;;
-                -b)
-                    COMPREPLY=( $(compgen -W "8 16 24 32" -- "$cur") )
-                    return
-                    ;;
-            esac
-
-            if [[ "$cur" == -* ]]; then
-                COMPREPLY=( $(compgen -W "
-                    -s
-                    -b
-                    -l
-                " -- "$cur") )
-            else
-                COMPREPLY=( $(compgen -f -- "$cur") )
-            fi
-            ;;
-
-        copy)
-            case "$prev" in
-                -d|-e)
-                    return
-                    ;;
-            esac
-
-            if [[ "$cur" == -* ]]; then
-                COMPREPLY=( $(compgen -W "
-                    -0
-                    -1
-                    -2
-                    -3
-                    -a
-                    -b
-                    -g
-                    -n
-                    -d
-                    -e
-                    -l
-                    -t
-                    -k
-                    -s
-                    -f
-                    -c
-                    -p
-                " -- "$cur") )
-            else
-                COMPREPLY=( $(compgen -f -- "$cur") )
-            fi
-            ;;
-
-        dir|fstat|leader|dumpblock)
-            if [[ "$cur" == -* ]]; then
-                [[ "$cmd" == dumpblock ]] &&
-                    COMPREPLY=( $(compgen -W "-h" -- "$cur") )
-            else
-                COMPREPLY=( $(compgen -f -- "$cur") )
-            fi
-            ;;
+        bulkerase) opts="-s -b -l" ;;
+        copy) opts="-0 -1 -2 -3 -a -b -g -n -d -e -l -t -k -s -f -c -p" ;;
+        dir) opts="" ;;
+        dump) opts="-a -b -c -e -t -h -l -z" ;;
+        dumpblock) opts="-a -b -e -c -t -l -h" ;;
+        fstat) opts="" ;;
+        leader) opts="" ;;
+        list) opts="-t -s" ;;
     esac
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+    else
+        # Preserve spaces in host filenames. Image-internal paths are not queried.
+        while IFS= read -r candidate; do
+            COMPREPLY+=("$candidate")
+        done < <(compgen -f -- "$cur")
+    fi
+    return 0
 }
 
-complete -F _cecb cecb
+complete -o filenames -F _cecb cecb

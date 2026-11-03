@@ -32,11 +32,13 @@ _os9() {
         'makdir:Create one or more directories'
         'modbust:Bust a single merged file of OS-9 modules into separate files'
         'padrom:Pad a file to a specific length'
-        'rdump:Print formatted dump of .r and .l files'
+        'reveal:Locate the file or structure at a disk offset'
         'rename:Give a file a new filename'
     )
 
     _arguments -C \
+        '-h[show help]' \
+        '-?[show help]' \
         '1: :->command' \
         '*:: :->args'
 
@@ -65,7 +67,7 @@ _os9() {
                 makdir)  _os9_makdir  ;;
                 modbust) _os9_modbust ;;
                 padrom)  _os9_padrom  ;;
-                rdump)   _os9_rdump   ;;
+                reveal)  _os9_reveal  ;;
                 rename)  _os9_rename  ;;
             esac
             ;;
@@ -143,6 +145,7 @@ _os9_dsave() {
         '-e[actually execute commands]' \
         '-l[perform end of line translation on copy]' \
         '-r[force rewrite on copy]' \
+        '-x=-[executable to run commands with]:executable:_files' \
         ':source:_files' \
         ':target:_files'
 }
@@ -167,6 +170,7 @@ _os9_format() {
         '-bs+[bytes per sector (default 256)]:bytes per sector' \
         '-c+[cluster size]:cluster size' \
         '-e[format entire disk (make full sized image)]' \
+        '-f-[image format]:format:(raw jvc vdk dmk sdf)' \
         '-k[make OS-9/68K LSN0]' \
         '-n+[disk name]:disk name' \
         '-q[quiet; do not report format summary]' \
@@ -250,14 +254,13 @@ _os9_padrom() {
         '*:file:_files'
 }
 
-# ---- rdump ----
-_os9_rdump() {
+# ---- reveal ----
+_os9_reveal() {
     _arguments \
-        '-g[add global definition info]' \
-        '-r[add reference info]' \
-        '-o[add reference and local offset info]' \
-        '-a[all of the above]' \
-        '*:file:_files'
+        '-b[treat offset as an absolute byte offset]' \
+        '-d[Dragon disk]' \
+        '1:disk image:_files' \
+        '2:LSN or byte offset:'
 }
 
 # ---- rename ----
