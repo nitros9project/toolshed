@@ -313,6 +313,7 @@ error_code _diskimage_close(diskimage_id disk)
 		ec = EOS_WRITE;
 	}
 	free(disk->table);
+	free(disk->ids);
 	free(disk);
 
 	return ec;

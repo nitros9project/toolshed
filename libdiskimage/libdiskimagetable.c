@@ -82,6 +82,24 @@ error_code di_table_add_track(diskimage_id disk, di_track_id *ids, int count)
 	int ordered_count = 0;
 	int i, j;
 
+	/* Keep physical order and rejected IDs for container-byte queries. */
+	if (disk->id_count + count > disk->id_capacity)
+	{
+		u_int capacity = disk->id_capacity ? disk->id_capacity * 2 : 256;
+		di_track_id *all;
+
+		if (capacity < disk->id_count + count)
+			capacity = disk->id_count + count;
+		all = realloc(disk->ids, capacity * sizeof(*all));
+		if (all == NULL)
+			return UnixToCoCoError(ENOMEM);
+		disk->ids = all;
+		disk->id_capacity = capacity;
+	}
+	if (count > 0)
+		memcpy(&disk->ids[disk->id_count], ids, count * sizeof(*ids));
+	disk->id_count += count;
+
 	for (i = 0; i < count; i++)
 	{
 		di_sector *sector = &ids[i].sector;

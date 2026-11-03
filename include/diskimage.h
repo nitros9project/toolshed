@@ -99,6 +99,41 @@ typedef struct
 	u_int flags;
 } diskimage_sector_info;
 
+/* Regions in the host file, not in the logical sector stream. End offsets
+   are exclusive. Sector numbers are the recorded IDs, not logical indexes. */
+typedef enum
+{
+	DISKIMAGE_BYTE_GAP = 0,
+	DISKIMAGE_BYTE_HEADER,
+	DISKIMAGE_BYTE_TRACK_HEADER,
+	DISKIMAGE_BYTE_ID,
+	DISKIMAGE_BYTE_DATA_MARK,
+	DISKIMAGE_BYTE_DATA,
+	DISKIMAGE_BYTE_CRC,
+	DISKIMAGE_BYTE_ATTRIBUTE,
+	DISKIMAGE_BYTE_UNUSED
+} diskimage_byte_kind;
+
+typedef struct
+{
+	diskimage_byte_kind kind;
+	long long start;
+	long long end;
+	diskimage_sector_info sector;
+	u_int step;		/* file bytes per decoded byte (1 or 2) */
+	int logical;		/* this is the sector used by sector reads */
+} diskimage_byte_region;
+
+typedef struct
+{
+	long long file_size;
+	diskimage_byte_region region;
+	int has_previous;
+	int has_next;
+	diskimage_byte_region previous;
+	diskimage_byte_region next;
+} diskimage_byte_info;
+
 /* The format with a name: raw, jvc, vdk, dmk or sdf, in either case.  Any other
    name is DISKIMAGE_UNKNOWN. */
 diskimage_format _diskimage_format_named(const char *name);
@@ -171,6 +206,11 @@ error_code _diskimage_query_geometry(diskimage_id disk, diskimage_geometry *geom
 /* Describe a logical sector, by its position (from zero) in the ordering
    above.  Use this to find the layout of an image that is not uniform. */
 error_code _diskimage_query_sector(diskimage_id disk, u_int index, diskimage_sector_info *info);
+
+/* Describe an actual host-file byte and its surrounding fields in file
+   order, including non-logical sector IDs. EOS_EOF means offset is at or
+   beyond the file's end; file_size is still returned in that case. */
+error_code _diskimage_query_byte(diskimage_id disk, long long offset, diskimage_byte_info *info);
 
 /* Read one sector.  On entry *size is the size of buffer; on return it is
    the size of the sector.  If buffer is too small the result is EOS_IA

@@ -84,6 +84,11 @@ struct _diskimage_path
 	/* Other images */
 	di_sector *table;
 	u_int table_capacity;
+	di_track_id *ids;	/* all physical IDs, including rejected ones */
+	u_int id_count;
+	u_int id_capacity;
+	u_int track_size;
+	u_int track_header_size;
 };
 
 typedef struct

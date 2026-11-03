@@ -73,6 +73,7 @@ set(TOOLSHED_CORE_SOURCES
     ${TOOLSHED_ROOT}/libdiskimage/libdiskimagesector.c
     ${TOOLSHED_ROOT}/libdiskimage/libdiskimagetable.c
     ${TOOLSHED_ROOT}/libdiskimage/libdiskimagevdk.c
+    ${TOOLSHED_ROOT}/libdiskimage/libdiskimagebyte.c
     ${TOOLSHED_ROOT}/libdragondos/libdragondosbitmap.c
     ${TOOLSHED_ROOT}/libdragondos/libdragondosdir.c
     ${TOOLSHED_ROOT}/libdragondos/libdragondosdisk.c

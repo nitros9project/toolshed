@@ -5,7 +5,7 @@ CFLAGS += -I../../../include -Wall -MMD -MP
 
 SRCS = libdiskimagecreate.c libdiskimagedmk.c libdiskimagejvc.c libdiskimageopen.c \
 	libdiskimagesdf.c libdiskimagesector.c libdiskimagetable.c \
-	libdiskimagevdk.c
+	libdiskimagevdk.c libdiskimagebyte.c
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)
 

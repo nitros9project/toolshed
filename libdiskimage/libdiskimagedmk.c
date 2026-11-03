@@ -98,17 +98,19 @@ static void parse_sector(di_track_id *entry, const u_char *track, int length, in
 	u_char field[1 + DI_MAX_SECTOR_SIZE];
 	unsigned short crc_init = double_density ? DI_CRC_INIT_DD : DI_CRC_INIT_SD;
 	unsigned short crc;
-	int mark, data, size, i;
+	int mark, data, size, i, valid_id;
 
 	for (i = 0; i < 7; i++)
 	{
 		id[i] = track[position + i * step];
 	}
 	crc = di_crc16(crc_init, id, 5);
-	if (crc != ((id[5] << 8) | id[6]) || id[1] != cylinder)
-	{
-		return;
-	}
+	valid_id = crc == ((id[5] << 8) | id[6]) && id[1] == cylinder;
+	sector->cylinder = (unsigned short)cylinder;
+	sector->side = (u_char)side;
+	sector->id = id[3];
+	sector->step = (u_char)step;
+	sector->size = (unsigned short)(128 << (id[4] & 3));
 
 	mark = find_data_mark(track, length, position + 7 * step, step, double_density);
 	if (mark < 0)
@@ -149,7 +151,7 @@ static void parse_sector(di_track_id *entry, const u_char *track, int length, in
 	{
 		sector->flags |= DISKIMAGE_SECTOR_CRC_ERROR;
 	}
-	entry->valid = 1;
+	entry->valid = valid_id;
 }
 
 
@@ -203,6 +205,9 @@ error_code di_dmk_load(diskimage_id disk, const u_char *header)
 	disk->cylinders = header[1];
 	disk->sides = (header[4] & DMK_FLAG_SINGLE_SIDED) ? 1 : 2;
 	disk->write_protected = header[0] == 0xFF;
+	disk->data_start = DMK_HEADER_SIZE;
+	disk->track_size = length;
+	disk->track_header_size = DMK_TRACK_HEADER_SIZE;
 
 	track = malloc(length);
 	if (track == NULL)
