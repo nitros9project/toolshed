@@ -51,6 +51,7 @@ static struct cmdtbl table[] = {
 	{os9gen, "gen"},
 	{os9id, "id"},
 	{os9ident, "ident"},
+	{cocoinfo, "info"},
 	{os9list, "list"},
 	{os9makdir, "makdir"},
 	{os9modbust, "modbust"},
@@ -99,7 +100,8 @@ int main(int argc, char *argv[])
 		ec = do_command(argc - i, &argv[i]);
 	}
 
-	if (ec != 0 )
+	/* info reports its own errors; -s uses nonzero statuses for filesystems. */
+	if (ec != 0 && strcmp(command, "info") != 0)
 	{
 		fprintf(stderr, "Error: %d - %s\n", ec, TSReportError(ec));
 	}

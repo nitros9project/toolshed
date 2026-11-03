@@ -49,6 +49,7 @@ static struct cmdtbl table[] = {
 	{decbfree, "free"},
 	{decbfstat, "fstat"},
 	{decbhdbconv, "hdbconv"},
+	{cocoinfo, "info"},
 	{decbkill, "kill"},
 	{decblist, "list"},
 	{decbrename, "rename"},
@@ -100,7 +101,8 @@ int main(int argc, char *argv[])
 		ec = do_command(argc - i, &argv[i]);
 	}
 
-	if (ec != 0 )
+	/* info reports its own errors; -s uses nonzero statuses for filesystems. */
+	if (ec != 0 && strcmp(command, "info") != 0)
 	{
 		fprintf(stderr, "Error: %d - %s\n", ec, TSReportError(ec));
 	}

@@ -14,7 +14,6 @@ build/unix/cocofuse/cocofuse
 build/unix/decb/decb
 build/unix/dis68/dis68
 build/unix/dgndos/dgndos
-build/unix/diskinfo/diskinfo
 build/unix/doc/ToolShed.html
 build/unix/lst2cmt/lst2cmt
 build/unix/makewav/makewav
@@ -24,7 +23,7 @@ build/unix/tocgen/tocgen
 build/unix/unittest/cecbcommandtest
 build/unix/unittest/decbcommandtest
 build/unix/unittest/dgndoscommandtest
-build/unix/unittest/diskinfocommandtest
+build/unix/unittest/infocommandtest
 build/unix/unittest/libcecbtest
 build/unix/unittest/libdecbtest
 build/unix/unittest/libdiskimagetest

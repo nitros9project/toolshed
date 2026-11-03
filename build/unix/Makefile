@@ -19,10 +19,10 @@ INSTALLDIR  = $(bindir)
 DOCDIR      = $(docdir)
 endif
 
-APPS 		= ar2 os9 mamou cecb decb tocgen makewav dis68 lst2cmt diskinfo dgndos
+APPS 		= ar2 os9 mamou cecb decb tocgen makewav dis68 lst2cmt dgndos
 
 DIRS		= libtoolshed libnative libcecb librbf libcoco libdecb libdiskimage libdragondos libmisc libsys \
-		decb cecb os9 makewav tocgen lst2cmt diskinfo dgndos \
+		decb cecb os9 makewav tocgen lst2cmt dgndos \
 		dis68 mamou ar2 \
 		doc
 

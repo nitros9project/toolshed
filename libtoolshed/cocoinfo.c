@@ -1,5 +1,5 @@
 /********************************************************************
- * diskinfo.c - Report the format and track layout of disk images
+ * cocoinfo.c - Report the format and track layout of disk images
  *
  * Tracks with the same layout are reported together.  On a two sided
  * image a run of tracks has one line if both sides match, and a line
@@ -21,9 +21,8 @@
 #define MAX_TRACK_SECTORS	256
 
 static char const *const helpMessage[] = {
-	"diskinfo from Toolshed " TOOLSHED_VERSION "\n",
 	"Report the format and track layout of disk images\n",
-	"Syntax: diskinfo {[<opts>]} <file> {<file> ...}\n",
+	"Syntax: info {[<opts>]} <file> {<file> ...}\n",
 	"Options:\n",
 	"     -p  = set the write protect flag of a DMK, SDF or VDK image\n",
 	"     -s  = report one file's possible filesystems in the exit status,\n",
@@ -425,12 +424,12 @@ static int filesystems_command(int argc, char *argv[])
 		}
 		if (argv[i][0] == '-')
 		{
-			fprintf(stderr, "diskinfo: -s can't be used with '%s'\n", argv[i]);
+			fprintf(stderr, "info: -s can't be used with '%s'\n", argv[i]);
 			return FILESYSTEMS_STATUS_ERROR;
 		}
 		if (pathname != NULL)
 		{
-			fprintf(stderr, "diskinfo: -s reports on one file only\n");
+			fprintf(stderr, "info: -s reports on one file only\n");
 			return FILESYSTEMS_STATUS_ERROR;
 		}
 		pathname = argv[i];
@@ -438,7 +437,7 @@ static int filesystems_command(int argc, char *argv[])
 
 	if (pathname == NULL)
 	{
-		fprintf(stderr, "diskinfo: -s needs a file\n");
+		fprintf(stderr, "info: -s needs a file\n");
 		return FILESYSTEMS_STATUS_ERROR;
 	}
 
@@ -446,7 +445,7 @@ static int filesystems_command(int argc, char *argv[])
 }
 
 
-int main(int argc, char *argv[])
+int cocoinfo(int argc, char *argv[])
 {
 	int status = 0;
 	int write_protect = -1;
@@ -484,7 +483,7 @@ int main(int argc, char *argv[])
 		}
 		else if (argv[i][0] == '-')
 		{
-			fprintf(stderr, "diskinfo: unknown option '%s'\n", argv[i]);
+			fprintf(stderr, "info: unknown option '%s'\n", argv[i]);
 			return 1;
 		}
 	}

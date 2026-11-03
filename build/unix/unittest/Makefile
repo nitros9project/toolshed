@@ -27,7 +27,7 @@ TEST_LIBS = \
 
 
 TESTS = librbftest libdecbtest libcecbtest libtoolshedtest libnativetest libmisctest os9commandtest \
-	decbcommandtest cecbcommandtest libsystest libdiskimagetest diskinfocommandtest libdragondostest dgndoscommandtest
+	decbcommandtest cecbcommandtest libsystest libdiskimagetest infocommandtest libdragondostest dgndoscommandtest
 
 # Only the source and libraries are linked, not the headers the .d files add.
 $(TESTS): %: %.c $(TEST_LIBS)
@@ -46,7 +46,7 @@ ifeq (,$(NOTEST))
 	./decbcommandtest
 	./cecbcommandtest
 	./libdiskimagetest
-	./diskinfocommandtest
+	./infocommandtest
 	./libdragondostest
 	./dgndoscommandtest
 endif
