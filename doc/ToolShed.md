@@ -32,6 +32,7 @@ ToolShed v2.6.1
   * [GEN](#gen) - Prepare a disk image for booting
   * [ID](#id) - Display sector 0 of an image
   * [IDENT](#ident) - Display OS-9 module information
+  * [INFO](#info) - Report disk image format and track layout, or change write protection
   * [LIST](#list_os9) - Display contents of a text file
   * [MAKDIR](#makdir) - Create one or more directories
   * [MODBUST](#modbust) - Bust a single merged file of OS-9 modules into separate files
@@ -50,6 +51,7 @@ ToolShed v2.6.1
   * [FREE](#free_decb) - Display the number of free granules
   * [FSTAT](#fstat_decb) - Display the file descriptor sector for a file
   * [HDBCONV](#hdbconv) - Converts an HDB-DOS disk image into a 512-byte sector compatible one
+  * [INFO](#info) - Report disk image format and track layout, or change write protection
   * [KILL](#kill) - Remove files from a Disk BASIC image
   * [LIST](#list_decb) - Display the contents of a file
   * [RENAME](#rename_decb) - Give a file a new filename
@@ -65,7 +67,6 @@ ToolShed v2.6.1
 * [ar2](#ar2)
 * [dis68](#dis68)
 * [lst2cmt](#lst2cmt) - Create MAME comment file
-* [diskinfo](#diskinfo) - Report the format and track layout of disk images
 * [dgndos](#dgndos) - Manipulate Dragon DOS formatted disk images
   * [ATTR](#attr_dgndos) - Display or change whether files are protected
   * [COPY](#copy_dgndos) - Copy one or more files to a target file or directory
@@ -75,6 +76,7 @@ ToolShed v2.6.1
   * [DUMP](#dump_dgndos) - Display the contents of a binary file
   * [FREE](#free_dgndos) - Display the amount of free space on an image
   * [FSTAT](#fstat_dgndos) - Display detailed information about a file
+  * [INFO](#info) - Report disk image format and track layout, or change write protection
   * [KILL](#kill_dgndos) - Delete one or more files
   * [LIST](#list_dgndos) - Display the contents of a text file
   * [RENAME](#rename_dgndos) - Give a file a new filename
@@ -127,9 +129,9 @@ Carl Kreider is a long time OS-9/6809 user and programmer, and has graciously gi
 
 This is a tool used to convert lwasm listing files into MAME comment files.
 
-### diskinfo
+### info subcommand
 
-This is a tool used to report the format and track layout of DMK, SDF, JVC, VDK and raw disk images.
+The os9, decb and dgndos tools share an info subcommand to report the format and track layout of DMK, SDF, JVC, VDK and raw disk images.
 
 ### dgndos
 
@@ -160,7 +162,7 @@ The library source directories are at the project root. Their public headers are
 
 | Library | Main headers | Purpose and use |
 | --- | --- | --- |
-| `libdiskimage` | `diskimage.h` | Identifies, creates and accesses raw, JVC, VDK, DMK and SDF images. Provides geometry queries, sector enumeration, sector reads and writes, and write-protection handling. Used by the disk filesystem libraries and `diskinfo`; useful independently for image inspectors, sector editors and emulator utilities. |
+| `libdiskimage` | `diskimage.h` | Identifies, creates and accesses raw, JVC, VDK, DMK and SDF images. Provides geometry queries, sector enumeration, sector reads and writes, and write-protection handling. Used by the disk filesystem libraries and the shared `info` subcommand; useful independently for image inspectors, sector editors and emulator utilities. |
 | `librbf` | `os9path.h`, `rbfutil.h` | Implements OS-9/NitrOS-9 RBF filesystems, including directories, allocation bitmaps, file attributes, formatting and file I/O. Supplies the filesystem operations behind `os9` and the OS-9 backend of `libcoco`. |
 | `libdecb` | `decbpath.h`, `decbutil.h` | Implements Disk BASIC filesystems, FAT/granule allocation, directory entries, formatting and HDB-DOS drive/offset access. Also supplies BASIC token conversion and binary conversion helpers. Used by `decb` and the Disk BASIC backend of `libcoco`. |
 | `libdragondos` | `dragondospath.h` | Implements Dragon DOS directories, allocation, file access, protection attributes, formatting and BASIC token conversion. Used by `dgndos` and the Dragon DOS backend of `libcoco`. |
@@ -1764,20 +1766,22 @@ This tool allows you to process lwasm's listing files to produce a file MAME can
 
 ---
 
-<h2 id="diskinfo">diskinfo</h2>
+<h2 id="info">info (os9, decb and dgndos)</h2>
 
-This is a tool used to report the format and track layout of disk images, and to set or clear their write protect flag.
+This shared subcommand reports the format and track layout of disk images, and sets or clears their write protect flag. Each tool accepts every supported image format, regardless of its filesystem.
 
 #### Syntax and Scope
 
-    diskinfo {[<opts>]} <file> {<file> ...}
+    os9 info {[<opts>]} <file> {<file> ...}
+    decb info {[<opts>]} <file> {<file> ...}
+    dgndos info {[<opts>]} <file> {<file> ...}
     -p  set the write protect flag of a DMK, SDF or VDK image
     -u  clear the write protect flag of a DMK, SDF or VDK image
     -s  report one file's possible filesystems in the exit status
 
 #### Description
 
-For each file, diskinfo reports its disk image format, then the sectors on its tracks. Tracks with the same layout are reported together.
+For each file, info reports its disk image format, then the sectors on its tracks. Tracks with the same layout are reported together.
 
     test.dsk is a DMK disk image.
     Tracks 0 to 16 are 18 sectors (1-18), 256 bytes each.
@@ -1793,7 +1797,7 @@ On a two sided image, a run of tracks is reported once if both sides match, and 
 
 A file that is not a disk image is reported as such.
 
-If the image could hold an OS-9, Disk BASIC or Dragon DOS filesystem, diskinfo names them. A disk can hold more than one, and Disk BASIC has nothing to identify it, so this is only what could be there.
+If the image could hold an OS-9, Disk BASIC or Dragon DOS filesystem, info names them. A disk can hold more than one, and Disk BASIC has nothing to identify it, so this is only what could be there.
 
     test.dsk is a raw disk image.
     Possible filesystems: OS-9, Disk BASIC
@@ -1803,7 +1807,7 @@ If the image could hold an OS-9, Disk BASIC or Dragon DOS filesystem, diskinfo n
 
     Other possible filesystems: Disk BASIC
 
-With -s, diskinfo prints nothing, and its exit status says which filesystems the one file named could hold. A status that isn't 0 isn't a failure here, so scripts using `set -e` or `&&` need to allow for it.
+With -s, info prints nothing, and its exit status says which filesystems the one file named could hold. A status that isn't 0 isn't a failure here, so scripts using `set -e` or `&&` need to allow for it.
 
     0   a disk image, with no filesystem found
     1   OS-9
@@ -1813,10 +1817,10 @@ With -s, diskinfo prints nothing, and its exit status says which filesystems the
 
 The filesystems add together, so 3 is OS-9 and Disk BASIC. -s takes one file, and can't be used with other options. For example:
 
-    diskinfo -s disk.dmk; fs=$?
+    os9 info -s disk.dmk; fs=$?
     if [ $((fs & 64)) -ne 0 ]; then echo "error"; elif [ $((fs & 1)) -ne 0 ]; then echo "has OS-9"; fi
 
-With -p or -u, diskinfo changes the write protect flag instead of reporting the layout. Raw and JVC images have no such flag. os9, decb and dgndos can read a write protected image, but cannot change it.
+With -p or -u, info changes the write protect flag instead of reporting the layout. Raw and JVC images have no such flag. os9, decb and dgndos can read a write protected image, but cannot change it.
 
     file.txt is not a DMK, SDF, JVC, VDK, nor raw disk image.
 

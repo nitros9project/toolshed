@@ -31,6 +31,7 @@ int os9deldir(int, char **);
 int os9dir(int, char **);
 int os9dsave(int, char **);
 int cocodump(int, char **);
+int cocoinfo(int, char **);
 int os9format(int, char **);
 int os9free(int, char **);
 int os9fstat(int, char **);

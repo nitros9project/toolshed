@@ -1,4 +1,4 @@
-/* Tests for the diskinfo command. */
+/* Tests for the info command. */
 
 #include <string.h>
 #include <sys/wait.h>
@@ -8,10 +8,10 @@
 #include "diskimage.h"
 #include "imagedamage.h"
 
-#define TEST_IMAGE "diskinfo_test.dsk"
-#define TEST_OTHER "diskinfo_other.dsk"
-#define OUTPUT_FILE "diskinfo_output.txt"
-#define ERRORS_FILE "diskinfo_errors.txt"
+#define TEST_IMAGE "info_test.dsk"
+#define TEST_OTHER "info_other.dsk"
+#define OUTPUT_FILE "info_output.txt"
+#define ERRORS_FILE "info_errors.txt"
 
 #define DMK_TRACK_LENGTH 0x1900
 #define DMK_FLAG_SINGLE_SIDED 0x10
@@ -67,13 +67,15 @@ static void read_file(const char *pathname, char *buffer, size_t size)
 	buffer[got] = '\0';
 }
 
-/* Run diskinfo, keeping what it prints, and return its result. */
-static int run_diskinfo(const char *arguments)
+/* Run info, keeping what it prints, and return its result. */
+static const char *tool;
+
+static int run_info(const char *arguments)
 {
 	char command[512];
 	int result;
 
-	snprintf(command, sizeof(command), "../diskinfo/diskinfo %s > %s 2> %s", arguments, OUTPUT_FILE, ERRORS_FILE);
+	snprintf(command, sizeof(command), "../%s/%s info %s > %s 2> %s", tool, tool, arguments, OUTPUT_FILE, ERRORS_FILE);
 	result = system(command);
 	read_file(OUTPUT_FILE, output, sizeof(output));
 	read_file(ERRORS_FILE, errors, sizeof(errors));
@@ -190,7 +192,7 @@ static void test_dmk_report(void)
 	}
 	dmk_write();
 
-	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE));
+	ASSERT_CALL(0, run_info(TEST_IMAGE));
 	remove(TEST_IMAGE);
 
 	ASSERT_STRING_EQUALS(
@@ -205,15 +207,15 @@ static void test_dmk_report(void)
 
 static void test_not_a_disk_image(void)
 {
-	FILE *fp = fopen("diskinfo_file.txt", "wb");
+	FILE *fp = fopen("info_file.txt", "wb");
 
 	fputs("This is not a disk image.\n", fp);
 	fclose(fp);
 
-	ASSERT_NEQUALS(0, run_diskinfo("diskinfo_file.txt"));
-	remove("diskinfo_file.txt");
+	ASSERT_NEQUALS(0, run_info("info_file.txt"));
+	remove("info_file.txt");
 
-	ASSERT_STRING_EQUALS("diskinfo_file.txt is not a DMK, SDF, JVC, VDK, nor raw disk image.\n", output);
+	ASSERT_STRING_EQUALS("info_file.txt is not a DMK, SDF, JVC, VDK, nor raw disk image.\n", output);
 }
 
 static void check_created(diskimage_format format, const char *name, u_int sides, const char *tracks)
@@ -222,7 +224,7 @@ static void check_created(diskimage_format format, const char *name, u_int sides
 
 	remove(TEST_IMAGE);
 	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, format, sides, 35, 256, 18, 0, 0, 0xFF));
-	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE));
+	ASSERT_CALL(0, run_info(TEST_IMAGE));
 	remove(TEST_IMAGE);
 
 	snprintf(expected, sizeof(expected), "%s is %s disk image.\n%s\n", TEST_IMAGE, name, tracks);
@@ -245,7 +247,7 @@ static void test_short_track0(void)
 {
 	remove(TEST_IMAGE);
 	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_RAW, 1, 35, 256, 18, 10, 0, 0xFF));
-	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE));
+	ASSERT_CALL(0, run_info(TEST_IMAGE));
 	remove(TEST_IMAGE);
 	ASSERT_STRING_EQUALS(
 		TEST_IMAGE " is a raw disk image.\n"
@@ -254,7 +256,7 @@ static void test_short_track0(void)
 		output);
 
 	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_DMK, 2, 3, 256, 18, 10, 0, 0xFF));
-	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE));
+	ASSERT_CALL(0, run_info(TEST_IMAGE));
 	remove(TEST_IMAGE);
 	ASSERT_STRING_EQUALS(
 		TEST_IMAGE " is a DMK disk image.\n"
@@ -293,7 +295,7 @@ static void test_track_layouts(void)
 	dmk_add_sector(6, 0, 1, 1, MARK_NORMAL, 0);
 	dmk_write();
 
-	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE));
+	ASSERT_CALL(0, run_info(TEST_IMAGE));
 	remove(TEST_IMAGE);
 
 	ASSERT_STRING_EQUALS(
@@ -322,7 +324,7 @@ static void test_tracks_differ_only_in_condition(void)
 	}
 	dmk_write();
 
-	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE));
+	ASSERT_CALL(0, run_info(TEST_IMAGE));
 	remove(TEST_IMAGE);
 
 	ASSERT_STRING_EQUALS(
@@ -338,7 +340,7 @@ static void test_empty_raw_image(void)
 
 	fclose(fp);
 
-	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE));
+	ASSERT_CALL(0, run_info(TEST_IMAGE));
 	remove(TEST_IMAGE);
 
 	ASSERT_STRING_EQUALS(TEST_IMAGE " is a raw disk image.\nIt has no tracks.\n", output);
@@ -346,10 +348,10 @@ static void test_empty_raw_image(void)
 
 static void test_missing_file(void)
 {
-	ASSERT_NEQUALS(0, run_diskinfo("diskinfo_missing.dsk"));
+	ASSERT_NEQUALS(0, run_info("info_missing.dsk"));
 
 	ASSERT_STRING_EQUALS("", output);
-	ASSERT("names the file", strstr(errors, "diskinfo_missing.dsk") != NULL);
+	ASSERT("names the file", strstr(errors, "info_missing.dsk") != NULL);
 }
 
 static void test_several_files(void)
@@ -359,7 +361,7 @@ static void test_several_files(void)
 	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_RAW, 1, 35, 256, 18, 0, 0, 0xFF));
 	ASSERT_CALL(0, _diskimage_create(TEST_OTHER, DISKIMAGE_VDK, 1, 40, 256, 18, 0, 0, 0xFF));
 
-	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE " " TEST_OTHER));
+	ASSERT_CALL(0, run_info(TEST_IMAGE " " TEST_OTHER));
 	remove(TEST_IMAGE);
 	remove(TEST_OTHER);
 
@@ -377,7 +379,7 @@ static void test_one_bad_file_sets_status(void)
 	remove(TEST_IMAGE);
 	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_RAW, 1, 1, 256, 18, 0, 0, 0xFF));
 
-	ASSERT_NEQUALS(0, run_diskinfo("diskinfo_missing.dsk " TEST_IMAGE));
+	ASSERT_NEQUALS(0, run_info("info_missing.dsk " TEST_IMAGE));
 	remove(TEST_IMAGE);
 
 	ASSERT("still reports the good file", strstr(output, "Track 0 is 18 sectors") != NULL);
@@ -385,13 +387,13 @@ static void test_one_bad_file_sets_status(void)
 
 static void test_usage(void)
 {
-	ASSERT_NEQUALS(0, run_diskinfo(""));
-	ASSERT("usage on stderr", strstr(errors, "Syntax: diskinfo") != NULL);
+	ASSERT_NEQUALS(0, run_info(""));
+	ASSERT("usage on stderr", strstr(errors, "Syntax: info") != NULL);
 
-	ASSERT_CALL(0, run_diskinfo("-h"));
-	ASSERT("usage on request", strstr(errors, "Syntax: diskinfo") != NULL);
+	ASSERT_CALL(0, run_info("-h"));
+	ASSERT("usage on request", strstr(errors, "Syntax: info") != NULL);
 
-	ASSERT_NEQUALS(0, run_diskinfo("-x"));
+	ASSERT_NEQUALS(0, run_info("-x"));
 	ASSERT("unknown option named", strstr(errors, "-x") != NULL);
 }
 
@@ -403,17 +405,17 @@ static void test_set_write_protect(void)
 	remove(TEST_IMAGE);
 	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_DMK, 1, 2, 256, 18, 0, 0, 0xFF));
 
-	ASSERT_CALL(0, run_diskinfo("-p " TEST_IMAGE));
+	ASSERT_CALL(0, run_info("-p " TEST_IMAGE));
 	ASSERT("reported as protected", strstr(output, "is now write protected.") != NULL);
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
 	ASSERT_CALL(0, _diskimage_query_geometry(disk, &geometry));
 	ASSERT_EQUALS(1, geometry.write_protected);
 	_diskimage_close(disk);
 
-	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE));
+	ASSERT_CALL(0, run_info(TEST_IMAGE));
 	ASSERT("the report says so", strstr(output, "It is write protected.\n") != NULL);
 
-	ASSERT_CALL(0, run_diskinfo(TEST_IMAGE " -u"));
+	ASSERT_CALL(0, run_info(TEST_IMAGE " -u"));
 	ASSERT("reported as not protected", strstr(output, "no longer write protected.") != NULL);
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ));
 	ASSERT_CALL(0, _diskimage_query_geometry(disk, &geometry));
@@ -423,23 +425,23 @@ static void test_set_write_protect(void)
 
 	/* A raw image has no flag to set. */
 	ASSERT_CALL(0, _diskimage_create(TEST_IMAGE, DISKIMAGE_RAW, 1, 2, 256, 18, 0, 0, 0xFF));
-	ASSERT_NEQUALS(0, run_diskinfo("-p " TEST_IMAGE));
+	ASSERT_NEQUALS(0, run_info("-p " TEST_IMAGE));
 	ASSERT("no flag reported", strstr(errors, "no write protect flag") != NULL);
 	remove(TEST_IMAGE);
 }
 
 static void test_possible_filesystems(void)
 {
-	ASSERT_CALL(0, run_diskinfo("\"../../../unittest/testdata/os9 mame.dmk\""));
+	ASSERT_CALL(0, run_info("\"../../../unittest/testdata/os9 mame.dmk\""));
 	ASSERT("OS-9 is named", strstr(output, "is a DMK disk image.\nPossible filesystems: OS-9\nTracks") != NULL);
 
-	ASSERT_CALL(0, run_diskinfo("\"../../../unittest/testdata/dragondos mame.vdk\""));
+	ASSERT_CALL(0, run_info("\"../../../unittest/testdata/dragondos mame.vdk\""));
 	ASSERT("Dragon DOS is named", strstr(output, "Possible filesystems: Dragon DOS\n") != NULL);
 }
 
 static int filesystems_status(const char *arguments)
 {
-	int status = run_diskinfo(arguments);
+	int status = run_info(arguments);
 
 	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
@@ -506,10 +508,10 @@ static void test_filesystems_status(void)
 	fclose(fp);
 	ASSERT_CALL(64, filesystems_status("-s " TEST_OTHER));
 	remove(TEST_OTHER);
-	ASSERT_CALL(64, filesystems_status("-s diskinfo_no_such_file.dsk"));
+	ASSERT_CALL(64, filesystems_status("-s info_no_such_file.dsk"));
 
 	/* Without -s nothing changes. */
-	ASSERT_CALL(0, run_diskinfo("\"../../../unittest/testdata/os9 mame.dmk\""));
+	ASSERT_CALL(0, run_info("\"../../../unittest/testdata/os9 mame.dmk\""));
 	ASSERT("the report is printed", strstr(output, "Possible filesystems: OS-9") != NULL);
 }
 
@@ -546,21 +548,29 @@ static void test_detection_on_bad_crc(void)
 
 int main(void)
 {
-	RUN(test_dmk_report);
-	RUN(test_not_a_disk_image);
-	RUN(test_each_format);
-	RUN(test_short_track0);
-	RUN(test_track_layouts);
-	RUN(test_tracks_differ_only_in_condition);
-	RUN(test_empty_raw_image);
-	RUN(test_missing_file);
-	RUN(test_several_files);
-	RUN(test_one_bad_file_sets_status);
-	RUN(test_usage);
-	RUN(test_set_write_protect);
+	static const char *const tools[] = { "decb", "os9", "dgndos" };
+	size_t i;
 
-	RUN(test_possible_filesystems);
-	RUN(test_filesystems_status);
-	RUN(test_detection_on_bad_crc);
+	for (i = 0; i < sizeof(tools) / sizeof(tools[0]); i++)
+	{
+		tool = tools[i];
+		printf("Testing %s info\n", tool);
+		RUN(test_dmk_report);
+		RUN(test_not_a_disk_image);
+		RUN(test_each_format);
+		RUN(test_short_track0);
+		RUN(test_track_layouts);
+		RUN(test_tracks_differ_only_in_condition);
+		RUN(test_empty_raw_image);
+		RUN(test_missing_file);
+		RUN(test_several_files);
+		RUN(test_one_bad_file_sets_status);
+		RUN(test_usage);
+		RUN(test_set_write_protect);
+
+		RUN(test_possible_filesystems);
+		RUN(test_filesystems_status);
+		RUN(test_detection_on_bad_crc);
+	}
 	return TEST_REPORT();
 }

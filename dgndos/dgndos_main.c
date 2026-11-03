@@ -36,6 +36,7 @@ static struct cmdtbl table[] = {
 	{cocodump, "dump"},
 	{dgndosfree, "free"},
 	{dgndosfstat, "fstat"},
+	{cocoinfo, "info"},
 	{dgndoskill, "kill"},
 	{dgndoslist, "list"},
 	{dgndosrename, "rename"},
@@ -81,7 +82,8 @@ int main(int argc, char *argv[])
 		ec = do_command(argc - i, &argv[i]);
 	}
 
-	if (ec != 0 && ec != DGNDOS_USAGE_ERROR)
+	/* info reports its own errors; -s uses nonzero statuses for filesystems. */
+	if (ec != 0 && ec != DGNDOS_USAGE_ERROR && strcmp(command, "info") != 0)
 	{
 		fprintf(stderr, "Error: %d - %s\n", ec, TSReportError(ec));
 	}
