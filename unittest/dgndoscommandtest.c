@@ -749,8 +749,122 @@ static void test_dsave(void)
 	clean_up();
 }
 
+static void test_reveal(void)
+{
+	const diskimage_format formats[] = { DISKIMAGE_RAW, DISKIMAGE_DMK, DISKIMAGE_SDF, DISKIMAGE_VDK, DISKIMAGE_JVC };
+	const char *images[] = { "dgnreveal.dsk", "dgnreveal.dmk", "dgnreveal.sdf", "dgnreveal.vdk", "dgnreveal.jvc" };
+	unsigned int f, sides;
+
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+	for (sides = 1; sides <= 2; sides++)
+	{
+		dragondos_path_id path;
+		dragondos_dir_entry *entry;
+		diskimage_byte_info info;
+		u_char sector[256];
+		char command[512], pathlist[128];
+		unsigned int directory = 20 * 18 * sides;
+		long long physical = 0;
+		error_code ec;
+
+		remove(images[f]);
+		ec = _dragondos_dskinit(images[f], formats[f], 40, sides);
+		ASSERT_EQUALS(0, ec);
+		snprintf(pathlist, sizeof(pathlist), "%s,", images[f]);
+		ec = _dragondos_open(&path, pathlist, FAM_READ | FAM_WRITE);
+		ASSERT_EQUALS(0, ec);
+		ec = _dragondos_gs_sector(path, directory + 2, sector);
+		ASSERT_EQUALS(0, ec);
+		/* A file whose second extent is in a continuation entry. */
+		memset(sector, 0, 50);
+		entry = (dragondos_dir_entry *)sector;
+		entry->flags = DRAGONDOS_FLAG_CONTINUED;
+		memcpy(entry->u.header.filename, "FILE", 4);
+		memcpy(entry->u.header.file_extension, "BIN", 3);
+		_int2(0, entry->u.header.extent[0].lsn);
+		entry->u.header.extent[0].count = 1;
+		entry->last_or_next = 1;
+		entry = (dragondos_dir_entry *)(sector + 25);
+		entry->flags = DRAGONDOS_FLAG_CONTINUATION;
+		_int2(18, entry->u.continuation.extent[0].lsn);
+		entry->u.continuation.extent[0].count = 1;
+		entry->last_or_next = 10;
+		ec = _dragondos_ss_sector(path, directory + 2, sector);
+		ASSERT_EQUALS(0, ec);
+		ec = _dragondos_close(path);
+		ASSERT_EQUALS(0, ec);
+
+#define REVEAL_EXPECT(target, text) \
+		snprintf(command, sizeof(command), DGNDOS "reveal %s " target CAPTURE, images[f]); \
+		ASSERT_RUN(0, command); read_output(); ASSERT(text, strstr(output, text) != NULL)
+		REVEAL_EXPECT("0:255", "file byte 255");
+		REVEAL_EXPECT("18:9", "file byte 265");
+		ASSERT("continuation file name", strstr(output, "FILE.BIN") != NULL);
+		REVEAL_EXPECT("18:10", "past the end of the file");
+		REVEAL_EXPECT("1", "UNALLOCATED");
+		REVEAL_EXPECT("99999", "past the logical end");
+		snprintf(command, sizeof(command), DGNDOS "reveal %s %u:252" CAPTURE, images[f], directory);
+		ASSERT_RUN(0, command); read_output();
+		ASSERT("geometry field", strstr(output, "track count: 40") != NULL);
+		snprintf(command, sizeof(command), DGNDOS "reveal %s %u" CAPTURE, images[f], directory);
+		ASSERT_RUN(0, command); read_output();
+		ASSERT("bitmap field", strstr(output, "covering LSNs 0 through 7") != NULL);
+		snprintf(command, sizeof(command), DGNDOS "reveal %s %u:13" CAPTURE, images[f], directory + 2);
+		ASSERT_RUN(0, command); read_output();
+		ASSERT("directory extent field", strstr(output, "extent starting LSN") != NULL);
+		snprintf(command, sizeof(command), DGNDOS "reveal %s %u:24" CAPTURE, images[f], 16 * 18 * sides + 2);
+		ASSERT_RUN(0, command); read_output();
+		ASSERT("backup retains its recorded entries", strstr(output, "backup") && strstr(output, "unused/end of directory"));
+		snprintf(command, sizeof(command), DGNDOS "reveal %s %u:24" CAPTURE, images[f], directory + 2);
+		ASSERT_RUN(0, command); read_output();
+		ASSERT("continuation pointer", strstr(output, "next directory entry index") != NULL);
+		snprintf(command, sizeof(command), DGNDOS "reveal %s %u:250" CAPTURE, images[f], directory + 2);
+		ASSERT_RUN(0, command); read_output();
+		ASSERT("directory padding", strstr(output, "reserved space after the directory") != NULL);
+		REVEAL_EXPECT("-b 99999999", "past the physical end");
+		snprintf(command, sizeof(command), DGNDOS "reveal %s 0:256" CAPTURE, images[f]);
+		ASSERT_RUN(EOS_IA, command);
+		snprintf(command, sizeof(command), DGNDOS "reveal -b %s 12junk" CAPTURE, images[f]);
+		ASSERT_RUN(EOS_IA, command);
+
+		/* Locate the first data sector in host-file order. */
+		ec = _dragondos_open(&path, pathlist, FAM_READ);
+		ASSERT_EQUALS(0, ec);
+		while ((ec = _diskimage_query_byte(path->disk, physical, &info)) == 0)
+		{
+			if (info.region.kind == DISKIMAGE_BYTE_DATA && info.region.logical &&
+				info.region.sector.cylinder == 0 && info.region.sector.side == 0 && info.region.sector.sector == 1) break;
+			physical = info.region.end;
+		}
+		ASSERT_EQUALS(0, ec);
+		snprintf(command, sizeof(command), DGNDOS "reveal -b %s %lld" CAPTURE,
+			images[f], physical + 255 * info.region.step);
+		ASSERT_RUN(0, command); read_output();
+		ASSERT("container data maps to file", strstr(output, "file byte 255") != NULL);
+		ec = _dragondos_close(path);
+		ASSERT_EQUALS(0, ec);
+
+		/* A cyclic continuation must terminate without inventing a size. */
+		ec = _dragondos_open(&path, pathlist, FAM_READ | FAM_WRITE);
+		ASSERT_EQUALS(0, ec);
+		entry = (dragondos_dir_entry *)(sector + 25);
+		entry->flags |= DRAGONDOS_FLAG_CONTINUED;
+		entry->last_or_next = 1;
+		ec = _dragondos_ss_sector(path, directory + 2, sector);
+		ASSERT_EQUALS(0, ec);
+		ec = _dragondos_close(path);
+		ASSERT_EQUALS(0, ec);
+		REVEAL_EXPECT("18", "chain is corrupt or unreadable");
+		REVEAL_EXPECT("1", "continuation chains were unreadable or corrupt");
+#undef REVEAL_EXPECT
+		remove(images[f]);
+	}
+	remove(OUTPUT_FILE);
+}
+
 int main(void)
 {
+	RUN(test_reveal);
 	RUN(test_help);
 	RUN(test_dskinit);
 	RUN(test_dir_of_mame_disk);
