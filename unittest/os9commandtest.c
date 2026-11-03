@@ -1074,6 +1074,7 @@ static void reveal_data_offset(const char *image, diskimage_format format,
 	else if (format == DISKIMAGE_SDF)
 	{
 		offset = damage_sdf_entry(fp, cylinder, side, sector, &record);
+		ASSERT("the reveal sector exists", offset >= 0);
 		fseek(fp, offset + 2, SEEK_SET);
 		fread(bytes, 1, 2, fp);
 		offset = record + ((bytes[0] | (bytes[1] << 8)) & 0x3FFF);
