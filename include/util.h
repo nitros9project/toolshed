@@ -64,6 +64,7 @@ int decbfstat(int, char **);
 int decbkill(int, char **);
 int decblist(int, char **);
 int decbrename(int, char **);
+int decbreveal(int, char **);
 int decbdump(int, char **);
 int decbhdbconv(int, char **);
 int decbdsave(int, char**);

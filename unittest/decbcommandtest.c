@@ -694,9 +694,84 @@ void test_decb_commands_on_images_with_tracks()
 	remove("test_cmd_src.txt");
 }
 
+static int reveal_command(const char *arguments, char *output, size_t capacity)
+{
+	char command[512];
+	FILE *fp;
+	size_t count;
+	int status;
+
+	snprintf(command, sizeof(command), "../decb/decb reveal %s 2>&1", arguments);
+	fp = popen(command, "r");
+	if (fp == NULL) return -1;
+	count = fread(output, 1, capacity - 1, fp);
+	output[count] = 0;
+	status = pclose(fp);
+	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+void test_decb_reveal()
+{
+	const char *images[] = { "test_reveal.dsk", "test_reveal.dmk", "test_reveal.sdf", "test_reveal.vdk", "test_reveal.jvc" };
+	char output[4096], arguments[256];
+	unsigned int i;
+
+	for (i = 0; i < sizeof(images) / sizeof(images[0]); i++)
+	{
+		decb_path_id path;
+		u_char data[256] = {0};
+		u_int size = sizeof(data);
+		unsigned int granule, lsn;
+		char command[256];
+		remove(images[i]);
+		snprintf(command, sizeof(command), "../decb/decb dskini %s > /dev/null 2>&1", images[i]);
+		ASSERT("reveal operation status", (system(command)) == 0);
+		snprintf(arguments, sizeof(arguments), "%s,FILE.BIN", images[i]);
+		ASSERT("reveal operation status", (_decb_create(&path, arguments, FAM_WRITE, 2, 0)) == 0);
+		ASSERT("reveal operation status", (_decb_write(path, data, &size)) == 0);
+		granule = path->dir_entry.first_granule;
+		ASSERT("reveal operation status", (_decb_close(path)) == 0);
+		lsn = granule * 9 + (granule > 33 ? 18 : 0);
+		snprintf(arguments, sizeof(arguments), "%s %u:255", images[i], lsn);
+		ASSERT("reveal operation status", (reveal_command(arguments, output, sizeof(output))) == 0);
+		ASSERT("file owner and position", strstr(output, "FILE.BIN") && strstr(output, "file byte 255"));
+		snprintf(arguments, sizeof(arguments), "%s %u:0", images[i], lsn + 1);
+		ASSERT("reveal operation status", (reveal_command(arguments, output, sizeof(output))) == 0);
+		ASSERT("allocation slack", strstr(output, "past the end of the file"));
+		snprintf(arguments, sizeof(arguments), "%s 307:0", images[i]);
+		ASSERT("reveal operation status", (reveal_command(arguments, output, sizeof(output))) == 0);
+		ASSERT("FAT entry", strstr(output, "FAT entry for granule 0"));
+		snprintf(arguments, sizeof(arguments), "%s 308:13", images[i]);
+		ASSERT("reveal operation status", (reveal_command(arguments, output, sizeof(output))) == 0);
+		ASSERT("directory field", strstr(output, "FILE.BIN") && strstr(output, "first granule"));
+		snprintf(arguments, sizeof(arguments), "%s 0:256", images[i]);
+		ASSERT("reveal operation status", (reveal_command(arguments, output, sizeof(output))) == EOS_IA);
+		snprintf(arguments, sizeof(arguments), "-b %s 0", images[i]);
+		ASSERT("reveal operation status", (reveal_command(arguments, output, sizeof(output))) == 0);
+		ASSERT("container byte", strstr(output, "Byte 0"));
+		snprintf(arguments, sizeof(arguments), "-b %s 99999999", images[i]);
+		ASSERT("reveal operation status", (reveal_command(arguments, output, sizeof(output))) == 0);
+		ASSERT("physical end", strstr(output, "past the physical end"));
+		if (i == 0)
+		{
+			snprintf(arguments, sizeof(arguments), "-b %s %u", images[i], lsn * 256 + 255);
+			ASSERT("raw byte mapping status", reveal_command(arguments, output, sizeof(output)) == 0);
+			ASSERT("raw byte maps to file", strstr(output, "FILE.BIN") && strstr(output, "file byte 255"));
+			snprintf(arguments, sizeof(arguments), "%s,", images[i]);
+			ASSERT("open corrupt fixture", _decb_open(&path, arguments, FAM_READ | FAM_WRITE) == 0);
+			path->FAT[granule] = granule;
+			ASSERT("save cyclic chain", _decb_close(path) == 0);
+			snprintf(arguments, sizeof(arguments), "%s 0", images[i]);
+			ASSERT("cyclic chain terminates", reveal_command(arguments, output, sizeof(output)) == 0);
+		}
+		remove(images[i]);
+	}
+}
+
 int main()
 {
 	remove("test.dsk");
+	RUN(test_decb_reveal);
 	RUN(test_decb_command_dskini);
 	RUN(test_decb_command_copy);
 	RUN(test_decb_command_copy_to_native_directory);

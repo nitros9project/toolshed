@@ -40,6 +40,7 @@ static struct cmdtbl table[] = {
 	{dgndoskill, "kill"},
 	{dgndoslist, "list"},
 	{dgndosrename, "rename"},
+	{dgndosreveal, "reveal"},
 	{NULL, NULL}
 };
 

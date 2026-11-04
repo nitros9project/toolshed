@@ -54,6 +54,7 @@ ToolShed v2.6.1
   * [INFO](#info) - Report disk image format and track layout, or change write protection
   * [KILL](#kill) - Remove files from a Disk BASIC image
   * [LIST](#list_decb) - Display the contents of a file
+  * [REVEAL](#reveal_decb) - Explain a disk image location
   * [RENAME](#rename_decb) - Give a file a new filename
 * [cecb](#cecb) - Manipulate Color BASIC and Micro Color BASIC cassette files
   * [BULKERASE](#bulkerase) - Create a container for casette data
@@ -79,6 +80,7 @@ ToolShed v2.6.1
   * [INFO](#info) - Report disk image format and track layout, or change write protection
   * [KILL](#kill_dgndos) - Delete one or more files
   * [LIST](#list_dgndos) - Display the contents of a text file
+  * [REVEAL](#reveal_dgndos) - Explain a disk image location
   * [RENAME](#rename_dgndos) - Give a file a new filename
 
 ---
@@ -1344,6 +1346,25 @@ The list command displays the contents of text files. It can list ASCII text fil
 
 ---
 
+<h3 id="reveal_decb">REVEAL - Explain a disk image location</h3>
+
+    decb reveal <disk> <lsn>[:<offset>]
+    decb reveal -b <disk> <byte-offset>
+
+Explain a zero-based LSN (track * 18 + sector - 1), optionally with a byte
+offset from 0 through 255. Reveal identifies FAT links, directory entry fields,
+reserved sectors, file ownership and file byte offsets, allocation space past
+EOF, and free or unclaimed granules. The executive's `-g` option controls the
+granule count for extended disks. Disk paths accept the usual `,:drive[+offset]`
+selection for raw images.
+
+With `-b`, the offset is absolute within the image file. Reveal describes image
+and track headers, sector ID fields, CRCs, attributes and gaps, then explains
+the filesystem location if the byte belongs to sector data. Raw, DMK, SDF,
+VDK and JVC images are supported. Numbers accept decimal or a `0x` hexadecimal
+prefix. Missing sectors and unreadable filesystem metadata are reported;
+granule chains are bounded to safely inspect damaged images.
+
 <h3 id="rename_decb">RENAME - Give a file a new filename</h3>
 
 #### Syntax and Scope
@@ -2063,6 +2084,31 @@ Other files show `File header : None`, and `Unreadable` if the image lacks the f
 Carriage returns are shown as the host's line endings. With -t, a saved BASIC program is listed as Dragon BASIC would. A file that isn't one is an error.
 
 ---
+
+<h3 id="reveal_dgndos">REVEAL - Explain a disk image location</h3>
+
+    dgndos reveal <disk> <lsn>[:<offset>]
+    dgndos reveal -b <disk> <byte-offset>
+
+Explain a zero-based logical sector number, optionally with a byte offset
+from 0 through 255. On double-sided disks, each track's side 0 precedes
+side 1. Reveal describes allocation bitmap bytes and their sector ranges,
+geometry fields, directory flags, filenames, extent fields, continuation
+pointers, and last-sector byte counts. It identifies both the primary directory
+on track 20 and its backup on track 16, using the recorded bytes of the selected
+copy. File lookup uses the library's normal backup-directory recovery.
+
+For file data, Reveal follows extents and continuation entries to report the
+filename and byte position, including unused allocation space past EOF. For
+unclaimed sectors it reports whether the bitmap marks them allocated or free.
+Missing sectors, unreadable metadata and corrupt continuation chains are
+reported, and chain traversal is bounded.
+
+With `-b`, the offset is absolute within the image file. Reveal describes image
+and track headers, sector ID fields, CRCs, attributes and gaps, then explains
+the filesystem location when the byte belongs to sector data. Raw, DMK, SDF,
+VDK and JVC images are supported, with one or two sides. Numbers accept decimal
+or a `0x` hexadecimal prefix.
 
 <h3 id="rename_dgndos">RENAME - Give a file a new filename</h3>
 

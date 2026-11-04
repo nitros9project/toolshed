@@ -53,6 +53,7 @@ static struct cmdtbl table[] = {
 	{decbkill, "kill"},
 	{decblist, "list"},
 	{decbrename, "rename"},
+	{decbreveal, "reveal"},
 	{NULL, NULL}
 };
 

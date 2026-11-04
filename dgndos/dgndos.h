@@ -19,6 +19,7 @@ int dgndosfstat(int, char **);
 int dgndoskill(int, char **);
 int dgndoslist(int, char **);
 int dgndosrename(int, char **);
+int dgndosreveal(int, char **);
 
 /* Make the pathlist of a whole disk, which is <disk> with a comma if it
    doesn't have one.  The result is EOS_BPNAM if it doesn't fit. */
