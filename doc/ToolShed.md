@@ -103,6 +103,13 @@ ToolShed started out life in the mid-to-late 1990s as a 6809 cross-assembler und
 
 The main task of the these tools is to allow the manipulation, inspection and copying of files from disk and cassette images to your PC's file system, and vice versa. The os9 tool recognizes disk images that contain data in the RBF file format created under OS-9 or NitrOS-9, while the decb tool recognizes disk images formatted under Disk BASIC for the Color Computer. The cecb tool recognizes cassette data in the wave, CAS, and C10 formats, for both Color BASIC and Micro Color BASIC.
 
+The `os9`, `decb`, `dgndos`, and `cecb` executives also accept two-letter
+subcommand codes. Run an executive without arguments (or with `-h`) to list
+each full name, its code in parentheses, and a short description. For example,
+`decb dr disk.dsk,` is equivalent to `decb dir disk.dsk,`. Shared subcommands
+use the same codes across executives; full names remain supported. OS-9's
+`id` command is already two letters and remains `id`.
+
 ### rma & rlink
 
 Managing a sizable assembly language source file for a complex program can be daunting. It is easy to become confused and lost in lines and lines of source code. rma (relocatable macro assembler) and rlink (relocatable linker) are two tools that are well suited for handling programs large and small, and work together to create both Disk BASIC and NitrOS-9 object files.

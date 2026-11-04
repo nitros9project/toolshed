@@ -31,34 +31,35 @@ struct cmdtbl
 {
 	int (*func)(int, char **);
 	char *keyword;
+	char *shortcode;
 	char *synopsis;
 };
 
 
 static struct cmdtbl table[] = {
-	{os9attr, "attr"},
-	{os9cmp, "cmp"},
-	{os9copy, "copy"},
-	{os9dcheck, "dcheck"},
-	{os9del, "del"},
-	{os9deldir, "deldir"},
-	{os9dir, "dir"},
-	{os9dsave, "dsave"},
-	{cocodump, "dump"},
-	{os9format, "format"},
-	{os9free, "free"},
-	{os9fstat, "fstat"},
-	{os9gen, "gen"},
-	{os9id, "id"},
-	{os9ident, "ident"},
-	{cocoinfo, "info"},
-	{os9list, "list"},
-	{os9makdir, "makdir"},
-	{os9modbust, "modbust"},
-	{os9padrom, "padrom"},
-	{os9rename, "rename"},
-	{os9reveal, "reveal"},
-	{NULL, NULL}
+	{os9attr, "attr", "at", "Display or modify file attributes."},
+	{os9cmp, "cmp", "cm", "Compare the contents of two files."},
+	{os9copy, "copy", "cp", "Copy files between images and native files."},
+	{os9dcheck, "dcheck", "dc", "Verify the file structure of a disk image."},
+	{os9del, "del", "de", "Delete files."},
+	{os9deldir, "deldir", "dd", "Delete a directory and its contents."},
+	{os9dir, "dir", "dr", "List the contents of a directory."},
+	{os9dsave, "dsave", "ds", "Copy the contents of a directory or device."},
+	{cocodump, "dump", "du", "Display a hexadecimal dump of a file."},
+	{os9format, "format", "fo", "Create and format a disk image."},
+	{os9free, "free", "fr", "Display free space on a disk image."},
+	{os9fstat, "fstat", "fs", "Display the file descriptor sector for a file."},
+	{os9gen, "gen", "ge", "Prepare a disk image for booting."},
+	{os9id, "id", "id", "Display sector zero of a disk image."},
+	{os9ident, "ident", "it", "Display OS-9 module information."},
+	{cocoinfo, "info", "in", "Report disk image format and track layout."},
+	{os9list, "list", "li", "Display the contents of a text file."},
+	{os9makdir, "makdir", "md", "Create directories."},
+	{os9modbust, "modbust", "mb", "Split merged OS-9 modules into separate files."},
+	{os9padrom, "padrom", "pr", "Pad a file to a specified length."},
+	{os9rename, "rename", "mv", "Rename a file."},
+	{os9reveal, "reveal", "rv", "Explain what occupies a disk sector or byte."},
+	{NULL, NULL, NULL, NULL}
 };
 
 
@@ -101,7 +102,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* info reports its own errors; -s uses nonzero statuses for filesystems. */
-	if (ec != 0 && strcmp(command, "info") != 0)
+	if (ec != 0 && strcmp(command, "info") != 0 && strcmp(command, "in") != 0)
 	{
 		fprintf(stderr, "Error: %d - %s\n", ec, TSReportError(ec));
 	}
@@ -116,7 +117,7 @@ static int do_command(int argc, char **argv)
 
 	for (x = table; x->func != NULL; x++)
 	{
-		if (strcmp(argv[0], x->keyword) == 0)
+		if (strcmp(argv[0], x->keyword) == 0 || strcmp(argv[0], x->shortcode) == 0)
 		{
 			return (x->func(argc, argv));
 		}
@@ -142,7 +143,7 @@ static void show_os9_help(char const *const *helpMessage)
 
 	for (ptr = table; ptr->keyword != NULL; ptr++)
 	{
-		printf("     %s\n", ptr->keyword);
+		printf("     %-9s (%s)  %s\n", ptr->keyword, ptr->shortcode, ptr->synopsis);
 	}
 
 	return;

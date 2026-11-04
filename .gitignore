@@ -21,6 +21,7 @@ build/unix/mamou/mamou
 build/unix/os9/os9
 build/unix/tocgen/tocgen
 build/unix/unittest/cecbcommandtest
+build/unix/unittest/commandaliastest
 build/unix/unittest/decbcommandtest
 build/unix/unittest/dgndoscommandtest
 build/unix/unittest/infocommandtest
