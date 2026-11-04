@@ -40,31 +40,43 @@ jobs:
         include:
           - runner: macos-15
             arch: arm64
-            triplet: arm64-osx
           - runner: macos-15-intel
             arch: x86_64
-            triplet: x64-osx
     runs-on: ${{ matrix.runner }}
     env:
       DISKSHED_VERSION: ${{ needs.version.outputs.version }}
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
     steps:
       - uses: actions/checkout@v6
       - name: Cache wxWidgets
         uses: actions/cache@v6
         with:
-          path: vcpkg-cache
-          key: vcpkg-wxwidgets-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('.github/workflows/build.yml') }}
-      - name: Install wxWidgets
+          path: wx-install
+          key: wxwidgets-${{ env.WX_VERSION }}-${{ runner.os }}-${{ matrix.arch }}-static-${{ hashFiles('.github/workflows/diskshed.yml', '.github/workflows/diskshed-release.yml') }}
+      - name: Build wxWidgets
         run: |
-          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
-          "$VCPKG_INSTALLATION_ROOT/vcpkg" install "wxwidgets:${{ matrix.triplet }}"
+          if test ! -f wx-install/lib/cmake/wxWidgets-3.2/wxWidgetsConfig.cmake; then
+            curl -L --fail --retry 3 \
+              -o wxwidgets.tar.bz2 \
+              "https://github.com/wxWidgets/wxWidgets/releases/download/v${WX_VERSION}/wxWidgets-${WX_VERSION}.tar.bz2"
+            tar -xjf wxwidgets.tar.bz2
+            cmake -S "wxWidgets-${WX_VERSION}" -B wx-build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="$PWD/wx-install" \
+              -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
+              -DwxBUILD_SHARED=OFF \
+              -DwxUSE_SYS_LIBS=OFF \
+              -DwxBUILD_SAMPLES=OFF \
+              -DwxBUILD_TESTS=OFF \
+              -DwxBUILD_DEMOS=OFF
+            cmake --build wx-build --parallel 3
+            cmake --install wx-build
+          fi
       - name: Configure and build
         run: |
           cmake -S gui/wx -B build/diskshed -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
+            -DCMAKE_PREFIX_PATH="$PWD/wx-install" \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
             -DDISKSHED_REQUIRE_GUI=ON
           cmake --build build/diskshed
           build/diskshed/toolshed-image-smoke c3/prep19/ghcprep.dsk
