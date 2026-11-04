@@ -46,3 +46,59 @@ jobs:
         [ -f build/unix/toolshed-*.tgz ] && ls build/unix/toolshed-*.tgz | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; tar tzvf {}'
         [ -f build/unix/toolshed-*.zip ] && ls build/unix/toolshed-*.zip | xargs -I {} bash -c 'echo; md5sum {}; ls -al --color=auto {}; unzip -l -v {}'
 
+
+    - name: Upload Linux package
+      uses: actions/upload-artifact@v7
+      with:
+        path: build/unix/toolshed-unix64-*.tgz
+        archive: false
+        if-no-files-found: error
+
+    - name: Upload Windows package
+      uses: actions/upload-artifact@v7
+      with:
+        path: build/unix/toolshed-win64-*.zip
+        archive: false
+        if-no-files-found: error
+
+  macos:
+    name: macOS (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+    - name: Setup Requirements
+      run: |
+        brew install markdown
+
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Build macOS
+      run: |
+        set -e
+        make -C build/unix NO_COCOFUSE=1 MAKEPACKAGE="zip -9" \
+          'PACKAGENAME=toolshed-macos-${{ matrix.arch }}-$(VERSION).zip' unixpackage
+
+    - name: Results
+      run: |
+        set -e
+        for f in build/unix/toolshed-macos-*.zip; do
+          echo; shasum -a 256 "$f"; ls -al "$f"; unzip -l -v "$f"
+          unzip -p "$f" 'toolshed-*/os9' > os9-check
+          test "$(lipo -archs os9-check)" = "${{ matrix.arch }}"
+        done
+
+    - name: Upload macOS package
+      uses: actions/upload-artifact@v7
+      with:
+        path: build/unix/toolshed-macos-*.zip
+        archive: false
+        if-no-files-found: error
