@@ -50,15 +50,15 @@ jobs:
     - name: Upload Linux package
       uses: actions/upload-artifact@v7
       with:
-        name: toolshed-linux-x86_64
         path: build/unix/toolshed-unix64-*.tgz
+        archive: false
         if-no-files-found: error
 
     - name: Upload Windows package
       uses: actions/upload-artifact@v7
       with:
-        name: toolshed-windows-x86_64
         path: build/unix/toolshed-win64-*.zip
+        archive: false
         if-no-files-found: error
 
   macos:
@@ -84,23 +84,21 @@ jobs:
     - name: Build macOS
       run: |
         set -e
-        make -C build/unix NO_COCOFUSE=1 unixpackage
-        for f in build/unix/toolshed-unix64-*.tgz; do
-          mv "$f" "${f/unix64/macos-${{ matrix.arch }}}"
-        done
+        make -C build/unix NO_COCOFUSE=1 MAKEPACKAGE="zip -9" \
+          'PACKAGENAME=toolshed-macos-${{ matrix.arch }}-$(VERSION).zip' unixpackage
 
     - name: Results
       run: |
         set -e
-        for f in build/unix/toolshed-macos-*.tgz; do
-          echo; shasum -a 256 "$f"; ls -al "$f"; tar tzvf "$f"
-          tar xzf "$f" -O toolshed-*/os9 > os9-check
+        for f in build/unix/toolshed-macos-*.zip; do
+          echo; shasum -a 256 "$f"; ls -al "$f"; unzip -l -v "$f"
+          unzip -p "$f" 'toolshed-*/os9' > os9-check
           test "$(lipo -archs os9-check)" = "${{ matrix.arch }}"
         done
 
     - name: Upload macOS package
       uses: actions/upload-artifact@v7
       with:
-        name: toolshed-macos-${{ matrix.arch }}
-        path: build/unix/toolshed-macos-*.tgz
+        path: build/unix/toolshed-macos-*.zip
+        archive: false
         if-no-files-found: error
