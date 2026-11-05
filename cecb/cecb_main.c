@@ -39,20 +39,21 @@ struct cmdtbl
 {
 	int (*func)(int, char **);
 	char *keyword;
+	char *shortcode;
 	char *synopsis;
 };
 
 
 static struct cmdtbl table[] = {
-	{cecbdir, "dir"},
-	{cecbfstat, "fstat"},
-	{cocodump, "dump"},
-	{cecbdumpblock, "dumpblock"},
-	{decblist, "list"},
-	{cecbbulkerase, "bulkerase"},
-	{cecbcopy, "copy"},
-	{cecbleader, "leader"},
-	{NULL, NULL}
+	{cecbdir, "dir", "dr", "List the contents of a cassette image."},
+	{cecbfstat, "fstat", "fs", "Display detailed file information."},
+	{cocodump, "dump", "du", "Display a hexadecimal dump of a file."},
+	{cecbdumpblock, "dumpblock", "db", "Display a hexadecimal dump of cassette blocks."},
+	{decblist, "list", "li", "Display text or a tokenized BASIC program."},
+	{cecbbulkerase, "bulkerase", "be", "Create blank cassette images."},
+	{cecbcopy, "copy", "cp", "Copy files between images and native files."},
+	{cecbleader, "leader", "le", "Analyze leaders in a WAV cassette image."},
+	{NULL, NULL, NULL, NULL}
 };
 
 
@@ -169,7 +170,7 @@ static int do_command(int argc, char **argv)
 
 	while (x->func != NULL)
 	{
-		if (strcmp(argv[0], x->keyword) == 0)
+		if (strcmp(argv[0], x->keyword) == 0 || strcmp(argv[0], x->shortcode) == 0)
 		{
 			return (x->func(argc, argv));
 		}
@@ -199,7 +200,7 @@ static void show_cecb_help(char const *const *helpMessage)
 
 	while (ptr->keyword != NULL)
 	{
-		printf("     %s\n", ptr->keyword);
+		printf("     %-9s (%s)  %s\n", ptr->keyword, ptr->shortcode, ptr->synopsis);
 		ptr++;
 	}
 

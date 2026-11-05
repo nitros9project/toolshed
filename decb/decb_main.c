@@ -34,27 +34,28 @@ struct cmdtbl
 {
 	int (*func)(int, char **);
 	char *keyword;
+	char *shortcode;
 	char *synopsis;
 };
 
 
 static struct cmdtbl table[] = {
-	{decbattr, "attr"},
-	{decbbinbust, "binbust"},
-	{decbcopy, "copy"},
-	{decbdir, "dir"},
-	{decbdsave, "dsave"},
-	{decbdskini, "dskini"},
-	{cocodump, "dump"},
-	{decbfree, "free"},
-	{decbfstat, "fstat"},
-	{decbhdbconv, "hdbconv"},
-	{cocoinfo, "info"},
-	{decbkill, "kill"},
-	{decblist, "list"},
-	{decbrename, "rename"},
-	{decbreveal, "reveal"},
-	{NULL, NULL}
+	{decbattr, "attr", "at", "Display or modify file attributes."},
+	{decbbinbust, "binbust", "bb", "Strip headers and trailers from DECB binaries."},
+	{decbcopy, "copy", "cp", "Copy files between images and native files."},
+	{decbdir, "dir", "dr", "List the contents of a directory."},
+	{decbdsave, "dsave", "ds", "Copy the contents of a directory or device."},
+	{decbdskini, "dskini", "di", "Create and initialize a disk image."},
+	{cocodump, "dump", "du", "Display a hexadecimal dump of a file."},
+	{decbfree, "free", "fr", "Display free space on a disk image."},
+	{decbfstat, "fstat", "fs", "Display detailed file information."},
+	{decbhdbconv, "hdbconv", "hc", "Convert disk images for HDB-DOS."},
+	{cocoinfo, "info", "in", "Report disk image format and track layout."},
+	{decbkill, "kill", "ki", "Delete files."},
+	{decblist, "list", "li", "Display text or a tokenized BASIC program."},
+	{decbrename, "rename", "mv", "Rename a file."},
+	{decbreveal, "reveal", "rv", "Explain what occupies a disk sector or byte."},
+	{NULL, NULL, NULL, NULL}
 };
 
 
@@ -103,7 +104,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* info reports its own errors; -s uses nonzero statuses for filesystems. */
-	if (ec != 0 && strcmp(command, "info") != 0)
+	if (ec != 0 && strcmp(command, "info") != 0 && strcmp(command, "in") != 0)
 	{
 		fprintf(stderr, "Error: %d - %s\n", ec, TSReportError(ec));
 	}
@@ -118,7 +119,7 @@ static int do_command(int argc, char **argv)
 
 	while (x->func != NULL)
 	{
-		if (strcmp(argv[0], x->keyword) == 0)
+		if (strcmp(argv[0], x->keyword) == 0 || strcmp(argv[0], x->shortcode) == 0)
 		{
 			return (x->func(argc, argv));
 		}
@@ -148,7 +149,7 @@ static void show_decb_help(char const *const *helpMessage)
 
 	while (ptr->keyword != NULL)
 	{
-		printf("     %s\n", ptr->keyword);
+		printf("     %-9s (%s)  %s\n", ptr->keyword, ptr->shortcode, ptr->synopsis);
 		ptr++;
 	}
 
