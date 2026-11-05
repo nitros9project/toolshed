@@ -1,0 +1,76 @@
+#compdef dgndos
+# Install as _dgndos in a directory on $fpath, then run compinit.
+_dgndos() {
+    local context state state_descr line
+    typeset -A opt_args
+    local -a commands
+    commands=(attr copy dir dsave dskinit dump free fstat kill list rename)
+    _arguments -C \
+        '-h[show help]' \
+        '-?[show help]' \
+        '1:command:->command' \
+        '*::subcommand args:->args'
+    case $state in
+        command) _describe 'dgndos command' commands ;;
+        args)
+            case $words[1] in
+                attr)
+                    _arguments '-p[protect file]' \
+                        '-u[unprotect file]' \
+                        '*:file:_files'
+                    ;;
+                copy)
+                    _arguments '-l[translate line endings]' \
+                        '-r[rewrite existing files]' \
+                        '-t[translate BASIC tokens]' \
+                        '*:file:_files'
+                    ;;
+                dir)
+                    _arguments '*:file:_files'
+                    ;;
+                dsave)
+                    _arguments '-e[execute commands]' \
+                        '-l[translate line endings]' \
+                        '-r[rewrite existing files]' \
+                        '-t[translate BASIC tokens]' \
+                        '-x=-[executable to run commands with]:executable:_files' \
+                        '*:file:_files'
+                    ;;
+                dskinit)
+                    _arguments '-t-[tracks (21 to 80)]:tracks:' \
+                        '-s-[sides]:sides:(1 2)' \
+                        '-f-[image format]:format:(raw jvc vdk dmk sdf)' \
+                        '*:file:_files'
+                    ;;
+                dump)
+                    _arguments '-a[assembler hex output]' \
+                        '-b[assembler binary output]' \
+                        '-c[omit ASCII character data]' \
+                        '-e[C output]' \
+                        '-t[omit header]' \
+                        '-h[omit header (deprecated)]' \
+                        '-l[omit line labels]' \
+                        '-z[decode DECB binary]' \
+                        '*:file:_files'
+                    ;;
+                free)
+                    _arguments '*:file:_files'
+                    ;;
+                fstat)
+                    _arguments '*:file:_files'
+                    ;;
+                kill)
+                    _arguments '*:file:_files'
+                    ;;
+                list)
+                    _arguments '-t[translate BASIC tokens]' \
+                        '*:file:_files'
+                    ;;
+                rename)
+                    _arguments '*:file:_files'
+                    ;;
+            esac
+            ;;
+    esac
+}
+_dgndos "$@"
