@@ -320,7 +320,12 @@ error_code _coco_identify_image(char *pathlist, _path_type * type)
 	}
 	else
 	{
-		ec = EOS_BPNAM;
+		/* The image file itself could not be opened (does not exist, or is
+		   unreadable) - that is "pathname not found", not a malformed name.
+		   Returning EOS_BPNAM here made every os9/decb/cecb command report a
+		   missing image as "badly formed pathname", pointing at the wrong
+		   thing entirely. */
+		ec = EOS_PNNF;
 	}
 
 	free(tmppathlist);

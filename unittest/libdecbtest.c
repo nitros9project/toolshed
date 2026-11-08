@@ -82,6 +82,17 @@ void test_decb_dmk_read_write()
 	remove(DECB_DMK);
 }
 
+void test_coco_identify_missing_image()
+{
+	_path_type type;
+	error_code ec;
+
+	/* An image that does not exist is not found, not a badly formed name. */
+	remove("no_such_image.dsk");
+	ec = _coco_identify_image("no_such_image.dsk,", &type);
+	ASSERT_EQUALS(EOS_PNNF, ec);
+}
+
 void test_decb_colon_needs_raw_image()
 {
 	u_char data[16] = { 0 };
@@ -1620,6 +1631,7 @@ int main()
 	remove("test.dsk");
 	remove("filldisk.dsk");
 	RUN(test_decb_dmk_read_write);
+	RUN(test_coco_identify_missing_image);
 	RUN(test_decb_colon_needs_raw_image);
 	RUN(test_decb_only_needed_sectors_are_errors);
 	RUN(test_decb_dir_lists_names_without_fat);
