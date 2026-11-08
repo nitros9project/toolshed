@@ -31,7 +31,7 @@ error_code _os9_prsnam(const char *filename)
 		}
 		if (!
 		    (isalnum((unsigned char)*a) || *a == '_' || *a == '.' || *a == '-'
-		     || *a == ' ' || *a == '$'))
+		     || *a == '$'))
 		{
 			return EOS_BPNAM;
 		}
