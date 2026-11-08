@@ -43,7 +43,7 @@ endif
 APPS		:= $(foreach item,$(APPS),$(item)/$(item)$(SUFEXE))
 
 all:
-	$(foreach dir, $(DIRS), (cd $(dir); $(MAKE));)
+	$(foreach dir, $(DIRS), (cd $(dir) && $(MAKE)) &&) true
 
 install: all
 	$(INSTALL) -d $(INSTALLDIR) $(DOCDIR)
@@ -57,7 +57,7 @@ package: install
 	rm -rf toolshed-$(VERSION)
 
 cleandirs:
-	$(foreach dir, $(DIRS), (cd $(dir); $(MAKE) clean);)
+	$(foreach dir, $(DIRS), (cd $(dir) && $(MAKE) clean) &&) true
 	
 clean: cleandirs
 	$(RM) $(PACKAGENAME_WIN) $(PACKAGENAME_UNIX)
