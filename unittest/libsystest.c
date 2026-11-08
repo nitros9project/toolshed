@@ -17,6 +17,14 @@ static void test_os9_valid_names(void)
 	ASSERT_EQUALS(0, _os9_prsnam("A.B.C"));
 }
 
+static void test_os9_space_rejected(void)
+{
+	/* NitrOS-9 ends a name at a space, so its command line cannot name one. */
+	ASSERT_EQUALS(EOS_BPNAM, _os9_prsnam("A B"));
+	ASSERT_EQUALS(EOS_BPNAM, _os9_prsnam(" A"));
+	ASSERT_EQUALS(EOS_BPNAM, _os9_prsnam("A "));
+}
+
 static void test_os9_name_length(void)
 {
 	char name[D_NAMELEN + 2];
@@ -87,6 +95,7 @@ int main(void)
 {
 	RUN(test_os9_empty_name);
 	RUN(test_os9_valid_names);
+	RUN(test_os9_space_rejected);
 	RUN(test_os9_name_length);
 	RUN(test_decb_empty_basename);
 	RUN(test_decb_multiple_dots);
