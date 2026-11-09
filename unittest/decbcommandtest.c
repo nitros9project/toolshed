@@ -9,6 +9,8 @@
 #include "tinytest.h"
 #include <toolshed.h>
 #include <sys/wait.h>
+#include "imagedamage.h"
+#include "commandrun.h"
 
 void test_decb_command_dskini()
 {
@@ -768,6 +770,153 @@ void test_decb_reveal()
 	}
 }
 
+/* Where a sector of track 17 is in a raw image of one drive. */
+#define DECB_T17(sector)	((17 * 18 + (sector) - 1) * 256L)
+#define DECB_DIR_IMAGE		"test_decb_dir.dsk"
+#define DECB_DIR_DMK		"test_decb_dir.dmk"
+#define DECB_DIR_NATIVE		"test_decb_dir.bin"
+
+static char dir_output[65536];
+
+static int peek_byte(const char *pathname, long offset)
+{
+	FILE *fp = fopen(pathname, "rb");
+	int byte;
+
+	if (fp == NULL)
+	{
+		return -1;
+	}
+	fseek(fp, offset, SEEK_SET);
+	byte = fgetc(fp);
+	fclose(fp);
+
+	return byte;
+}
+
+static void poke_bytes(const char *pathname, long offset, int value, int count)
+{
+	FILE *fp = fopen(pathname, "r+b");
+
+	ASSERT("the image exists", fp != NULL);
+	fseek(fp, offset, SEEK_SET);
+	while (count-- > 0)
+	{
+		fputc(value, fp);
+	}
+	fclose(fp);
+}
+
+static void write_native_bytes(const char *pathname, int size)
+{
+	FILE *fp = fopen(pathname, "wb");
+
+	ASSERT("the file can be made", fp != NULL);
+	while (size-- > 0)
+	{
+		fputc('A' + size % 26, fp);
+	}
+	fclose(fp);
+}
+
+/* A FAT chain that loops back on itself is reported, not followed forever. */
+void test_decb_command_dir_fat_loop()
+{
+	int status, first;
+
+	remove(DECB_DIR_IMAGE);
+	ASSERT_EC(0, system("../decb/decb dskini " DECB_DIR_IMAGE " > /dev/null 2>&1"));
+	write_native_bytes(DECB_DIR_NATIVE, 5000);
+	ASSERT_EC(0, system("../decb/decb copy -2b " DECB_DIR_NATIVE " " DECB_DIR_IMAGE ",LOOP.BIN > /dev/null 2>&1"));
+	ASSERT_EC(0, system("../decb/decb copy -2b " DECB_DIR_NATIVE " " DECB_DIR_IMAGE ",GOOD.BIN > /dev/null 2>&1"));
+
+	status = run_command_timed("../decb/decb dir " DECB_DIR_IMAGE, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("3 granules", strstr(dir_output, "LOOP     BIN  2  B  3\n") != NULL);
+
+	/* The file's first granule now points at itself. */
+	first = peek_byte(DECB_DIR_IMAGE, DECB_T17(3) + 13);
+	poke_bytes(DECB_DIR_IMAGE, DECB_T17(2) + first, first, 1);
+
+	status = run_command_timed("../decb/decb dir " DECB_DIR_IMAGE, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_WT, status);
+	ASSERT("the looped file has no size", strstr(dir_output, "LOOP     BIN  2  B  ?\n") != NULL);
+	ASSERT("the next file is listed", strstr(dir_output, "GOOD     BIN  2  B  3\n") != NULL);
+
+	remove(DECB_DIR_IMAGE);
+	remove(DECB_DIR_NATIVE);
+}
+
+/* A disk name that fills its sector is printed without running past it. */
+void test_decb_command_dir_unended_disk_name()
+{
+	static char expected[300];
+	int status;
+
+	remove(DECB_DIR_IMAGE);
+	ASSERT_EC(0, system("../decb/decb dskini " DECB_DIR_IMAGE " > /dev/null 2>&1"));
+	poke_bytes(DECB_DIR_IMAGE, DECB_T17(17), 'N', 256);
+
+	status = run_command_timed("../decb/decb dir " DECB_DIR_IMAGE, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+	memset(expected, 'N', 256);
+	strcpy(expected + 256, "\n");
+	ASSERT("the whole name, and no more", strstr(dir_output, expected) != NULL);
+
+	/* Names that can't be printed are escaped. */
+	poke_bytes(DECB_DIR_IMAGE, DECB_T17(17), 0x01, 1);
+	poke_bytes(DECB_DIR_IMAGE, DECB_T17(17) + 1, 0, 1);
+	status = run_command_timed("../decb/decb dir " DECB_DIR_IMAGE, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("an escaped name", strstr(dir_output, "\n\\1\n") != NULL);
+
+	remove(DECB_DIR_IMAGE);
+}
+
+/* A directory sector that can't be read doesn't hide those after it. */
+void test_decb_command_dir_missing_directory_sector()
+{
+	char command[256];
+	int status, i;
+
+	remove(DECB_DIR_DMK);
+	ASSERT_EC(0, system("../decb/decb dskini -fdmk " DECB_DIR_DMK " > /dev/null 2>&1"));
+	write_native_bytes(DECB_DIR_NATIVE, 10);
+	for (i = 0; i < 9; i++)
+	{
+		snprintf(command, sizeof(command), "../decb/decb copy -2b " DECB_DIR_NATIVE " " DECB_DIR_DMK ",F%d.BIN > /dev/null 2>&1", i);
+		ASSERT_EC(0, system(command));
+	}
+
+	/* The first 8 entries are in sector 3, the 9th in sector 4. */
+	image_remove_sector(DECB_DIR_DMK, 17, 0, 3);
+	status = run_command_timed("../decb/decb dir " DECB_DIR_DMK, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	ASSERT("the lost sector's files are not listed", strstr(dir_output, "F0 ") == NULL);
+	ASSERT("the next sector's file is listed", strstr(dir_output, "F8       BIN  2  B  1\n") != NULL);
+
+	remove(DECB_DIR_DMK);
+	remove(DECB_DIR_NATIVE);
+}
+
+/* Pathnames too long for dir are refused, not copied past their buffer. */
+void test_decb_command_dir_long_pathname()
+{
+	static char command[2048];
+	int status;
+
+	strcpy(command, "../decb/decb dir ");
+	memset(command + strlen(command), 'x', 1000);
+	command[17 + 1000] = '\0';
+
+	status = run_command_timed(command, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_BPNAM, status);
+
+	strcat(command, ":0");
+	status = run_command_timed(command, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_BPNAM, status);
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -786,5 +935,9 @@ int main()
 	RUN(test_decb_command_hdbconv);
 	RUN(test_decb_command_dskini_formats);
 	RUN(test_decb_commands_on_images_with_tracks);
+	RUN(test_decb_command_dir_fat_loop);
+	RUN(test_decb_command_dir_unended_disk_name);
+	RUN(test_decb_command_dir_missing_directory_sector);
+	RUN(test_decb_command_dir_long_pathname);
 	return TEST_REPORT();
 }

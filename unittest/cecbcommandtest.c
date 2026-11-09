@@ -8,6 +8,9 @@
 
 #include "tinytest.h"
 #include <toolshed.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include "commandrun.h"
 
 void test_cecb_command_copy_basic_data()
 {
@@ -186,12 +189,67 @@ void test_cecb_command_copy_detokenize_metadata()
 	ASSERT_EQUALS(255, statbuf.data_type);
 }
 
+static char cecb_dir_output[65536];
+
+/* Put two files on a tape, list it, then list it again cut off at each of
+   several places.  Every listing must end, with what was before the cut. */
+static void check_cut_tape(const char *tape, int bits)
+{
+	char command[256];
+	struct stat info;
+	FILE *fp;
+	int status, cut;
+
+	fp = fopen("cecb_dir_source", "wb");
+	ASSERT("create a source", fp != NULL);
+	fputs("10 PRINT \"HELLO\"\r", fp);
+	fclose(fp);
+
+	remove(tape);
+	ASSERT_EQUALS(0, _cecb_bulkerase((char *) tape, 44100, bits, 1.0));
+	snprintf(command, sizeof(command), "../cecb/cecb copy -0a cecb_dir_source %s,FIRST > /dev/null 2>&1", tape);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+	snprintf(command, sizeof(command), "../cecb/cecb copy -0a cecb_dir_source %s,SECOND > /dev/null 2>&1", tape);
+	status = system(command);
+	ASSERT_EQUALS(0, status);
+
+	snprintf(command, sizeof(command), "../cecb/cecb dir %s", tape);
+	status = run_command_timed(command, 20, cecb_dir_output, sizeof(cecb_dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("the first file", strstr(cecb_dir_output, "  FIRST    0 ($00) A ($ff)\n") != NULL);
+	ASSERT("the second file", strstr(cecb_dir_output, "  SECOND   0 ($00) A ($ff)\n") != NULL);
+
+	/* A file cut short keeps the size its header says it has. */
+	ASSERT_EQUALS(0, stat(tape, &info));
+	for (cut = 1; cut < 10; cut++)
+	{
+		ASSERT_EQUALS(0, truncate(tape, (off_t) (info.st_size * (10 - cut) / 10)));
+		status = run_command_timed(command, 20, cecb_dir_output, sizeof(cecb_dir_output));
+		ASSERT("the listing ends", status != COMMAND_TIMED_OUT);
+		ASSERT("the listing doesn't crash", status != COMMAND_CRASHED);
+	}
+
+	remove(tape);
+	remove("cecb_dir_source");
+}
+
+void test_cecb_command_dir_cut_tapes()
+{
+	check_cut_tape("cecb_dir.cas", 0);
+	check_cut_tape("cecb_dir8.wav", 8);
+	check_cut_tape("cecb_dir16.wav", 16);
+	check_cut_tape("cecb_dir24.wav", 24);
+	check_cut_tape("cecb_dir32.wav", 32);
+}
+
 int main()
 {
 	RUN(test_cecb_command_copy_basic_data);
 	RUN(test_cecb_command_copy_to_native_directory);
 	RUN(test_cecb_command_copy_eol_same_type);
 	RUN(test_cecb_command_copy_detokenize_metadata);
+	RUN(test_cecb_command_dir_cut_tapes);
 
 	return TEST_REPORT();
 }

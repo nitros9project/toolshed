@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include "imagedamage.h"
+#include "commandrun.h"
 
 /* Enough for the 40 track images of the gap tests */
 #define GAP_IMAGE_MAX	(40 * 18 * 256)
@@ -1596,6 +1597,201 @@ void test_os9_real_clusters_delete()
 	remove("test_real_clusters.dmk");
 }
 
+#define OS9_DIR_IMAGE	"test_os9_dir.dsk"
+#define OS9_DIR_DEPTH	20
+
+static char os9_dir_output[1024 * 1024];
+
+/* Where a directory's entry for name is in a raw image, or -1. */
+static long os9_entry_offset(const char *directory, const char *name)
+{
+	os9_path_id path;
+	fd_stats fd;
+	os9_dir_entry entry;
+	char entry_name[D_NAMELEN + 1];
+	long index = 0, offset = -1;
+
+	if (_os9_open(&path, (char *) directory, FAM_DIR | FAM_READ) != 0)
+	{
+		return -1;
+	}
+	if (_os9_lsn_get(path, path->pl_fd_lsn, 0, &fd, sizeof(fd)) == 0)
+	{
+		while (_os9_readdir(path, &entry) == 0)
+		{
+			memcpy(entry_name, entry.name, D_NAMELEN);
+			entry_name[D_NAMELEN] = '\0';
+			OS9StringToCString((u_char *) entry_name);
+			if (strcmp(entry_name, name) == 0)
+			{
+				offset = (long) int3(fd.fd_seg[0].lsn) * path->bps + index * sizeof(os9_dir_entry);
+				break;
+			}
+			index++;
+		}
+	}
+	_os9_close(path);
+
+	return offset;
+}
+
+/* A directory's file descriptor LSN, or 0. */
+static u_int os9_directory_lsn(const char *directory)
+{
+	os9_path_id path;
+	u_int lsn;
+
+	if (_os9_open(&path, (char *) directory, FAM_DIR | FAM_READ) != 0)
+	{
+		return 0;
+	}
+	lsn = path->pl_fd_lsn;
+	_os9_close(path);
+
+	return lsn;
+}
+
+static void os9_poke(long offset, const void *bytes, size_t size)
+{
+	FILE *fp = fopen(OS9_DIR_IMAGE, "r+b");
+
+	ASSERT("the image exists", fp != NULL);
+	fseek(fp, offset, SEEK_SET);
+	fwrite(bytes, 1, size, fp);
+	fclose(fp);
+}
+
+/* Point a directory's entry for name at another directory. */
+static void os9_relink(const char *directory, const char *name, u_int lsn)
+{
+	long offset = os9_entry_offset(directory, name);
+	u_char bytes[3] = { (u_char) (lsn >> 16), (u_char) (lsn >> 8), (u_char) lsn };
+
+	ASSERT("the entry exists", offset >= 0);
+	os9_poke(offset + D_NAMELEN, bytes, sizeof(bytes));
+}
+
+static int count_text(const char *text, const char *find)
+{
+	int count = 0;
+
+	while ((text = strstr(text, find)) != NULL)
+	{
+		count++;
+		text++;
+	}
+
+	return count;
+}
+
+/* Directories reached by more than one entry, as each of these is by two,
+   are listed once each: not once for each of the 2^20 ways to them.  A loop
+   back up the tree is not followed either. */
+void test_os9_dir_recurse_repeated_directories()
+{
+	char pathlist[OS9_DIR_DEPTH][256];
+	char command[512];
+	int status, level;
+
+	remove(OS9_DIR_IMAGE);
+	ASSERT_EC(0, system("../os9/os9 format -e " OS9_DIR_IMAGE " -l4000 > /dev/null 2>&1"));
+	for (level = 0; level < OS9_DIR_DEPTH; level++)
+	{
+		if (level == 0)
+		{
+			snprintf(pathlist[level], sizeof(pathlist[level]), OS9_DIR_IMAGE ",L1");
+		}
+		else
+		{
+			snprintf(pathlist[level], sizeof(pathlist[level]), "%s/L%d", pathlist[level - 1], level + 1);
+		}
+		snprintf(command, sizeof(command), "../os9/os9 makdir %s > /dev/null 2>&1", pathlist[level]);
+		ASSERT_EC(0, system(command));
+		snprintf(command, sizeof(command), "../os9/os9 makdir %s/X > /dev/null 2>&1", pathlist[level]);
+		ASSERT_EC(0, system(command));
+	}
+
+	status = run_command_timed("../os9/os9 dir -r " OS9_DIR_IMAGE ",", 20, os9_dir_output, sizeof(os9_dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT_EQUALS(1 + 2 * OS9_DIR_DEPTH, count_text(os9_dir_output, "Directory of"));
+
+	/* Each X now goes to the next level down, and the last back to the top. */
+	for (level = 0; level < OS9_DIR_DEPTH; level++)
+	{
+		u_int lsn = os9_directory_lsn(level + 1 < OS9_DIR_DEPTH ? pathlist[level + 1] : pathlist[0]);
+
+		ASSERT("the directory exists", lsn != 0);
+		os9_relink(pathlist[level], "X", lsn);
+	}
+
+	status = run_command_timed("../os9/os9 dir -r " OS9_DIR_IMAGE ",", 20, os9_dir_output, sizeof(os9_dir_output));
+	ASSERT_EQUALS(EOS_WT, status);
+	ASSERT_EQUALS(1 + OS9_DIR_DEPTH, count_text(os9_dir_output, "Directory of"));
+	ASSERT_EQUALS(OS9_DIR_DEPTH, count_text(os9_dir_output, "already listed the directory"));
+
+	status = run_command_timed("../os9/os9 dir -e -r " OS9_DIR_IMAGE ",", 20, os9_dir_output, sizeof(os9_dir_output));
+	ASSERT_EQUALS(EOS_WT, status);
+	ASSERT_EQUALS(1 + OS9_DIR_DEPTH, count_text(os9_dir_output, "Directory of"));
+
+	/* Without -r nothing is followed, so nothing is wrong. */
+	status = run_command_timed("../os9/os9 dir -e " OS9_DIR_IMAGE ",L1", 20, os9_dir_output, sizeof(os9_dir_output));
+	ASSERT_EQUALS(0, status);
+
+	remove(OS9_DIR_IMAGE);
+}
+
+/* A name whose last character doesn't have its top bit set is listed
+   without running past the entry, and escaped if it can't be printed. */
+void test_os9_dir_unended_name()
+{
+	static const char expected[] = "NNNNNNNNNNNNNNNNNNNNNNNNNNNN\\1\n";
+	u_char name[D_NAMELEN];
+	long offset;
+	int status;
+
+	remove(OS9_DIR_IMAGE);
+	ASSERT_EC(0, system("../os9/os9 format -e " OS9_DIR_IMAGE " -l4000 > /dev/null 2>&1"));
+	ASSERT_EC(0, system("../os9/os9 makdir " OS9_DIR_IMAGE ",NAMED > /dev/null 2>&1"));
+	offset = os9_entry_offset(OS9_DIR_IMAGE ",.", "NAMED");
+	ASSERT("the entry exists", offset >= 0);
+	memset(name, 'N', sizeof(name));
+	name[D_NAMELEN - 1] = 0x01;
+	os9_poke(offset, name, sizeof(name));
+
+	status = run_command_timed("../os9/os9 dir -e " OS9_DIR_IMAGE ",", 20, os9_dir_output, sizeof(os9_dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("the whole name, and no more", strstr(os9_dir_output, expected) != NULL);
+
+	status = run_command_timed("../os9/os9 dir " OS9_DIR_IMAGE ",", 20, os9_dir_output, sizeof(os9_dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("the whole name, and no more", strstr(os9_dir_output, "NNNNNNNNNNNNNNNNNNNNNNNNNNNN\\1") != NULL);
+
+	remove(OS9_DIR_IMAGE);
+}
+
+/* Pathnames that are empty or too long are refused, not copied past their
+   buffer or read before it. */
+void test_os9_dir_bad_pathnames()
+{
+	static char command[4096];
+	int status;
+
+	status = run_command_timed("../os9/os9 dir ''", 20, os9_dir_output, sizeof(os9_dir_output));
+	ASSERT_EQUALS(EOS_BPNAM, status);
+
+	strcpy(command, "../os9/os9 dir ");
+	memset(command + strlen(command), 'x', 3000);
+	command[15 + 3000] = '\0';
+	status = run_command_timed(command, 20, os9_dir_output, sizeof(os9_dir_output));
+	ASSERT_EQUALS(EOS_BPNAM, status);
+
+	/* One that only grows too long when ',.' is added. */
+	memset(command + 15, 'x', 1021);
+	command[15 + 1021] = '\0';
+	status = run_command_timed(command, 20, os9_dir_output, sizeof(os9_dir_output));
+	ASSERT("refused without crashing", status != COMMAND_CRASHED && status != COMMAND_TIMED_OUT && status != 0);
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -1633,5 +1829,8 @@ int main()
 	RUN(test_os9_48_segments_delete);
 	RUN(test_os9_real_clusters);
 	RUN(test_os9_real_clusters_delete);
+	RUN(test_os9_dir_recurse_repeated_directories);
+	RUN(test_os9_dir_unended_name);
+	RUN(test_os9_dir_bad_pathnames);
 	return TEST_REPORT();
 }

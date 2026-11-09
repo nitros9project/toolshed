@@ -7,6 +7,7 @@
 
 #include "tinytest.h"
 #include "toolshed.h"
+#include "commandrun.h"
 
 #define DGNDOS "../dgndos/dgndos "
 #define QUIET " > /dev/null 2>&1"
@@ -862,6 +863,49 @@ static void test_reveal(void)
 	remove(OUTPUT_FILE);
 }
 
+/* Continuation chains that loop or lead nowhere give no size, but every
+   file is still listed. */
+static void test_dir_of_corrupt_chains(void)
+{
+	dragondos_path_id path;
+	dragondos_dir_entry *entry;
+	u_char sector[256];
+	unsigned int directory = 20 * 18;
+	error_code ec;
+	int status;
+
+	clean_up();
+	ASSERT_RUN(0, DGNDOS "dskinit " TEST_IMAGE);
+	write_native(NATIVE_FILE, 10);
+	ASSERT_RUN(0, DGNDOS "copy " NATIVE_FILE " " TEST_IMAGE ",LOOP");
+	ASSERT_RUN(0, DGNDOS "copy " NATIVE_FILE " " TEST_IMAGE ",AWAY");
+	ASSERT_RUN(0, DGNDOS "copy " NATIVE_FILE " " TEST_IMAGE ",GOOD");
+
+	ec = _dragondos_open(&path, TEST_IMAGE ",", FAM_READ | FAM_WRITE);
+	ASSERT_EQUALS(0, ec);
+	ec = _dragondos_gs_sector(path, directory + 2, sector);
+	ASSERT_EQUALS(0, ec);
+	/* LOOP continues in itself; AWAY in an entry past the directory. */
+	entry = (dragondos_dir_entry *)sector;
+	entry->flags |= DRAGONDOS_FLAG_CONTINUED;
+	entry->last_or_next = 0;
+	entry = (dragondos_dir_entry *)(sector + 25);
+	entry->flags |= DRAGONDOS_FLAG_CONTINUED;
+	entry->last_or_next = 200;
+	ec = _dragondos_ss_sector(path, directory + 2, sector);
+	ASSERT_EQUALS(0, ec);
+	ec = _dragondos_close(path);
+	ASSERT_EQUALS(0, ec);
+
+	status = run_command_timed(DGNDOS "dir " TEST_IMAGE, 20, output, sizeof(output));
+	ASSERT_EQUALS(EOS_WT, status);
+	ASSERT("the looped file has no size", strstr(output, "\nLOOP          .        ?\n") != NULL);
+	ASSERT("the lost file has no size", strstr(output, "\nAWAY          .        ?\n") != NULL);
+	ASSERT("the good file is listed", strstr(output, "\nGOOD          .       10\n") != NULL);
+	ASSERT("all are counted", strstr(output, "\n3 files, ") != NULL);
+	clean_up();
+}
+
 int main(void)
 {
 	RUN(test_reveal);
@@ -875,6 +919,7 @@ int main(void)
 	RUN(test_fstat_and_dump);
 	RUN(test_attr_rename_kill);
 	RUN(test_dir_of_damaged_image);
+	RUN(test_dir_of_corrupt_chains);
 	RUN(test_fstat_file_headers);
 	RUN(test_list_tokens);
 	RUN(test_copy_tokens);

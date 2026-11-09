@@ -3,6 +3,7 @@
  *
  * $Id$
  ********************************************************************/
+#include <ctype.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -94,37 +95,60 @@ int decbdir(int argc, char *argv[])
 
 
 
+/* Print bytes, escaping what can't be printed. */
+static void print_escaped(const u_char *text, int length)
+{
+	int i;
+
+	for (i = 0; i < length; i++)
+	{
+		if (isprint(text[i]))
+		{
+			putchar(text[i]);
+		}
+		else
+		{
+			printf("\\%o", text[i]);
+		}
+	}
+}
+
+
+/* Entries that can't be sized don't stop the rest being listed.  The first
+   error is returned once all that can be reported has been. */
 static int do_dir(char **argv, char *p)
 {
 	error_code ec = 0;
-	char decbpathlist[256], sector[256];
+	error_code first_error = 0;
+	char decbpathlist[256];
+	u_char sector[256];
 	decb_path_id path;
 	decb_dir_entry de;
+	char *colon;
+	int length;
 
 
 	/* 1. If a comma isn't present in the string, then add it so that the path is opened as a non-native path. */
 
-	memset(decbpathlist, 0, 256);
-
-	if (strchr(p, ',') == NULL)
+	if (strchr(p, ',') != NULL)
 	{
-		char *q = strchr(p, ':');
-
-		if (q == NULL)
-		{
-			strcpy(decbpathlist, p);
-			strcat(decbpathlist, ",");
-		}
-		else
-		{
-			strncpy(decbpathlist, p, q - p);
-			strcat(decbpathlist, ",");
-			strcat(decbpathlist, q);
-		}
+		length = snprintf(decbpathlist, sizeof(decbpathlist), "%s", p);
+	}
+	else if ((colon = strchr(p, ':')) == NULL)
+	{
+		length = snprintf(decbpathlist, sizeof(decbpathlist), "%s,", p);
 	}
 	else
 	{
-		strcpy(decbpathlist, p);
+		length = snprintf(decbpathlist, sizeof(decbpathlist), "%.*s,%s",
+				  (int) (colon - p), p, colon);
+	}
+
+	if (length < 0 || length >= (int) sizeof(decbpathlist))
+	{
+		fprintf(stderr, "%s: pathname too long '%s'\n", argv[0], p);
+
+		return EOS_BPNAM;
 	}
 
 
@@ -145,24 +169,36 @@ static int do_dir(char **argv, char *p)
 	}
 
 
-	/* 4. Obtain HDB-DOS disk name, if any. */
+	/* 4. Obtain HDB-DOS disk name, if any.  Nothing promises it ends. */
 
-	ec = _decb_gs_sector(path, 17, 17, sector);
+	ec = _decb_gs_sector(path, 17, 17, (char *) sector);
 
-	if (ec == 0 && sector[0] != '\xFF')
+	if (ec == 0 && sector[0] != 0xFF)
 	{
-		printf("%s\n", sector);
+		print_escaped(sector, (int) strnlen((char *) sector, sizeof(sector)));
+		putchar('\n');
 	}
 
 
-	/* 5. Read and print each directory entry */
+	/* 5. Read and print each directory entry.  _decb_readdir moves on even
+	 *    when a sector can't be read, and stops after the last of the 72
+	 *    entries, so this always ends.
+	 */
 
-	while ((ec = _decb_readdir(path, &de)) == 0)
+	while ((ec = _decb_readdir(path, &de)) != EOS_PNNF)
 	{
 		char asciiflag;
-		int granule_size = 1, i;
-		int curr_granule;
+		u_int granules, last;
+		error_code chain_ec;
 
+		if (ec != 0)
+		{
+			if (first_error == 0)
+			{
+				first_error = ec;
+			}
+			continue;
+		}
 
 		if (de.filename[0] == 0 || de.filename[0] == 255)
 		{
@@ -183,62 +219,37 @@ static int do_dir(char **argv, char *p)
 			break;
 		}
 
-		curr_granule = de.first_granule;
-
-		while (path->FAT[curr_granule] < 0xC0)
-		{
-			curr_granule = path->FAT[curr_granule];
-
-			granule_size++;
-		}
-
-		/* print escaped filename */
-
-		for (i = 0; i < 8; i++)
-		{
-			if (isprint((unsigned char)de.filename[i]))
-			{
-				putchar(de.filename[i]);
-			}
-			else
-			{
-				printf("\\%o", de.filename[i]);
-			}
-		}
-
+		print_escaped(de.filename, 8);
 		putchar(' ');
+		print_escaped(de.file_extension, 3);
 
-		/* print escaped extension */
+		/* Sizes of the files come from the FAT, whose chains may loop. */
 
-		for (i = 0; i < 3; i++)
+		chain_ec = path->fat_ec;
+		if (chain_ec == 0)
 		{
-			if (isprint((unsigned char)de.file_extension[i]))
-			{
-				putchar(de.file_extension[i]);
-			}
-			else
-			{
-				printf("\\%o", de.file_extension[i]);
-			}
+			chain_ec = _decb_gs_chain(path, de.first_granule, &granules, &last);
 		}
 
-		/* Sizes of the files come from the FAT. */
-
-		if (path->fat_ec != 0)
+		if (chain_ec != 0)
 		{
 			printf("  %1.1d  %c  ?\n", de.file_type, asciiflag);
+
+			if (first_error == 0)
+			{
+				first_error = chain_ec;
+			}
 		}
 		else
 		{
-			printf("  %1.1d  %c  %d\n", de.file_type, asciiflag,
-			       granule_size);
+			printf("  %1.1d  %c  %u\n", de.file_type, asciiflag,
+			       granules);
 		}
 	}
 
-	/* reached end of directory: success, unless a size could not be given */
+	/* reached end of directory: success, unless something could not be listed */
 
-	if (ec == EOS_PNNF)
-		ec = path->fat_ec;
+	_decb_close(path);
 
-	return ec;
+	return first_error;
 }

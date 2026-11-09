@@ -3,6 +3,7 @@
  *
  * $Id$
  ********************************************************************/
+#include <ctype.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -89,12 +90,16 @@ int cecbdir(int argc, char *argv[])
 	return 0;
 }
 
+/* Each call reads further along the tape, and every error but a bad
+   checksum ends the listing, so this always ends. */
 static int do_dir(char **argv, char *p)
 {
 	error_code ec = 0;
+	error_code first_error = 0;
 	cecb_path_id path;
 	char asciiflag;
 	cecb_dir_entry dir_entry;
+	int i;
 
 	ec = _cecb_open(&path, p, FAM_READ | FAM_RAW);
 
@@ -111,6 +116,12 @@ static int do_dir(char **argv, char *p)
 				break;
 			}
 
+			if (ec != 0 && ec != EOS_CRC)
+			{
+				first_error = ec;
+				break;
+			}
+
 			switch (dir_entry.ascii_flag)
 			{
 			case 0x00:
@@ -124,12 +135,33 @@ static int do_dir(char **argv, char *p)
 				break;
 			}
 
-			printf("%c %8.8s %d ($%02x) %c ($%02x)\n", ec == EOS_CRC ? '!' : ' ',
-				dir_entry.filename, dir_entry.file_type, dir_entry.file_type, asciiflag,
-				asciiflag);
+			putchar(ec == EOS_CRC ? '!' : ' ');
+			putchar(' ');
+
+			/* print escaped filename */
+			for (i = 0; i < 8; i++)
+			{
+				if (isprint(dir_entry.filename[i]))
+				{
+					putchar(dir_entry.filename[i]);
+				}
+				else
+				{
+					printf("\\%o", dir_entry.filename[i]);
+				}
+			}
+
+			printf(" %d ($%02x) %c ($%02x)\n",
+				dir_entry.file_type, dir_entry.file_type, asciiflag,
+				dir_entry.ascii_flag);
 		}
 
 		ec = _cecb_close(path);
+
+		if (first_error != 0)
+		{
+			ec = first_error;
+		}
 	}
 
 	printf("\n");
