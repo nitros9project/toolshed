@@ -805,6 +805,179 @@ void test_os9_failed_create_frees_its_cluster()
 	remove(image);
 }
 
+/* Read or write one 256-byte sector of a raw image directly. */
+static void raw_sector(const char *image, int lsn, u_char *buffer, int write)
+{
+	FILE *f = fopen(image, "r+b");
+	size_t got;
+
+	ASSERT("the image opens", f != NULL);
+	ASSERT_EQUALS(0, fseek(f, (long) lsn * 256, SEEK_SET));
+	got = write ? fwrite(buffer, 1, 256, f) : fread(buffer, 1, 256, f);
+	fclose(f);
+	ASSERT_EQUALS(256, (int) got);
+}
+
+static long raw_size(const char *image)
+{
+	FILE *f = fopen(image, "rb");
+	long size;
+
+	if (f == NULL)
+	{
+		return -1;
+	}
+	fseek(f, 0, SEEK_END);
+	size = ftell(f);
+	fclose(f);
+	return size;
+}
+
+/* Mark every cluster in the allocation map as used, and clear the rest of
+ * the map's sector, past dd_map.  Those bytes are not part of the map, and
+ * some formatters leave them zero.  Returns the map as written.
+ */
+static void fill_map_zero_pad(const char *image, u_char *map, u_int *map_bytes)
+{
+	u_char lsn0[256];
+
+	raw_sector(image, 0, lsn0, 0);
+	*map_bytes = int2(((lsn0_sect *) lsn0)->dd_map);
+	ASSERT("the map fits a sector", *map_bytes > 0 && *map_bytes <= 256);
+	memset(map, 0, 256);
+	memset(map, 0xFF, *map_bytes);
+	raw_sector(image, 1, map, 1);
+}
+
+/* A segment list ends at its first empty entry.  What follows is not part of
+ * the file, even when the descriptor claims more bytes than the list holds.
+ */
+void test_os9_read_stops_at_segment_list_end()
+{
+	static const char image[] = "test_seg_end.dsk";
+	char pathlist[64];
+	u_char data[256], other[256], fd_buf[256], back[512];
+	fd_stats *fd = (fd_stats *) fd_buf;
+	os9_path_id p;
+	unsigned int totalSectors, totalBytes;
+	int clusterSize = 0, data_lsn, other_lsn, fd_lsn, pass;
+	u_int size;
+
+	memset(data, 0x11, sizeof(data));
+	memset(other, 0xAA, sizeof(other));
+	ASSERT_EC(0, _os9_format((char *) image, 0, 35, 18, 18, 1, 256, &clusterSize, "Seg End", 8, 8,
+				 1, 1, 0, 0, 3, &totalSectors, &totalBytes));
+	snprintf(pathlist, sizeof(pathlist), "%s,OTHER", image);
+	os9_write_file(pathlist, other, sizeof(other), &other_lsn);
+	snprintf(pathlist, sizeof(pathlist), "%s,FILE", image);
+	os9_write_file(pathlist, data, sizeof(data), &data_lsn);
+
+	ASSERT_EC(0, _os9_open(&p, pathlist, FAM_READ));
+	fd_lsn = p->pl_fd_lsn;
+	ASSERT_EC(0, _os9_close(p));
+
+	/* One sector, then the end of the list, then a stray entry pointing at
+	 * another file's data.  The size claims two sectors.
+	 */
+	raw_sector(image, fd_lsn, fd_buf, 0);
+	memset(fd->fd_seg, 0, sizeof(fd->fd_seg));
+	_int3(data_lsn, fd->fd_seg[0].lsn);
+	_int2(1, fd->fd_seg[0].num);
+	_int3(other_lsn, fd->fd_seg[2].lsn);
+	_int2(1, fd->fd_seg[2].num);
+	_int4(512, fd->fd_siz);
+	raw_sector(image, fd_lsn, fd_buf, 1);
+
+	for (pass = 0; pass < 2; pass++)
+	{
+		error_code (*reader)(os9_path_id, void *, u_int *) = pass == 0 ? _os9_read : _os9_readln;
+		error_code ec;
+
+		ASSERT_EC(0, _os9_open(&p, pathlist, FAM_READ));
+
+		/* All the list holds, and no more than it holds. */
+		memset(back, 0, sizeof(back));
+		size = sizeof(back);
+		ASSERT_EC(0, reader(p, back, &size));
+		ASSERT_EQUALS(256, (int) size);
+		ASSERT_MEM_EQUALS(data, back, 256);
+
+		/* Nothing past the end of the list. */
+		memset(back, 0, sizeof(back));
+		size = 256;
+		ec = reader(p, back, &size);
+		ASSERT_NEQUALS(0, ec);
+		ASSERT_EQUALS(0, (int) size);
+		ASSERT("nothing from the other file", back[0] != 0xAA);
+
+		ASSERT_EC(0, _os9_close(p));
+	}
+
+	remove(image);
+}
+
+/* A cluster past the end of the disk is never handed out, whatever the bytes
+ * after the allocation map hold.
+ */
+void test_os9_no_allocation_past_last_cluster()
+{
+	static const char image[] = "test_map_end.dsk";
+	char pathlist[64];
+	u_char map[256], back[256], buffer[1000], fd_buf[256];
+	fd_stats *fd = (fd_stats *) fd_buf;
+	os9_path_id p;
+	unsigned int totalSectors, totalBytes;
+	int clusterSize = 2, fd_lsn, last_cluster;
+	u_int map_bytes, size;
+	long image_size;
+
+	/* 576 sectors make 288 clusters, exactly 36 map bytes, so the bit after
+	 * the last cluster is in the zeroed bytes past the map.
+	 */
+	ASSERT_EC(0, _os9_format((char *) image, 0, 32, 18, 18, 1, 256, &clusterSize, "Map End", 8, 8,
+				 1, 1, 0, 0, 3, &totalSectors, &totalBytes));
+	ASSERT_EQUALS(2, clusterSize);
+	snprintf(pathlist, sizeof(pathlist), "%s,EMPTY", image);
+	ASSERT_EC(0, _os9_create(&p, pathlist, FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE));
+	ASSERT_EC(0, _os9_close(p));
+
+	fill_map_zero_pad(image, map, &map_bytes);
+	image_size = raw_size(image);
+
+	/* No cluster for a new file's descriptor. */
+	snprintf(pathlist, sizeof(pathlist), "%s,NEW", image);
+	ASSERT_EC(EOS_DF, _os9_create(&p, pathlist, FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE));
+
+	/* No segment for an existing file to grow into. */
+	memset(buffer, 0x5A, sizeof(buffer));
+	snprintf(pathlist, sizeof(pathlist), "%s,EMPTY", image);
+	ASSERT_EC(0, _os9_open(&p, pathlist, FAM_READ | FAM_WRITE));
+	size = sizeof(buffer);
+	ASSERT_EC(EOS_DF, _os9_write(p, buffer, &size));
+	fd_lsn = p->pl_fd_lsn;
+	ASSERT_EC(0, _os9_close(p));
+
+	/* Nor a cluster after the disk's last one, for a file that ends there. */
+	raw_sector(image, fd_lsn, fd_buf, 0);
+	memset(fd->fd_seg, 0, sizeof(fd->fd_seg));
+	last_cluster = totalSectors / 2 - 1;
+	_int3(last_cluster * 2, fd->fd_seg[0].lsn);
+	_int2(2, fd->fd_seg[0].num);
+	_int4(1, fd->fd_siz);	/* in use, so closing keeps the cluster */
+	raw_sector(image, fd_lsn, fd_buf, 1);
+	ASSERT_EC(0, _os9_open(&p, pathlist, FAM_READ | FAM_WRITE));
+	size = 2 * 256 + 1;
+	ASSERT_EC(EOS_DF, _os9_write(p, buffer, &size));
+	ASSERT_EC(0, _os9_close(p));
+
+	/* The image did not grow, and the map is as it was. */
+	ASSERT_EQUALS(image_size, raw_size(image));
+	raw_sector(image, 1, back, 0);
+	ASSERT_MEM_EQUALS(map, back, map_bytes);
+
+	remove(image);
+}
+
 void test_os9_file_allocation()
 {
 	os9_path_id p;
@@ -2782,6 +2955,8 @@ int main()
 	RUN(test_os9_ss_calls);
 	RUN(test_os9_gs_calls);
 	RUN(test_os9_failed_create_frees_its_cluster);
+	RUN(test_os9_read_stops_at_segment_list_end);
+	RUN(test_os9_no_allocation_past_last_cluster);
 	RUN(test_os9_file_allocation);
 	RUN(test_os9_allocation_bitmap_boundaries);
 	RUN(test_os9_short_t0_segment_io);
