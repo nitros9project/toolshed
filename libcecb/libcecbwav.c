@@ -249,6 +249,15 @@ error_code _cecb_read_bits_wav(cecb_path_id path, int count,
  *
  */
 
+/* A file shorter than its header says ends here, so that what reads on
+   sees the end of the tape rather than waiting on samples that never come. */
+static long end_of_samples(cecb_path_id path)
+{
+	path->wav_current_sample = path->wav_total_samples;
+
+	return LONG_MAX;
+}
+
 long next_zero_crossing(cecb_path_id path)
 {
 	if (path->wav_bits_per_sample == 8 && path->wav_audioFormat == 1)
@@ -256,7 +265,10 @@ long next_zero_crossing(cecb_path_id path)
 		while (path->wav_current_sample < path->wav_total_samples)
 		{
 			path->wav_ss1.uc_value = path->wav_ss2.uc_value;
-			path->wav_ss2.uc_value = fgetc(path->fd);
+			int c = fgetc(path->fd);
+			if (c == EOF)
+				return end_of_samples(path);
+			path->wav_ss2.uc_value = c;
 			(path->wav_current_sample)++;
 
 			// Crossing from low to high
@@ -281,7 +293,7 @@ long next_zero_crossing(cecb_path_id path)
 			path->wav_ss1.s_value = path->wav_ss2.s_value;
 			short s;
 			if (fread_le_sshort(&s, path->fd) != 2)
-				return LONG_MAX;
+				return end_of_samples(path);
 			path->wav_ss2.s_value = s;
 			(path->wav_current_sample)++;
 			
@@ -307,7 +319,7 @@ long next_zero_crossing(cecb_path_id path)
 			path->wav_ss1.i_value = path->wav_ss2.i_value;
 			int i;
 			if (fread_le_24bit(&i, path->fd) != 3)
-				return LONG_MAX;
+				return end_of_samples(path);
 			path->wav_ss2.i_value = i;
 			(path->wav_current_sample)++;
 
@@ -333,7 +345,7 @@ long next_zero_crossing(cecb_path_id path)
 			path->wav_ss1.i_value = path->wav_ss2.i_value;
 			int i;
 			if (fread_le_sint(&i, path->fd) != 4)
-				return LONG_MAX;
+				return end_of_samples(path);
 			path->wav_ss2.i_value = i;
 			(path->wav_current_sample)++;
 

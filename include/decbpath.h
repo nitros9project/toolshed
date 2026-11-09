@@ -129,6 +129,8 @@ error_code _decb_raw_read(decb_path_id path, void *buffer, u_int *size);
 error_code _decb_raw_write(decb_path_id path, const void *buffer, u_int *size);
 error_code _decb_rename(char *pathlist, char *newname);
 error_code _decb_rename_ex(char *pathlist, char *new_name, decb_dir_entry *dirent);
+/* Follow a chain of granules; EOS_WT if it loops. */
+error_code _decb_gs_chain(decb_path_id path, u_int first, u_int *granules, u_int *last);
 error_code _decb_gs_size(decb_path_id path, u_int *size);
 error_code _decb_gs_size_pathlist(char *pathlist, u_int *size);
 error_code _decb_gs_pos(decb_path_id path, u_int *pos);

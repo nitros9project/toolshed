@@ -78,6 +78,36 @@ error_code _decb_gs_eof(decb_path_id path)
 
 
 
+/*
+ * _decb_gs_chain()
+ *
+ * Follow a file's chain of granules in the FAT.  granules gets how many there
+ * are, and last the granule whose FAT entry ends the chain.  The FAT has 256
+ * entries, so a chain longer than that goes round in a loop, and EOS_WT says
+ * the disk is damaged rather than following it forever.
+ */
+error_code _decb_gs_chain(decb_path_id path, u_int first, u_int *granules, u_int *last)
+{
+	u_int granule = first & 0xFF;
+	u_int count = 1;
+
+	while (path->FAT[granule] < 0xC0)
+	{
+		if (count >= sizeof(path->FAT))
+		{
+			return EOS_WT;
+		}
+		granule = path->FAT[granule];
+		count++;
+	}
+
+	*granules = count;
+	*last = granule;
+
+	return 0;
+}
+
+
 error_code _decb_gs_size(decb_path_id path, u_int * size)
 {
 	error_code ec = 0;
@@ -103,13 +133,17 @@ error_code _decb_gs_size(decb_path_id path, u_int * size)
 
 	/* 1. The following code is for DECB paths. */
 
-	curr_granule = path->dir_entry.first_granule;
-
-	while (path->FAT[curr_granule] < 0xC0)
 	{
-		curr_granule = path->FAT[curr_granule];
+		u_int granules, last;
 
-		*size += 2304;
+		ec = _decb_gs_chain(path, path->dir_entry.first_granule, &granules, &last);
+		if (ec != 0)
+		{
+			return ec;
+		}
+
+		curr_granule = last;
+		*size = (granules - 1) * 2304;
 	}
 
 	sectors_in_last_granule = (path->FAT[curr_granule] & 0x3f) - 1;

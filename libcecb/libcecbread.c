@@ -182,8 +182,15 @@ error_code _cecb_read_next_block(cecb_path_id path, unsigned char *block_type,
 // 		printf( "find_block: %2x, sample: %ld\n", find_block, path->wav_current_sample );
 	}
 
+	/* A tape that ends inside a block ends the reading of it. */
+
 	ec = _cecb_read_bits(path, 8, block_type);
+	if (ec != 0)
+		return ec;
+
 	ec = _cecb_read_bits(path, 8, block_length);
+	if (ec != 0)
+		return ec;
 
 	path->block_cksum_calc = *block_type + *block_length;
 
@@ -192,6 +199,8 @@ error_code _cecb_read_next_block(cecb_path_id path, unsigned char *block_type,
 	for (i = 0; i < *block_length; i++)
 	{
 		ec = _cecb_read_bits(path, 8, &(data[i]));
+		if (ec != 0)
+			return ec;
 		path->block_cksum_calc += data[i];
 		//printf( "c: %2.2x, i: %d\n", data[i], i );
 	}
