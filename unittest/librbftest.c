@@ -722,6 +722,89 @@ void test_os9_ss_calls()
 	// TODO: Write tests
 }
 
+/* A create that fails after taking a cluster for the file descriptor gives
+ * that cluster back.  The undo has to clear the cluster's bit, not the bit
+ * numbered by the descriptor's LSN: with two sectors per cluster those differ.
+ */
+void test_os9_failed_create_frees_its_cluster()
+{
+	static const char image[] = "test_create_full.dsk";
+	u_char before[256], after[256];
+	char pathlist[64];
+	fd_stats fd;
+	os9_path_id p;
+	unsigned int totalSectors, totalBytes;
+	int clusterSize = 2;
+	int s, capacity = 0, files, i, free_cluster = -1;
+	u_int map_bytes;
+	FILE *f;
+	size_t got;
+
+	ASSERT_EC(0, _os9_format((char *) image, 0, 35, 18, 18, 1, 256, &clusterSize, "Full Dir", 8, 8,
+				 1, 1, 0, 0, 3, &totalSectors, &totalBytes));
+	ASSERT_EQUALS(2, clusterSize);
+
+	/* Fill the root directory up to the room its segments already hold. */
+	snprintf(pathlist, sizeof(pathlist), "%s,.", image);
+	ASSERT_EC(0, _os9_gs_fd_pathlist(pathlist, sizeof(fd), &fd));
+	for (s = 0; s < NUM_SEGS && int3(fd.fd_seg[s].lsn) != 0; s++)
+	{
+		capacity += int2(fd.fd_seg[s].num) * 256;
+	}
+	files = capacity / (int) sizeof(os9_dir_entry) - 2;	/* less . and .. */
+	for (i = 0; i < files; i++)
+	{
+		snprintf(pathlist, sizeof(pathlist), "%s,F%d", image, i);
+		ASSERT_EC(0, _os9_create(&p, pathlist, FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE));
+		ASSERT_EC(0, _os9_close(p));
+	}
+	snprintf(pathlist, sizeof(pathlist), "%s,.", image);
+	ASSERT_EC(0, _os9_gs_fd_pathlist(pathlist, sizeof(fd), &fd));
+	ASSERT_EQUALS(capacity, (int) int4(fd.fd_siz));
+
+	/* Leave one free cluster: enough for a file descriptor, but not for the
+	 * directory to grow.
+	 */
+	f = fopen(image, "r+b");
+	ASSERT("the image opens", f != NULL);
+	ASSERT_EQUALS(0, fseek(f, 0x04, SEEK_SET));
+	map_bytes = (u_int) fgetc(f) << 8;
+	map_bytes |= (u_int) fgetc(f);
+	ASSERT("the map fits a sector", map_bytes > 0 && map_bytes <= sizeof(before));
+	ASSERT_EQUALS(0, fseek(f, 256, SEEK_SET));
+	got = fread(before, 1, map_bytes, f);
+	ASSERT_EQUALS(map_bytes, got);
+	for (i = 0; i < (int) map_bytes * 8 && free_cluster < 0; i++)
+	{
+		if ((before[i / 8] & (0x80 >> (i % 8))) == 0)
+		{
+			free_cluster = i;
+		}
+	}
+	ASSERT("a cluster is free", free_cluster >= 0);
+	memset(before, 0xFF, map_bytes);
+	before[free_cluster / 8] &= ~(0x80 >> (free_cluster % 8));
+	ASSERT_EQUALS(0, fseek(f, 256, SEEK_SET));
+	got = fwrite(before, 1, map_bytes, f);
+	ASSERT_EQUALS(map_bytes, got);
+	fclose(f);
+
+	/* The descriptor takes the last cluster; the directory can't grow. */
+	snprintf(pathlist, sizeof(pathlist), "%s,ONEMORE", image);
+	ASSERT_EC(EOS_DF, _os9_create(&p, pathlist, FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE));
+
+	/* Nothing was added, so the map is as it was. */
+	f = fopen(image, "rb");
+	ASSERT("the image opens", f != NULL);
+	ASSERT_EQUALS(0, fseek(f, 256, SEEK_SET));
+	got = fread(after, 1, map_bytes, f);
+	ASSERT_EQUALS(map_bytes, got);
+	fclose(f);
+	ASSERT_MEM_EQUALS(before, after, map_bytes);
+
+	remove(image);
+}
+
 void test_os9_file_allocation()
 {
 	os9_path_id p;
@@ -2698,6 +2781,7 @@ int main()
 	RUN(test_os9_rename);
 	RUN(test_os9_ss_calls);
 	RUN(test_os9_gs_calls);
+	RUN(test_os9_failed_create_frees_its_cluster);
 	RUN(test_os9_file_allocation);
 	RUN(test_os9_allocation_bitmap_boundaries);
 	RUN(test_os9_short_t0_segment_io);

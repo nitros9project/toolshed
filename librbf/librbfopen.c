@@ -270,7 +270,7 @@ error_code _os9_create(os9_path_id * path, char *pathlist, int mode,
 
 		if (ec != 0)
 		{
-			_os9_delbit(parent_path->bitmap, newLSN, 1);
+			_os9_delbit(parent_path->bitmap, newLSN / parent_path->spc, 1);
 			_os9_close(parent_path);
 
 			return ec;
