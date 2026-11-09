@@ -181,8 +181,7 @@ error_code _os9_create(os9_path_id * path, char *pathlist, int mode,
 		}
 
 		newLSN = _os9_getfreebit(parent_path->bitmap,
-					 int3(parent_path->lsn0->dd_tot)) *
-			parent_path->spc;
+					 _os9_total_clusters(parent_path));
 
 		if (newLSN < 0)
 		{
@@ -191,6 +190,8 @@ error_code _os9_create(os9_path_id * path, char *pathlist, int mode,
 
 			return EOS_DF;
 		}
+
+		newLSN *= parent_path->spc;
 
 		/* 5. If our cluster size > 1, add this cluster and leftover count
 		 * to the segment list of the newly allocated file descriptor
@@ -270,7 +271,7 @@ error_code _os9_create(os9_path_id * path, char *pathlist, int mode,
 
 		if (ec != 0)
 		{
-			_os9_delbit(parent_path->bitmap, newLSN, 1);
+			_os9_delbit(parent_path->bitmap, newLSN / parent_path->spc, 1);
 			_os9_close(parent_path);
 
 			return ec;

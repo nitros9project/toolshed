@@ -94,14 +94,29 @@ int _os9_ckbit(u_char * bitmap, int bitnumber)
 
 
 
+/* Number of clusters the allocation map describes: whole clusters on the
+ * disk, and no more than dd_map bytes of bits.  Bits past these are not
+ * part of the map, whatever the rest of its sector holds.
+ */
+
+u_int _os9_total_clusters(os9_path_id path)
+{
+	u_int clusters = int3(path->lsn0->dd_tot) / path->spc;
+	u_int map_bits = (u_int) int2(path->lsn0->dd_map) * 8;
+
+	return clusters < map_bits ? clusters : map_bits;
+}
+
+
+
 /* Return free bit */
 
-int _os9_getfreebit(u_char * bitmap, int total_sectors)
+int _os9_getfreebit(u_char * bitmap, int total_clusters)
 {
 	int i;
 
 
-	for (i = 2; i < total_sectors; i++)
+	for (i = 2; i < total_clusters; i++)
 	{
 		if (!_os9_ckbit(bitmap, i))
 		{
@@ -135,6 +150,7 @@ error_code _os9_getSASSegment(os9_path_id path, int *cluster, int *size)
 				     : int1(path->lsn0->dd_opt.m6809.pd_sas);
 
 	unsigned int pd_tot = int3(path->lsn0->dd_tot);
+	u_int clusters = _os9_total_clusters(path);
 	u_int i, count;
 	u_int prev_free;
 
@@ -163,7 +179,7 @@ error_code _os9_getSASSegment(os9_path_id path, int *cluster, int *size)
 
 	while (count < (pd_sas / path->spc))
 	{
-		if (i == pd_tot)
+		if (i == clusters)
 		{
 			return -1;	/* none found */
 		}

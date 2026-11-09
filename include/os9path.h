@@ -167,7 +167,8 @@ u_int _os9_lsn_write(os9_path_id path, int lsn, u_int offset, const void *buffer
 error_code _os9_allbit(u_char *bitmap, int firstbit, int numbits);
 error_code _os9_delbit(u_char *bitmap, int firstbit, int numbits);
 int _os9_ckbit( u_char *bitmap, int LSN );
-int _os9_getfreebit( u_char *bitmap, int bitmap_bytes );
+int _os9_getfreebit( u_char *bitmap, int total_clusters );
+u_int _os9_total_clusters( os9_path_id path );
 int _os9_maximum_file_size( fd_stats fd_sector, int cluster_size );
 error_code _os9_getSASSegment( os9_path_id path, int *cluster, int *size );
 int read_lsn(os9_path_id path, int lsn, void *buffer);

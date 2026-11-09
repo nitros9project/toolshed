@@ -130,7 +130,7 @@ error_code _os9_read(os9_path_id path, void *buffer, u_int * size)
 
 	accum_size = 0;
 
-	for (i = 0; i < NUM_SEGS || int3(segptr[i].lsn) != 0; i++)
+	for (i = 0; i < NUM_SEGS && int3(segptr[i].lsn) != 0; i++)
 	{
 		accum_size += int2(segptr[i].num) * path->bps;
 
@@ -149,7 +149,7 @@ error_code _os9_read(os9_path_id path, void *buffer, u_int * size)
 	 *    ran out of sectors in the segment list to search.
 	 */
 
-	if (int3(segptr[i].lsn) == 0 || i == NUM_SEGS)
+	if (i == NUM_SEGS || int3(segptr[i].lsn) == 0)
 	{
 		/* 1. Apparently, the file position in the path was too
 		 *    large, because we couldn't find a sector.
@@ -205,6 +205,10 @@ error_code _os9_read(os9_path_id path, void *buffer, u_int * size)
 		bytes_left -= read_size;
 		i++;
 	}
+
+	/* The segment list may end before the size the descriptor claims. */
+
+	*size -= bytes_left;
 
 
 	return ec;

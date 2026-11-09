@@ -135,7 +135,7 @@ error_code _os9_write(os9_path_id path, void *buffer, u_int * size)
 		 *    ran out of sectors in the segment list to search.
 		 */
 
-		if (int3(segptr[i].lsn) == 0 || i == NUM_SEGS)
+		if (i == NUM_SEGS || int3(segptr[i].lsn) == 0)
 		{
 			/* 1. Apparently, the file position in the path was too
 			 * large, because we couldn't find a sector.
@@ -256,7 +256,8 @@ static int _os9_extendSegList(os9_path_id path, Fd_seg segptr, int *delta)
 
 			/* Is it allocated? Also check if it is in the same
 			   allocation map sector (due to OS-9 6x09 RBF limitation) */
-			if (newLSN / path->spc / 2048 ==
+			if ((u_int) (newLSN / path->spc) < _os9_total_clusters(path)
+			    && newLSN / path->spc / 2048 ==
 			    int3(segptr[i].lsn) / path->spc / 2048
 			    && !_os9_ckbit(path->bitmap, newLSN / path->spc))
 			{
