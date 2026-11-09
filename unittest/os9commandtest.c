@@ -1691,23 +1691,27 @@ void test_os9_dir_recurse_repeated_directories()
 {
 	char pathlist[OS9_DIR_DEPTH][256];
 	char command[512];
-	int status, level;
+	int status, level, length;
 
 	remove(OS9_DIR_IMAGE);
 	ASSERT_EC(0, system("../os9/os9 format -e " OS9_DIR_IMAGE " -l4000 > /dev/null 2>&1"));
+	/* Every length is checked, which also tells GCC nothing is cut off. */
 	for (level = 0; level < OS9_DIR_DEPTH; level++)
 	{
 		if (level == 0)
 		{
-			snprintf(pathlist[level], sizeof(pathlist[level]), OS9_DIR_IMAGE ",L1");
+			length = snprintf(pathlist[level], sizeof(pathlist[level]), OS9_DIR_IMAGE ",L1");
 		}
 		else
 		{
-			snprintf(pathlist[level], sizeof(pathlist[level]), "%s/L%d", pathlist[level - 1], level + 1);
+			length = snprintf(pathlist[level], sizeof(pathlist[level]), "%s/L%d", pathlist[level - 1], level + 1);
 		}
-		snprintf(command, sizeof(command), "../os9/os9 makdir %s > /dev/null 2>&1", pathlist[level]);
+		ASSERT("the pathlist fits", length > 0 && length < (int) sizeof(pathlist[level]));
+		length = snprintf(command, sizeof(command), "../os9/os9 makdir %s > /dev/null 2>&1", pathlist[level]);
+		ASSERT("the command fits", length > 0 && length < (int) sizeof(command));
 		ASSERT_EC(0, system(command));
-		snprintf(command, sizeof(command), "../os9/os9 makdir %s/X > /dev/null 2>&1", pathlist[level]);
+		length = snprintf(command, sizeof(command), "../os9/os9 makdir %s/X > /dev/null 2>&1", pathlist[level]);
+		ASSERT("the command fits", length > 0 && length < (int) sizeof(command));
 		ASSERT_EC(0, system(command));
 	}
 
