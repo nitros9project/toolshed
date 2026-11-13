@@ -18,6 +18,9 @@ CC			= $(CROSS)cc
 
 ifneq ($(WIN),)
 SUFEXE		= .exe
+# MinGW's own C99 printf, so %zu and %lld work and are checked as such
+# rather than against the old msvcrt formats.
+CFLAGS		+= -D__USE_MINGW_ANSI_STDIO=1
 endif
 
 %.l: %.r
