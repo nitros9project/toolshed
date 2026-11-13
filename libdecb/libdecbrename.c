@@ -29,7 +29,6 @@ error_code _decb_rename_ex(char *pathlist, char *new_name,
 			   decb_dir_entry * dirent)
 {
 	error_code ec = 0;
-	char filename[8], extension[3];
 	char nfilename[8], nextension[3];
 	decb_path_id path;
 	char *old_name;
@@ -55,10 +54,7 @@ error_code _decb_rename_ex(char *pathlist, char *new_name,
 		return ec;
 	}
 
-	/* 3. Convert filename to format required by dentry */
-	CStringToDECBString((unsigned char *) filename,
-			    (unsigned char *) extension,
-			    (unsigned char *) old_name);
+	/* 3. Convert the new filename to the format required by dentry */
 	CStringToDECBString((unsigned char *) nfilename,
 			    (unsigned char *) nextension,
 			    (unsigned char *) new_name);
@@ -71,17 +67,26 @@ error_code _decb_rename_ex(char *pathlist, char *new_name,
 		return ec;
 	}
 
-	/* 5. Start reading directory file and search for match */
+	/* 5. _decb_open found the file without regard to case, as every
+	      command does, so that is the entry to rename. */
+
+	ec = 0;
+
+	/* See if another file in this directory has the same name as our
+	   destination.  Case doesn't tell names apart, but the file's own
+	   entry is not in the way, so only the case of a name can change. */
+
 	_decb_seekdir(path, 0, SEEK_SET);
 
-	/* Presume error for now */
-	ec = EOS_BPNAM;
-
-	/* See if another file in this directory has the same name as our destination */
 	while ((read_ec = _decb_readdir(path, dirent)) == 0)
 	{
-		if (!strncmp((char *) dirent->filename, nfilename, 8)
-		    && !strncmp((char *) dirent->file_extension, nextension,
+		if (path->directory_entry_index - 1 == path->this_directory_entry_index)
+		{
+			continue;
+		}
+
+		if (!strncasecmp((char *) dirent->filename, nfilename, 8)
+		    && !strncasecmp((char *) dirent->file_extension, nextension,
 				3))
 		{
 			ec = EOS_FAE;
@@ -97,32 +102,14 @@ error_code _decb_rename_ex(char *pathlist, char *new_name,
 		return ec == EOS_FAE ? ec : read_ec;
 	}
 
-	_decb_seekdir(path, 0, SEEK_SET);
+	/* Rename the source and write its entry back to the image. */
 
-	/* Start reading directory file and search for match */
+	*dirent = path->dir_entry;
+	memcpy(dirent->filename, nfilename, 8);
+	memcpy(dirent->file_extension, nextension, 3);
 
-	while ((read_ec = _decb_readdir(path, dirent)) == 0)
-	{
-		if (!strncmp((char *) dirent->filename, filename, 8)
-		    && !strncmp((char *) dirent->file_extension, extension,
-				3))
-		{
-			/* 1. Found the source, rename it. */
-			memcpy(dirent->filename, nfilename, 8);
-			memcpy(dirent->file_extension, nextension, 3);
-
-			/* 2. Write the directory entry back to the image. */
-			_decb_seekdir(path, -1, SEEK_CUR);
-			ec = _decb_writedir(path, dirent);
-
-			break;
-		}
-	}
-
-	if (read_ec != 0 && read_ec != EOS_PNNF)
-	{
-		ec = read_ec;
-	}
+	_decb_seekdir(path, path->this_directory_entry_index, SEEK_SET);
+	ec = _decb_writedir(path, dirent);
 
 	{
 		error_code close_ec = _decb_close(path);

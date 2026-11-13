@@ -248,11 +248,14 @@ error_code _decb_create(decb_path_id * path, char *pathlist, int mode,
 					(*path)->directory_entry_index;
 			}
 
-			if (strncmp
+			/* Names are found without regard to case (see _decb_cmp), so
+			   one differing only in case is the same file. */
+
+			if (strncasecmp
 			    ((char *) de.filename,
 			     (char *) (*path)->dir_entry.filename, 8) == 0)
 			{
-				if (strncmp
+				if (strncasecmp
 				    ((char *) de.file_extension,
 				     (char *) (*path)->dir_entry.
 				     file_extension, 3) == 0)

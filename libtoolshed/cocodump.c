@@ -71,17 +71,17 @@ static void dump_line(coco_dump *dump)
 	fputc('\n', out);
 	if (format == COCO_DUMP_HEX)
 	{
-		if (dump->options.label) fprintf(out, "%08zx  ", dump->offset);
+		if (dump->options.label) fprintf(out, "%08llx  ", (unsigned long long) dump->offset);
 	}
 	else if (format == COCO_DUMP_C)
 	{
 		if (dump->options.label)
-			fprintf(out, "   /* offset = %08zX */ ", dump->offset);
+			fprintf(out, "   /* offset = %08llX */ ", (unsigned long long) dump->offset);
 		else fputs("   ", out);
 	}
 	else
 	{
-		if (dump->options.label) fprintf(out, "L%04zX    fcb   ", dump->offset);
+		if (dump->options.label) fprintf(out, "L%04llX    fcb   ", (unsigned long long) dump->offset);
 		else fputs("         fcb   ", out);
 	}
 
