@@ -32,7 +32,17 @@ error_code _decb_kill(char *pathlist)
 	}
 
 
-	/* 2. The file's granules are found in the FAT. */
+	/* 2. A raw path names no file, and its entry is not one to erase. */
+
+	if (path->israw == 1)
+	{
+		_decb_close(path);
+
+		return EOS_BPNAM;
+	}
+
+
+	/* 3. The file's granules are found in the FAT. */
 
 	if (path->fat_ec != 0)
 	{
@@ -44,7 +54,7 @@ error_code _decb_kill(char *pathlist)
 	}
 
 
-	/* 3. Erase the entry by writing a nul as the first byte and write out sector. */
+	/* 4. Erase the entry by writing a nul as the first byte and write out sector. */
 
 	path->dir_entry.filename[0] = '\0';
 
@@ -60,7 +70,7 @@ error_code _decb_kill(char *pathlist)
 	}
 
 
-	/* 4. Clear the granules in the FAT used by this entry. */
+	/* 5. Clear the granules in the FAT used by this entry. */
 
 	curr_granule = path->dir_entry.first_granule;
 
@@ -79,7 +89,7 @@ error_code _decb_kill(char *pathlist)
 	path->FAT[curr_granule] = 0xFF;
 
 
-	/* 5. Close the path. */
+	/* 6. Close the path. */
 
 	return _decb_close(path);
 }
