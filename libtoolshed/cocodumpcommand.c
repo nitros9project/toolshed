@@ -88,7 +88,7 @@ static error_code dump_dragon(coco_path_id path, const coco_dump_options *option
 		if (ec && ec != EOS_EOF) return ec;
 		extra += count;
 	} while (!ec && count);
-	if (extra) printf("%zu bytes extra at end of file.\n", extra);
+	if (extra) printf("%llu bytes extra at end of file.\n", (unsigned long long) extra);
 	return 0;
 }
 
@@ -118,7 +118,7 @@ static error_code dump_decb(coco_path_id path, const coco_dump_options *options)
 				if (ec && ec != EOS_EOF) return ec;
 				extra += count;
 			} while (!ec && count);
-			if (extra) printf("%zu bytes extra at end of file.\n", extra);
+			if (extra) printf("%llu bytes extra at end of file.\n", (unsigned long long) extra);
 			return 0;
 		}
 		if (header[0] != 0)
