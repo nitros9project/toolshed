@@ -33,7 +33,7 @@ static void check_commands(const char *tool, int expected_count)
 	char help[8192], full_output[8192], short_output[8192];
 	char names[32][32], aliases[32][3], arguments[64];
 	char *line, *next;
-	int result, full_result, short_result, count = 0, used, i;
+	int result, full_result, short_result, count = 0, used, i, length;
 
 	result = run_command(tool, "", help, sizeof(help));
 	ASSERT_EQUALS(0, result);
@@ -81,9 +81,12 @@ static void check_commands(const char *tool, int expected_count)
 			ASSERT("alias does not shadow a command", strcmp(names[i], aliases[count]) != 0);
 			ASSERT("command does not shadow an alias", strcmp(aliases[i], names[count]) != 0);
 		}
-		snprintf(arguments, sizeof(arguments), "%s -?", names[count]);
+		/* Each length is checked, which also tells GCC nothing is cut off. */
+		length = snprintf(arguments, sizeof(arguments), "%s -?", names[count]);
+		ASSERT("the arguments fit", length > 0 && length < (int) sizeof(arguments));
 		full_result = run_command(tool, arguments, full_output, sizeof(full_output));
-		snprintf(arguments, sizeof(arguments), "%s -?", aliases[count]);
+		length = snprintf(arguments, sizeof(arguments), "%s -?", aliases[count]);
+		ASSERT("the arguments fit", length > 0 && length < (int) sizeof(arguments));
 		short_result = run_command(tool, arguments, short_output, sizeof(short_output));
 		ASSERT_EQUALS(full_result, short_result);
 		ASSERT("subcommand help is not empty", full_output[0] != '\0');

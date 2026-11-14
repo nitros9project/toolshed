@@ -917,6 +917,112 @@ void test_decb_command_dir_long_pathname()
 	ASSERT_EQUALS(EOS_BPNAM, status);
 }
 
+/* Killing a raw path names no file, so it is refused and nothing is lost. */
+void test_decb_command_kill_raw_path()
+{
+	int status;
+
+	remove(DECB_DIR_IMAGE);
+	ASSERT_EC(0, system("../decb/decb dskini " DECB_DIR_IMAGE " > /dev/null 2>&1"));
+	write_native_bytes(DECB_DIR_NATIVE, 10);
+	ASSERT_EC(0, system("../decb/decb copy -2b " DECB_DIR_NATIVE " " DECB_DIR_IMAGE ",FIRST.BIN > /dev/null 2>&1"));
+
+	status = run_command_timed("../decb/decb kill " DECB_DIR_IMAGE ",", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_BPNAM, status);
+
+	status = run_command_timed("../decb/decb dir " DECB_DIR_IMAGE, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("the first file is still there", strstr(dir_output, "FIRST    BIN  2  B  1\n") != NULL);
+
+	status = run_command_timed("../decb/decb free " DECB_DIR_IMAGE, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("its granule is still used", strstr(dir_output, "Free granules: 67 ") != NULL);
+
+	remove(DECB_DIR_IMAGE);
+	remove(DECB_DIR_NATIVE);
+}
+
+/* Names are found without regard to case, so a file whose name differs only
+   in case is the same file: copy refuses it, or with -r replaces it, rather
+   than making a second entry. */
+void test_decb_command_copy_replaces_any_case()
+{
+	int status;
+	u_int size;
+
+	remove(DECB_DIR_IMAGE);
+	ASSERT_EC(0, system("../decb/decb dskini " DECB_DIR_IMAGE " > /dev/null 2>&1"));
+	write_native_bytes(DECB_DIR_NATIVE, 10);
+	ASSERT_EC(0, system("../decb/decb copy -2b " DECB_DIR_NATIVE " " DECB_DIR_IMAGE ",FOO.BIN > /dev/null 2>&1"));
+	write_native_bytes(DECB_DIR_NATIVE, 3000);
+
+	status = run_command_timed("../decb/decb copy -2b " DECB_DIR_NATIVE " " DECB_DIR_IMAGE ",foo.bin", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_FAE, status);
+
+	status = run_command_timed("../decb/decb dir " DECB_DIR_IMAGE, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("the file is untouched", strstr(dir_output, "FOO      BIN  2  B  1\n") != NULL);
+	ASSERT("no second entry", strstr(dir_output, "foo      bin") == NULL);
+
+	ASSERT_EC(0, system("../decb/decb copy -r -2b " DECB_DIR_NATIVE " " DECB_DIR_IMAGE ",foo.bin > /dev/null 2>&1"));
+
+	status = run_command_timed("../decb/decb dir " DECB_DIR_IMAGE, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("the old entry is gone", strstr(dir_output, "FOO      BIN") == NULL);
+	ASSERT("one new entry", strstr(dir_output, "foo      BIN") == NULL
+	       && strstr(dir_output, "foo      bin  2  B  2\n") != NULL);
+
+	ASSERT_EC(0, _decb_gs_size_pathlist(DECB_DIR_IMAGE ",FOO.BIN", &size));
+	ASSERT_EQUALS(3000, size);
+
+	status = run_command_timed("../decb/decb free " DECB_DIR_IMAGE, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("only the new file's granules are used", strstr(dir_output, "Free granules: 66 ") != NULL);
+
+	remove(DECB_DIR_IMAGE);
+	remove(DECB_DIR_NATIVE);
+}
+
+/* rename finds its file without regard to case, as every other command does,
+   and may change only the case of a name. */
+void test_decb_command_rename_any_case()
+{
+	int status;
+
+	remove(DECB_DIR_IMAGE);
+	ASSERT_EC(0, system("../decb/decb dskini " DECB_DIR_IMAGE " > /dev/null 2>&1"));
+	write_native_bytes(DECB_DIR_NATIVE, 10);
+	ASSERT_EC(0, system("../decb/decb copy -2b " DECB_DIR_NATIVE " " DECB_DIR_IMAGE ",FOO.BIN > /dev/null 2>&1"));
+	ASSERT_EC(0, system("../decb/decb copy -2b " DECB_DIR_NATIVE " " DECB_DIR_IMAGE ",OTHER.BIN > /dev/null 2>&1"));
+
+	status = run_command_timed("../decb/decb rename " DECB_DIR_IMAGE ",foo.bin BAR.BIN", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+
+	status = run_command_timed("../decb/decb dir " DECB_DIR_IMAGE, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("the old name is gone", strstr(dir_output, "FOO      BIN") == NULL);
+	ASSERT("the new name is there", strstr(dir_output, "BAR      BIN  2  B  1\n") != NULL);
+
+	/* Another file with the name in any case is in the way. */
+	status = run_command_timed("../decb/decb rename " DECB_DIR_IMAGE ",BAR.BIN other.bin", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_FAE, status);
+
+	/* The file's own name in another case is not. */
+	status = run_command_timed("../decb/decb rename " DECB_DIR_IMAGE ",BAR.BIN bar.bin", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+
+	status = run_command_timed("../decb/decb dir " DECB_DIR_IMAGE, 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("the case changed", strstr(dir_output, "bar      bin  2  B  1\n") != NULL);
+	ASSERT("the other file is untouched", strstr(dir_output, "OTHER    BIN  2  B  1\n") != NULL);
+
+	status = run_command_timed("../decb/decb rename " DECB_DIR_IMAGE ",NOPE.BIN NEW.BIN", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_PNNF, status);
+
+	remove(DECB_DIR_IMAGE);
+	remove(DECB_DIR_NATIVE);
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -939,5 +1045,8 @@ int main()
 	RUN(test_decb_command_dir_unended_disk_name);
 	RUN(test_decb_command_dir_missing_directory_sector);
 	RUN(test_decb_command_dir_long_pathname);
+	RUN(test_decb_command_kill_raw_path);
+	RUN(test_decb_command_copy_replaces_any_case);
+	RUN(test_decb_command_rename_any_case);
 	return TEST_REPORT();
 }
