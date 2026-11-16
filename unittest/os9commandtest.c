@@ -1796,10 +1796,88 @@ void test_os9_dir_bad_pathnames()
 	ASSERT("refused without crashing", status != COMMAND_CRASHED && status != COMMAND_TIMED_OUT && status != 0);
 }
 
+/* Every pair is attempted, but a later success must not hide an open error. */
+void test_os9_cmp_open_errors()
+{
+	char output[4096];
+	int status;
+	FILE *fp = fopen("test_cmp_source.txt", "wb");
+
+	ASSERT("create comparison source", fp != NULL);
+	fputs("same\n", fp);
+	fclose(fp);
+	remove("test_cmp_missing.txt");
+	status = run_command_timed("../os9/os9 cmp test_cmp_missing.txt test_cmp_source.txt test_cmp_source.txt test_cmp_source.txt",
+				   5, output, sizeof(output));
+	ASSERT_EQUALS(EOS_PNNF, status);
+	ASSERT("the later pair was compared", strstr(output, "Bytes compared:") != NULL);
+	status = run_command_timed("../os9/os9 cmp test_cmp_source.txt test_cmp_missing.txt",
+				   5, output, sizeof(output));
+	ASSERT_EQUALS(EOS_PNNF, status);
+	status = run_command_timed("../os9/os9 cmp test_cmp_source.txt test_cmp_source.txt",
+				   5, output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	remove("test_cmp_source.txt");
+}
+
+/* list's syntax accepts multiple files, in argument order. */
+void test_os9_list_multiple_files()
+{
+	char output[4096];
+	os9_path_id path;
+	u_int size;
+	int status;
+
+	remove("test_list.dsk");
+	ASSERT_EC(0, system("../os9/os9 format -q test_list.dsk > /dev/null 2>&1"));
+	ASSERT_EC(0, _os9_create(&path, "test_list.dsk,ONE", FAM_WRITE, FAP_READ | FAP_WRITE));
+	size = 6;
+	ASSERT_EC(0, _os9_write(path, "first\r", &size));
+	ASSERT_EC(0, _os9_close(path));
+	ASSERT_EC(0, _os9_create(&path, "test_list.dsk,TWO", FAM_WRITE, FAP_READ | FAP_WRITE));
+	size = 7;
+	ASSERT_EC(0, _os9_write(path, "second\r", &size));
+	ASSERT_EC(0, _os9_close(path));
+	status = run_command_timed("../os9/os9 list test_list.dsk,ONE test_list.dsk,TWO", 5, output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT_EQUALS(0, strcmp("first\nsecond\n", output));
+	status = run_command_timed("../os9/os9 list test_list.dsk,ONE test_list.dsk,MISSING", 5, output, sizeof(output));
+	ASSERT_EQUALS(EOS_PNNF, status);
+	remove("test_list.dsk");
+}
+
+/* An existing descriptor with missing data is a read error, not success. */
+void test_os9_list_read_error()
+{
+	char output[4096];
+	os9_path_id path;
+	fd_stats fd;
+	u_int size = 5;
+	int status;
+
+	remove("test_list_bad.dmk");
+	ASSERT_EC(0, system("../os9/os9 format -q test_list_bad.dmk > /dev/null 2>&1"));
+	ASSERT_EC(0, _os9_create(&path, "test_list_bad.dmk,TEXT", FAM_WRITE, FAP_READ | FAP_WRITE));
+	ASSERT_EC(0, _os9_write(path, "text\r", &size));
+	ASSERT_EC(0, _os9_gs_fd(path, sizeof(fd), &fd));
+	ASSERT_EC(0, _os9_close(path));
+	image_remove_sector("test_list_bad.dmk", int3(fd.fd_seg[0].lsn) / 18, 0,
+			    int3(fd.fd_seg[0].lsn) % 18 + 1);
+	status = run_command_timed("../os9/os9 list test_list_bad.dmk,TEXT", 5, output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	/* cmp must preserve a read failure through closing both paths too. */
+	status = run_command_timed("../os9/os9 cmp test_list_bad.dmk,TEXT test_list_bad.dmk,TEXT", 5, output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	remove("test_list_bad.dmk");
+}
+
 int main()
 {
 	remove("test.dsk");
 	RUN(test_os9_command_format);
+	RUN(test_os9_cmp_open_errors);
+	RUN(test_os9_list_multiple_files);
+	RUN(test_os9_list_read_error);
 	RUN(test_os9_command_copy_metadata);
 	RUN(test_os9_command_copy_exit_status);
 	RUN(test_os9_command_format_rejects_bad_t0s);

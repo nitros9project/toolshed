@@ -82,8 +82,14 @@ int os9cmp(int argc, char **argv)
 			}
 			else
 			{
+				error_code result;
+
 				file2 = argv[i];
-				do_cmp(argv, file1, file2);
+				result = do_cmp(argv, file1, file2);
+				if (ec == 0)
+				{
+					ec = result;
+				}
 				file1 = NULL;
 			}
 		}
@@ -118,6 +124,7 @@ static int do_cmp(char **argv, char *file1, char *file2)
 	if (ec != 0)
 	{
 		fprintf(stderr, "%s: cannot open file\n", argv[0]);
+		_coco_close(path1);
 		return (ec);
 	}
 
@@ -131,6 +138,16 @@ static int do_cmp(char **argv, char *file1, char *file2)
 
 		ec1 = _coco_read(path1, buffer1, &num_bytes1);
 		ec2 = _coco_read(path2, buffer2, &num_bytes2);
+		if (ec1 != 0 && ec1 != EOS_EOF)
+		{
+			ec = ec1;
+			break;
+		}
+		if (ec2 != 0 && ec2 != EOS_EOF)
+		{
+			ec = ec2;
+			break;
+		}
 
 		diffCount +=
 			compare(buffer1, buffer2,
@@ -161,8 +178,12 @@ static int do_cmp(char **argv, char *file1, char *file2)
 		printf("%s is longer\n", file2);
 	}
 
-	ec = _coco_close(path2);
-	ec = _coco_close(path1);
+	ec2 = _coco_close(path2);
+	ec1 = _coco_close(path1);
+	if (ec == 0)
+	{
+		ec = ec2 != 0 ? ec2 : ec1;
+	}
 
 	return (ec);
 }

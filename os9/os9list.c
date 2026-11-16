@@ -12,6 +12,7 @@
 #include <cocotypes.h>
 #include <cocopath.h>
 
+static error_code list_file(char *filename);
 
 /* Help message */
 static char const *const helpMessage[] = {
@@ -26,8 +27,8 @@ int os9list(int argc, char *argv[])
 {
 	error_code ec = 0;
 	char *p = NULL;
-	os9_path_id path;
 	int i;
+	int files = 0;
 
 	/* walk command line for options */
 	for (i = 1; i < argc; i++)
@@ -63,22 +64,34 @@ int os9list(int argc, char *argv[])
 		}
 		else
 		{
-			p = argv[i];
-			break;
+			files++;
+			ec = list_file(argv[i]);
+			if (ec != 0)
+			{
+				return ec;
+			}
 		}
 	}
 
-	if (p == NULL)
+	if (files == 0)
 	{
 		show_help(helpMessage);
 		return 1;
 	}
 
+	return 0;
+}
+
+static error_code list_file(char *filename)
+{
+	os9_path_id path;
+	error_code ec, close_ec;
+
 	/* open a path to the file */
-	ec = _os9_open(&path, p, FAM_READ);
+	ec = _os9_open(&path, filename, FAM_READ);
 	if (ec != 0)
 	{
-		printf("Error %d opening %s\n", ec, p);
+		printf("Error %d opening %s\n", ec, filename);
 		return ec;
 	}
 
@@ -106,7 +119,7 @@ int os9list(int argc, char *argv[])
 		printf("%s\n", buffer);
 	}
 
-	_os9_close(path);
+	close_ec = _os9_close(path);
 
-	return 0;
+	return ec != 0 ? ec : close_ec;
 }
