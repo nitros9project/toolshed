@@ -28,7 +28,7 @@ error_code _cecb_seek(cecb_path_id path, long pos, int mode)
 			{
 				fprintf( stderr,
 					"_cecb_seek(): SEEK_SET only implemented if pos is zero.\n");
-				ec = -1;
+				return -1;
 			}
 			
 			if (path->filepos == 0 ) break;
@@ -41,21 +41,12 @@ error_code _cecb_seek(cecb_path_id path, long pos, int mode)
 			}
 			else
 			{
-				fseek(path->fd, path->wav_data_start, SEEK_SET);
+				ec = fseek(path->fd, path->wav_data_start +
+					   path->wav_start_sample *
+					   (path->wav_bits_per_sample / 8), SEEK_SET);
+				if (ec != 0)
+					return ec;
 				path->wav_current_sample = path->wav_start_sample;
-				if (path->wav_bits_per_sample == 8)
-				{
-					fseek(path->fd, path->wav_start_sample, SEEK_CUR);
-				}
-				else if (path->wav_bits_per_sample == 16)
-				{
-					fseek(path->fd, path->wav_start_sample*2, SEEK_CUR);
-				}
-				else
-				{
-					fprintf(stderr, "_cecb_seek: unknown bits per sample\n");
-					ec = -1;
-				}
 			}
 
 			path->filepos = pos;

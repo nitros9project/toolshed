@@ -419,7 +419,7 @@ error_code _cecb_close(cecb_path_id path)
 				fseek(path->fd, path->wav_data_length,
 				      SEEK_CUR);
 				fwrite(path->extra_chunks_buffer, 1,
-				       path->wav_data_length, path->fd);
+				       path->extra_chunks_buffer_size, path->fd);
 			}
 		}
 	}

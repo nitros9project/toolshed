@@ -326,7 +326,8 @@ void test_cecb_machine_language_addresses()
 void test_cecb_rewind()
 {
 	char *files[] = { "test.cas,FILE", "test.c10,FILE",
-			  "test8.wav,FILE", "test16.wav,FILE" };
+			  "test8.wav,FILE", "test16.wav,FILE",
+			  "test24.wav,FILE", "test32.wav,FILE" };
 	cecb_path_id path;
 	error_code ec;
 	char buffer[512];
@@ -367,6 +368,94 @@ void test_cecb_rewind()
 		ec = _cecb_close(path);
 		ASSERT_EQUALS(0, ec);
 	}
+}
+
+void test_cecb_rejected_seek()
+{
+	cecb_path_id path;
+	error_code ec;
+	char buffer[512];
+	unsigned int size, pos;
+
+	ec = _cecb_open(&path, "test.cas,FILE", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	size = 4;
+	ec = _cecb_read(path, buffer, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(4, size);
+
+	/* An unsupported absolute seek must leave the stream unchanged. */
+	ec = _cecb_seek(path, 2, SEEK_SET);
+	ASSERT_NEQUALS(0, ec);
+	ec = _cecb_gs_pos(path, &pos);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(4, pos);
+	size = sizeof(buffer);
+	ec = _cecb_read(path, buffer, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(test_string_size - 4, size);
+	ASSERT_MEM_EQUALS(test_string + 4, buffer, size);
+	ec = _cecb_close(path);
+	ASSERT_EQUALS(0, ec);
+}
+
+void test_cecb_wav_trailing_chunk()
+{
+	/* An even-sized RIFF chunk following the audio data. */
+	const unsigned char chunk[] = {
+		'J', 'U', 'N', 'K', 4, 0, 0, 0, 't', 'e', 's', 't'
+	};
+	unsigned char result[sizeof(chunk)];
+	cecb_path_id path;
+	error_code ec;
+	FILE *file;
+	long original_size, final_size, data_end;
+	unsigned int riff_size, size;
+	size_t count;
+
+	ec = _cecb_bulkerase("trailing.wav", 44100, 8, 1.0);
+	ASSERT_EQUALS(0, ec);
+	file = fopen("trailing.wav", "rb+");
+	ASSERT("open WAV for metadata", file != NULL);
+	ec = fseek(file, 0, SEEK_END);
+	ASSERT_EQUALS(0, ec);
+	original_size = ftell(file);
+	count = fwrite(chunk, 1, sizeof(chunk), file);
+	ASSERT_EQUALS(sizeof(chunk), count);
+	ec = fseek(file, 4, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	fwrite_le_int(original_size + sizeof(chunk) - 8, file);
+	ec = fclose(file);
+	ASSERT_EQUALS(0, ec);
+
+	ec = _cecb_create(&path, "trailing.wav,FILE", FAM_WRITE,
+			  1, 255, 0, 0, 0);
+	ASSERT_EQUALS(0, ec);
+	size = test_string_size;
+	ec = _cecb_write(path, test_string, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _cecb_close(path);
+	ASSERT_EQUALS(0, ec);
+
+	/* Reopen to locate the new end of audio, then check exact metadata
+	   and physical size: no heap bytes may be appended after the chunk. */
+	ec = _cecb_open(&path, "trailing.wav,FILE", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	data_end = path->wav_data_start + path->wav_data_length;
+	riff_size = path->wav_riff_size;
+	ec = fseek(path->fd, data_end, SEEK_SET);
+	ASSERT_EQUALS(0, ec);
+	count = fread(result, 1, sizeof(result), path->fd);
+	ec = fseek(path->fd, 0, SEEK_END);
+	ASSERT_EQUALS(0, ec);
+	final_size = ftell(path->fd);
+	ec = _cecb_close(path);
+	ASSERT_EQUALS(0, ec);
+	remove("trailing.wav");
+	ASSERT_EQUALS(sizeof(chunk), count);
+	ASSERT_MEM_EQUALS(chunk, result, sizeof(chunk));
+	ASSERT_EQUALS(data_end + (long) sizeof(chunk), final_size);
+	ASSERT_EQUALS(final_size - 8, riff_size);
 }
 
 void test_cecb_write_read_only()
@@ -439,6 +528,8 @@ int main()
 	RUN(test_cecb_readln);
 	RUN(test_cecb_machine_language_addresses);
 	RUN(test_cecb_rewind);
+	RUN(test_cecb_rejected_seek);
+	RUN(test_cecb_wav_trailing_chunk);
 	RUN(test_cecb_write_read_only);
 	RUN(test_cecb_token);
 
