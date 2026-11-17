@@ -28,6 +28,7 @@ int decbfstat(int argc, char *argv[])
 {
 	char *p = NULL;
 	int i;
+	error_code first_error = 0;
 
 
 	/* 1. Walk command line for options. */
@@ -68,7 +69,11 @@ int decbfstat(int argc, char *argv[])
 		{
 			p = argv[i];
 
-			do_fstat(argv, p);
+			error_code ec = do_fstat(argv, p);
+			if (ec != 0 && first_error == 0)
+			{
+				first_error = ec;
+			}
 			printf("\n");
 		}
 	}
@@ -80,7 +85,7 @@ int decbfstat(int argc, char *argv[])
 	}
 
 
-	return (0);
+	return first_error;
 }
 
 
@@ -99,15 +104,9 @@ static int do_fstat(char **argv, char *p)
 
 	if (ec != 0)
 	{
-		ec = _decb_open(&path, p, FAM_DIR | FAM_READ);
-
-		if (ec != 0)
-		{
-			fprintf(stderr, "%s: error %d opening '%s'\n",
-				argv[0], ec, p);
-
-			return ec;
-		}
+		fprintf(stderr, "%s: error %d opening '%s'\n",
+			argv[0], ec, p);
+		return ec;
 	}
 
 	if (path->fat_ec != 0)
@@ -125,7 +124,8 @@ static int do_fstat(char **argv, char *p)
 
 	/* 2. Read the directory entry. */
 
-	if (_decb_readdir(path, &dentry) == 0)
+	ec = _decb_readdir(path, &dentry);
+	if (ec == 0)
 	{
 		printf("File Information for %s\n", p);
 		printf("  File type          : ");
@@ -170,7 +170,14 @@ static int do_fstat(char **argv, char *p)
 			break;
 		}
 
-		_decb_gs_size(path, &size);
+		ec = _decb_gs_size(path, &size);
+		if (ec != 0)
+		{
+			fprintf(stderr, "%s: error %d reading the size of '%s'\n",
+				argv[0], ec, p);
+			_decb_close(path);
+			return ec;
+		}
 
 		printf("  File size          : %d bytes\n", size);
 
@@ -205,8 +212,8 @@ static int do_fstat(char **argv, char *p)
 	}
 
 
-	_decb_close(path);
-
-
-	return ec;
+	{
+		error_code close_ec = _decb_close(path);
+		return ec != 0 ? ec : close_ec;
+	}
 }
