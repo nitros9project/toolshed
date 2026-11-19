@@ -138,6 +138,8 @@ Example:
 
 ## 7. Update Homebrew Formula
 
+https://github.com/nitros9project/homebrew-toolshed
+
 Update:
 
 ```
@@ -161,7 +163,7 @@ shasum -a 256 toolshed-2.5.tar.gz
 
 ---
 
-### Test
+### Test homebrew
 
 ```
 brew install --build-from-source ./toolshed.rb
@@ -204,6 +206,10 @@ Do not modify old tags.
 
 ---
 
+## 10. Copy Documentation
+
+copy `doc/ToolShed.md` to wiki in `https://github.com/nitros9project/toolshed/wiki`
+
 ## Quick Checklist
 
 - [ ] Update `build/unix/rules.mak` (line 3)
@@ -215,3 +221,4 @@ Do not modify old tags.
 - [ ] Create GitHub release
 - [ ] Update Homebrew formula
 - [ ] Verify install
+- [ ] copy documentation
