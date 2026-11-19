@@ -149,18 +149,28 @@ static int do_getattr(char **argv, char *p)
 		return (ec);
 	}
 
+	if (path->israw)
+	{
+		_decb_close(path);
+		return EOS_BPNAM;
+	}
+
 	{
 		decb_file_stat fdbuf;
 
 
-		_decb_gs_fd(path, &fdbuf);
+		ec = _decb_gs_fd(path, &fdbuf);
 
-		show_attr(&fdbuf);
+		if (ec == 0)
+		{
+			show_attr(&fdbuf);
+		}
 	}
 
-	_decb_close(path);
-
-	return (0);
+	{
+		error_code close_ec = _decb_close(path);
+		return ec != 0 ? ec : close_ec;
+	}
 }
 
 
@@ -180,10 +190,21 @@ static int do_setattr(char **argv, char *p, int file_type, int data_type,
 		return (ec);
 	}
 
+	if (path->israw)
+	{
+		_decb_close(path);
+		return EOS_BPNAM;
+	}
+
 	{
 		decb_file_stat fdbuf;
 
 		ec = _decb_gs_fd(path, &fdbuf);
+		if (ec != 0)
+		{
+			_decb_close(path);
+			return ec;
+		}
 
 		if (file_type != -1)
 		{
@@ -196,15 +217,16 @@ static int do_setattr(char **argv, char *p, int file_type, int data_type,
 
 		ec = _decb_ss_fd(path, &fdbuf);
 
-		if (quiet == 0)
+		if (ec == 0 && quiet == 0)
 		{
 			show_attr(&fdbuf);
 		}
 	}
 
-	_decb_close(path);
-
-	return (0);
+	{
+		error_code close_ec = _decb_close(path);
+		return ec != 0 ? ec : close_ec;
+	}
 }
 
 

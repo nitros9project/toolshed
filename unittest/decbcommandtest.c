@@ -1023,6 +1023,88 @@ void test_decb_command_rename_any_case()
 	remove(DECB_DIR_NATIVE);
 }
 
+/* A raw attr request must not overwrite the first file's directory entry. */
+void test_decb_command_attr_raw_path()
+{
+	int status;
+
+	remove(DECB_DIR_IMAGE);
+	ASSERT_EC(0, _decb_dskini(DECB_DIR_IMAGE, 35, NULL, 1, 256, 0));
+	write_native_bytes(DECB_DIR_NATIVE, 10);
+	ASSERT_EC(0, system("../decb/decb copy -2b " DECB_DIR_NATIVE " " DECB_DIR_IMAGE ",KEEP.BIN > /dev/null 2>&1"));
+	ASSERT_EC(0, system("cp " DECB_DIR_IMAGE " test_attr_before.bin"));
+	status = run_command_timed("../decb/decb attr -a " DECB_DIR_IMAGE ",", 10, dir_output, sizeof(dir_output));
+	ASSERT_EC(0, system("cmp -s " DECB_DIR_IMAGE " test_attr_before.bin"));
+	ASSERT_EQUALS(EOS_BPNAM, status);
+	status = run_command_timed("../decb/decb attr " DECB_DIR_IMAGE ",", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_BPNAM, status);
+	remove("test_attr_before.bin");
+	remove(DECB_DIR_IMAGE);
+	remove(DECB_DIR_NATIVE);
+}
+
+/* Attribute write failures must reach the caller, not look successful. */
+void test_decb_command_attr_write_protected()
+{
+	decb_path_id path;
+	decb_file_stat statbuf;
+	int status;
+
+	remove(DECB_DIR_DMK);
+	ASSERT_EC(0, _decb_dskini_format(DECB_DIR_DMK, DISKIMAGE_DMK, 35, NULL, 1, 256, 0));
+	ASSERT_EC(0, _decb_create(&path, DECB_DIR_DMK ",KEEP.BIN", FAM_WRITE, 2, 0));
+	ASSERT_EC(0, _decb_close(path));
+	ASSERT_EC(0, _diskimage_set_write_protect(DECB_DIR_DMK, 1));
+	status = run_command_timed("../decb/decb attr -a " DECB_DIR_DMK ",KEEP.BIN", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_WP, status);
+	ASSERT_EC(0, _decb_gs_fd_pathlist(DECB_DIR_DMK ",KEEP.BIN", &statbuf));
+	ASSERT_EQUALS(0, statbuf.data_type);
+	remove(DECB_DIR_DMK);
+}
+
+/* A later successful fstat must not hide an earlier missing file. */
+void test_decb_command_fstat_errors()
+{
+	decb_path_id path;
+	int status;
+
+	remove(DECB_DIR_DMK);
+	ASSERT_EC(0, _decb_dskini_format(DECB_DIR_DMK, DISKIMAGE_DMK, 35, NULL, 1, 256, 0));
+	ASSERT_EC(0, _decb_create(&path, DECB_DIR_DMK ",KEEP.BIN", FAM_WRITE, 2, 0));
+	ASSERT_EC(0, _decb_close(path));
+	status = run_command_timed("../decb/decb fstat " DECB_DIR_DMK ",NOPE.BIN " DECB_DIR_DMK ",KEEP.BIN", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_PNNF, status);
+	ASSERT("the valid file is still reported", strstr(dir_output, "File Information for " DECB_DIR_DMK ",KEEP.BIN") != NULL);
+	/* A cyclic chain's size error must be returned before printing the chain. */
+	ASSERT_EC(0, _decb_open(&path, DECB_DIR_DMK ",KEEP.BIN", FAM_READ | FAM_WRITE));
+	path->FAT[path->dir_entry.first_granule] = path->dir_entry.first_granule;
+	ASSERT_EC(0, _decb_close(path));
+	status = run_command_timed("../decb/decb fstat " DECB_DIR_DMK ",KEEP.BIN", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_WT, status);
+	image_remove_sector(DECB_DIR_DMK, 17, 0, 2);
+	status = run_command_timed("../decb/decb fstat " DECB_DIR_DMK ",KEEP.BIN", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	remove(DECB_DIR_DMK);
+}
+
+/* Copy continues after a missing source but must still return its error. */
+void test_decb_command_copy_preserves_error()
+{
+	int status;
+	u_int size;
+
+	remove(DECB_DIR_IMAGE);
+	remove("test_missing_copy_source");
+	ASSERT_EC(0, _decb_dskini(DECB_DIR_IMAGE, 35, NULL, 1, 256, 0));
+	write_native_bytes("bugcopy.bin", 10);
+	status = run_command_timed("../decb/decb copy test_missing_copy_source bugcopy.bin " DECB_DIR_IMAGE ",", 10, dir_output, sizeof(dir_output));
+	ASSERT_EQUALS(EOS_PNNF, status);
+	ASSERT_EC(0, _decb_gs_size_pathlist(DECB_DIR_IMAGE ",bugcopy.bin", &size));
+	ASSERT_EQUALS(10, size);
+	remove(DECB_DIR_IMAGE);
+	remove("bugcopy.bin");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -1048,5 +1130,9 @@ int main()
 	RUN(test_decb_command_kill_raw_path);
 	RUN(test_decb_command_copy_replaces_any_case);
 	RUN(test_decb_command_rename_any_case);
+	RUN(test_decb_command_attr_raw_path);
+	RUN(test_decb_command_attr_write_protected);
+	RUN(test_decb_command_fstat_errors);
+	RUN(test_decb_command_copy_preserves_error);
 	return TEST_REPORT();
 }

@@ -42,6 +42,7 @@ static char const *const helpMessage[] = {
 int decbcopy(int argc, char *argv[])
 {
 	error_code ec = 0;
+	error_code first_error = 0;
 	char *p = NULL, *desttarget = NULL;
 	int i, j;
 	int targetDirectory = NO;
@@ -249,11 +250,15 @@ int decbcopy(int argc, char *argv[])
 		if (ec != 0)
 		{
 			fprintf(stderr, "%s: error %d\n", argv[0], ec);
+			if (first_error == 0)
+			{
+				first_error = ec;
+			}
 		}
 	}
 
 
-	return ec;
+	return first_error;
 }
 
 
