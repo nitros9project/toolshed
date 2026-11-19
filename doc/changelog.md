@@ -1,5 +1,64 @@
 # ToolShed Changelog
 
+## [v2.7.0] - 2026-11-19
+
+### New Features & Enhancements
+
+* **Disk image formats**: Added `libdiskimage`, a shared library for raw, DMK, SDF, JVC, and VDK images, and moved `decb` and `os9` onto it. Image write protection is honored, and `decb dskini` and `os9 format` accept `-f<name>` to select the output format (`#96`, `#99`).
+* **Dragon DOS support**: Added `libdragondos` and the `dgndos` utility for formatting disks, managing files and attributes, and inspecting Dragon DOS images. Includes Dragon BASIC tokenization/detokenization, binary header decoding, backup directory recovery, and integration with `libcoco` and `cocofuse` (`#97`).
+* **Image information**: Added `info` subcommands to `decb`, `os9`, and `dgndos` to report container format, track layout, sector errors, and possible filesystems, replacing the intermediate standalone `diskinfo` utility (`#96`, `#99`, `#103`).
+* **Image inspection**: Added `decb reveal` and `dgndos reveal`, and made `os9 reveal` container-aware. Inspect filesystem metadata, file ownership, free space, and container headers/gaps by LSN or image byte offset (`#102`, `#104`).
+* **Command usability**: Added two-letter subcommand aliases and descriptive command listings (`#107`).
+* **Shared dump implementation**: Unified dump formatting and binary decoding around bounded, streaming reads, preserving hexadecimal, assembler, and C output modes. Added shared formatting options to `cecb dumpblock`, terminal-only ASCII highlighting, and improved error reporting (`#85`).
+* **File copying and scripts**: Added `dgndos dsave`, shared save-script generation, and protection against accidentally overwriting host disk images with copy commands (`#97`, `#99`).
+
+### Bug Fixes
+
+* **OS-9 disk layout and allocation**:
+  * Corrected short-track-zero formatting and I/O across the track boundary, including OS-9/68000 track-zero geometry. Invalid geometry is rejected before modifying an image (`#94`).
+  * Fixed allocation cleanup after failed creates, allocation beyond the disk's last cluster, segment-list bounds checks, and reads from truncated segment lists (`#111`).
+  * Fixed raw read lengths and write positions, line lengths across segments, and deletion of write-only files (`#83`).
+  * Corrected largest-free-block reporting, access to metadata for files without permissions, segment limits, cluster release/truncation, and `dcheck` segment/bitmap handling (`#100`).
+* **Disk BASIC files and commands**:
+  * Fixed overwrite lengths, line lengths across granules, and segmented binary handling, including address `$FFFF` and execution-address extraction (`#82`).
+  * Fixed copies into native directories, same-format copies with `-l`, and empty-file metadata preservation (`#88`).
+  * Rejected raw paths in `kill` and `attr` to prevent directory corruption. Made copy/rename name comparisons case-insensitive and preserved errors from `attr`, `fstat`, and multi-source copy (`#113`, `#116`).
+* **Cassette files and commands**:
+  * Fixed line reads, full load/execution addresses, rewind buffering, and rejection of writes through read-only paths (`#84`).
+  * Fixed BASIC data-file types, native directory destinations, same-format line-ending preservation, and ASCII metadata for detokenized BASIC (`#91`).
+  * Fixed rejected seeks changing the read position, rewind of 24/32-bit WAV files, and trailing WAV metadata writes (`#114`).
+* **Directory listings**: Hardened directory commands against cyclic allocation chains, truncated WAV files, unreadable sectors, overlong paths, and malformed names. OS-9 recursive listings avoid repeatedly traversing the same directory; printable output escapes control characters where needed (`#99`, `#112`).
+* **Error reporting and filenames**:
+  * Fixed `os9 del` crashing on paths without a comma and made `os9 attr`, `decb attr`, and `os9 copy` return failures correctly (`#89`, `#95`).
+  * Preserved `os9 cmp` open/read errors and made `os9 list` process all input files and return read failures (`#115`).
+  * Reported missing disk images as "pathname not found", corrected cassette and Disk BASIC filename validation, rejected empty OS-9 names, and prevented creation of OS-9 names containing spaces (`#93`, `#108`, `#109`).
+* **Shared libraries**: Fixed native line-read counts, write-only opens, seek errors, and renames; corrected queue tail deletion and unsigned 32-bit decoding (`#86`, `#87`).
+
+### Build, Testing & Documentation
+
+* Expanded regression coverage for file I/O, command errors, damaged images, BASIC metadata, allocation bitmap boundaries, and container formats. Added command timeouts and ensured TinyTest retains earlier failures (`#82`–`#94`, `#99`, `#107`, `#111`–`#116`).
+* Fixed CECB dependency tracking and propagation of sub-build failures, plus Linux GCC and Windows MinGW format-checking failures (`#110`, `#113`).
+* Retained command-line packages as CI artifacts for Linux, Windows, and macOS ARM64/Intel (`#106`).
+* Fixed DiskShed AppImage icon packaging, pinned wxWidgets source builds for macOS CI, and corrected DiskShed release tag version extraction (`#98`, `#105`, `#118`).
+* Documented the modular library architecture, library reuse, new commands, and release procedures (`#101`, `#117`).
+
+---
+
+## [v2.6.1] - 2026-08-29
+
+### Bug Fixes
+
+* **Cassette handling**: Fixed WAV extension validation during bulk erase, returned "path/file not found" for missing cassette files, and removed the restriction on opening cassette paths with directory mode (`#80`).
+* **Cassette creation**: Allowed creation of new cassette image files in write mode (`#81`).
+* **Error reporting**: Added messages for out-of-memory and syntax errors, corrected the `EOS_PADROM` definition, and made string comparison helpers const-correct (`#80`).
+
+### Build & Release Automation
+
+* Made the OS-9 command tests independent of an inherited `SOURCE_DATE_EPOCH` setting (`#79`).
+* Added DiskShed binary releases with SHA-256 checksums, enabled generated release notes, and automated documentation synchronization to the wiki.
+
+---
+
 ## [v2.6.0] - 2026-07-29
 
 ### 🆕 New Features & Utilities
