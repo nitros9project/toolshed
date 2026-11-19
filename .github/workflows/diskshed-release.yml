@@ -25,9 +25,9 @@ jobs:
     steps:
       - id: extract_version
         run: |
-          # Extract everything after "DiskShed v" from "refs/tags/DiskShed v1.0.0" -> "1.0.0"
+          # Extract everything after "DiskShed-v" from "refs/tags/DiskShed-v1.0.0" -> "1.0.0"
           TAG_NAME="${GITHUB_REF#refs/tags/}"
-          VERSION="${TAG_NAME#DiskShed v}"
+          VERSION="${TAG_NAME#DiskShed-v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
   macos:
