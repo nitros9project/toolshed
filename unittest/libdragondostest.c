@@ -1149,6 +1149,42 @@ static void test_corrupt_chain(void)
 	remove(TEST_IMAGE);
 }
 
+/* Killing a file whose extent is off the disk, or on the directory track or
+   its copy, would free sectors that can't be used.  It leaves the disk as it was. */
+static void test_kill_refuses_extents_off_the_disk(void)
+{
+	static const u_int extents[][2] =
+	{
+		{ SS_DIRECTORY, 18 },			/* the directory track */
+		{ SS_DIRECTORY - 1, 2 },		/* runs into it */
+		{ BACKUP_TRACK * 18 + 5, 1 },		/* its copy */
+		{ 710, 20 },				/* past the end of the disk */
+		{ 1500, 1 }				/* in the bitmap's second sector */
+	};
+	long offset = (SS_DIRECTORY + 2) * 256L + 12;
+	size_t i;
+	int found;
+
+	for (i = 0; i < sizeof(extents) / sizeof(extents[0]); i++)
+	{
+		remove(TEST_IMAGE);
+		ASSERT_CALL(0, _dragondos_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 40, 1));
+		ASSERT_CALL(0, save(TEST_FILE("BAD"), 10, 1));
+		ASSERT_EQUALS(720 * 256, read_file(TEST_IMAGE, image, sizeof(image)));
+		image[offset] = (u_char)(extents[i][0] >> 8);
+		image[offset + 1] = (u_char)extents[i][0];
+		image[offset + 2] = (u_char)extents[i][1];
+		write_file(TEST_IMAGE, image, 720 * 256);
+
+		ASSERT_CALL(EOS_WT, _dragondos_kill(TEST_FILE("BAD")));
+		ASSERT_EQUALS(720 * 256, read_file(TEST_IMAGE, other, sizeof(other)));
+		ASSERT_MEM_EQUALS(image, other, 720 * 256);
+		ASSERT_CALL(0, _dragondos_identify(TEST_IMAGE, &found));
+		ASSERT_EQUALS(1, found);
+	}
+	remove(TEST_IMAGE);
+}
+
 /* Remove a sector from a DMK image by deleting its ID pointer. */
 static long dmk_size;
 
@@ -1770,6 +1806,41 @@ static void test_entoken_load_address_and_growth(void)
 	free(out);
 }
 
+/* A line of one digit and an apostrophe grows the most for its length: 2 or 3
+   characters make 7 bytes.  Without a sanitizer, writing past the buffer
+   goes unseen, so build with -fsanitize=address (see rules.mak) to be sure. */
+static void test_entoken_short_lines_fit(void)
+{
+	static const u_char one_line[] =
+	{
+		0x55, 0x01, 0x24, 0x01, 0x00, 0x09, 0x8B, 0x8D, 0xAA,
+		0x24, 0x08, 0x00, 0x01, 0x3A, 0x83, 0x00,
+		0x00, 0x00
+	};
+	char text[64];
+	u_char *out;
+	char *listed;
+	u_int size, listed_size;
+	int i, position = 0;
+
+	ASSERT_CALL(0, _dragondos_entoken((const u_char *)"1'", 2, &out, &size, DRAGONDOS_BASIC_LOAD_ADDRESS));
+	ASSERT_EQUALS(sizeof(one_line), size);
+	ASSERT_MEM_EQUALS(one_line, out, sizeof(one_line));
+	free(out);
+
+	for (i = 1; i <= 9; i++)
+	{
+		position += sprintf(text + position, i < 9 ? "%d'\n" : "%d'", i);
+	}
+	ASSERT_CALL(0, _dragondos_entoken((const u_char *)text, (u_int)position, &out, &size, DRAGONDOS_BASIC_LOAD_ADDRESS));
+	ASSERT_EQUALS(9 + 9 * 7 + 2, size);
+	ASSERT_CALL(0, _dragondos_detoken(out, size, &listed, &listed_size));
+	ASSERT_EQUALS(9 * 4, listed_size);
+	ASSERT_MEM_EQUALS("1 '\n2 '\n3 '\n4 '\n5 '\n6 '\n7 '\n8 '\n9 '\n", listed, listed_size);
+	free(listed);
+	free(out);
+}
+
 static const char *const blank_formats[] = { "raw", "vdk", "dmk", "sdf", "jvc" };
 
 static _path_type identify(char *pathlist)
@@ -2023,6 +2094,7 @@ int main(void)
 	RUN(test_write_protected_image);
 	RUN(test_not_dragondos);
 	RUN(test_corrupt_chain);
+	RUN(test_kill_refuses_extents_off_the_disk);
 	RUN(test_missing_sectors_unneeded_for_read);
 	RUN(test_missing_sector_stops_a_read);
 	RUN(test_directory_falls_back_to_copy);
@@ -2041,6 +2113,7 @@ int main(void)
 	RUN(test_detoken_refuses_what_is_not_basic);
 	RUN(test_entoken_lines);
 	RUN(test_entoken_load_address_and_growth);
+	RUN(test_entoken_short_lines_fit);
 	RUN(test_coco_identifies_dragondos);
 	RUN(test_coco_still_identifies_others);
 	RUN(test_coco_file_operations);
