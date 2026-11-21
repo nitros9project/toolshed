@@ -210,6 +210,38 @@ static void test_copy_to_directories(void)
 	clean_up();
 }
 
+/* Dragon DOS takes "/" as well as "." before an extension, so a file named
+   that way keeps its whole name when copied to a directory. */
+#define SECOND_IMAGE "dgndoscmd_second.vdk"
+
+static void test_copy_to_directories_keeps_slash_names(void)
+{
+	long size;
+
+	clean_up();
+	remove(SECOND_IMAGE);
+	ASSERT_RUN(0, DGNDOS "dskinit " TEST_IMAGE);
+	ASSERT_RUN(0, DGNDOS "dskinit " SECOND_IMAGE);
+	write_native(NATIVE_FILE, 300);
+	ASSERT_RUN(0, DGNDOS "copy " NATIVE_FILE " " TEST_IMAGE ",PROG/BAS");
+
+	ASSERT_RUN(0, DGNDOS "copy " TEST_IMAGE ",PROG/BAS " SECOND_IMAGE ",");
+	ASSERT_RUN(0, DGNDOS "dir " SECOND_IMAGE CAPTURE);
+	read_output();
+	ASSERT("the copy keeps its name", strstr(output, "\nPROG     BAS  .      300\n") != NULL);
+
+	run_status = mkdir(NATIVE_DIR, 0755);
+	ASSERT_EQUALS(0, run_status);
+	ASSERT_RUN(0, DGNDOS "copy " TEST_IMAGE ",PROG/BAS " NATIVE_DIR);
+	size = file_size(NATIVE_DIR "/PROG.BAS", back, sizeof(back));
+	ASSERT_EQUALS(300, size);
+	remove(NATIVE_DIR "/PROG.BAS");
+	remove(NATIVE_DIR "/BAS");
+
+	remove(SECOND_IMAGE);
+	clean_up();
+}
+
 static void test_copy_too_large_leaves_nothing(void)
 {
 	clean_up();
@@ -914,6 +946,7 @@ int main(void)
 	RUN(test_dir_of_mame_disk);
 	RUN(test_copy_round_trip);
 	RUN(test_copy_to_directories);
+	RUN(test_copy_to_directories_keeps_slash_names);
 	RUN(test_copy_too_large_leaves_nothing);
 	RUN(test_list_translates_line_ends);
 	RUN(test_fstat_and_dump);
