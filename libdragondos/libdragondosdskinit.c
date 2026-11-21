@@ -15,7 +15,7 @@ error_code _dragondos_dskinit(const char *pathname, diskimage_format format, u_i
 {
 	dragondos_path_id path;
 	u_int sectors_per_track = DRAGONDOS_TRACK_SECTORS * sides;
-	u_int lsn, i;
+	u_int lsn, i, backup;
 	error_code ec, close_ec;
 
 	if (tracks <= 20 || (sides != 1 && sides != 2) || tracks * sectors_per_track > DD_MAX_LSN)
@@ -64,19 +64,16 @@ error_code _dragondos_dskinit(const char *pathname, diskimage_format format, u_i
 	memset(path->track_loaded, 1, sizeof(path->track_loaded));
 	memset(path->track_dirty, 1, sizeof(path->track_dirty));
 
+	/* All but the directory track and its copy are free. */
+	backup = path->directory_lsn - DD_BACKUP_TRACKS_BACK * sectors_per_track;
 	for (lsn = 0; ec == 0 && lsn < path->total_sectors; lsn++)
 	{
+		if ((lsn >= path->directory_lsn && lsn < path->directory_lsn + DRAGONDOS_TRACK_SECTORS) ||
+		    (lsn >= backup && lsn < backup + DRAGONDOS_TRACK_SECTORS))
+		{
+			continue;
+		}
 		ec = _dd_release(path, lsn, 1);
-	}
-
-	/* The directory track and its copy are in use. */
-	for (i = 0; ec == 0 && i < DRAGONDOS_TRACK_SECTORS; i++)
-	{
-		u_int offset = path->directory_lsn + i;
-		u_int backup = path->directory_lsn - DD_BACKUP_TRACKS_BACK * sectors_per_track + i;
-
-		path->track[0][offset / 8] &= (u_char)~(1 << (offset % 8));
-		path->track[0][backup / 8] &= (u_char)~(1 << (backup % 8));
 	}
 
 	if (ec == 0)

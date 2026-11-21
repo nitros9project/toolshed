@@ -44,17 +44,37 @@ static int is_directory(char *target)
 }
 
 
-/* This works for both native file paths and image file paths. */
-static char *get_filename(char *path)
+/* Get the name a file has, for a copy of it in a directory.  This works for
+   both native file paths and image file paths.  Dragon DOS has no
+   directories, and "/" can come before an extension, so there it is made ".".
+   Returns the length of the name, as snprintf does. */
+static int get_filename(char *path, char *name, size_t size)
 {
 	char *a = strchr(path, ',');
-	char *b = strrchr(a == NULL ? path : a, '/');
+	char *b;
+	_path_type type = NATIVE;
+	int length;
 
+	if (a != NULL)
+	{
+		_coco_identify_image(path, &type);
+	}
+	if (type == DRAGONDOS)
+	{
+		length = snprintf(name, size, "%s", a + 1);
+		if (length >= 0 && (size_t) length < size && (b = strchr(name, '/')) != NULL)
+		{
+			*b = '.';
+		}
+		return length;
+	}
+
+	b = strrchr(a == NULL ? path : a, '/');
 	if (b != NULL)
 	{
-		return b + 1;
+		return snprintf(name, size, "%s", b + 1);
 	}
-	return a == NULL ? path : a + 1;
+	return snprintf(name, size, "%s", a == NULL ? path : a + 1);
 }
 
 
@@ -139,9 +159,16 @@ static error_code copy_file(char *source, char *target, int target_is_directory,
 
 	if (target_is_directory)
 	{
+		char filename[1024];
+
+		length = get_filename(source, filename, sizeof(filename));
+		if (length < 0 || (size_t) length >= sizeof(filename))
+		{
+			return EOS_BPNAM;
+		}
 		length = snprintf(destination, sizeof(destination), "%s%s%s", target,
 				  (strchr(target, ',') != NULL || target[strlen(target) - 1] == '/') ? "" : "/",
-				  get_filename(source));
+				  filename);
 	}
 	else
 	{

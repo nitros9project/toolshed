@@ -211,9 +211,12 @@ error_code _dragondos_entoken(const u_char *in_buffer, u_int in_size, u_char **o
 	*out_size = 0;
 
 	/* Keep the caller's buffer, which holds only what can't be typed as
-	   spaces.  An apostrophe doubles in size, the most anything can. */
+	   spaces.  A line's text grows to at most twice its size, as an
+	   apostrophe does, and the line adds 5 bytes of its own.  Its number
+	   takes at least 1 character, so it can't make more than 4 bytes for
+	   each: "1'" makes 7. */
 	text = malloc((size_t)in_size + 1);
-	out = malloc((size_t)in_size * 2 + HEADER_SIZE + 2 + 1);
+	out = malloc((size_t)in_size * 4 + HEADER_SIZE + 2 + 1);
 	if (text == NULL || out == NULL)
 	{
 		free(text);
