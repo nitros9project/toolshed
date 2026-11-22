@@ -311,11 +311,26 @@ take:
 	return take_run(path, position, count);
 }
 
+/* Does a run of sectors share any with a track? */
+static int overlaps_track(u_int lsn, u_int count, u_int track_lsn)
+{
+	return lsn < track_lsn + DRAGONDOS_TRACK_SECTORS && track_lsn < lsn + count;
+}
+
+/* Free a run of sectors.  A run that is off the disk, or on the directory
+   track or its copy, can only come from a damaged directory entry, and
+   freeing it would let those sectors be given to a file. */
 error_code _dd_release(dragondos_path_id path, u_int lsn, u_int count)
 {
+	u_int backup = path->directory_lsn - DD_BACKUP_TRACKS_BACK * path->sectors_per_track;
 	u_int i;
 
-	if (count != 0 && lsn + count > DD_MAX_LSN)
+	if (count == 0)
+	{
+		return 0;
+	}
+	if (lsn >= path->total_sectors || count > path->total_sectors - lsn ||
+	    overlaps_track(lsn, count, path->directory_lsn) || overlaps_track(lsn, count, backup))
 	{
 		return EOS_WT;
 	}

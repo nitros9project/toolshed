@@ -19,6 +19,11 @@ static error_code open_file(const char *pathname, const char *fopen_mode, FILE *
 	struct stat st;
 	size_t got;
 
+	/* Set on every path, so a caller never sees them unset.  GCC 14 can't
+	   tell that callers only use them after a success. */
+	*fd = NULL;
+	*file_size = 0;
+
 	if (stat(pathname, &st) != 0)
 	{
 		return UnixToCoCoError(errno);
