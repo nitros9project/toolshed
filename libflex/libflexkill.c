@@ -49,7 +49,7 @@ error_code _flex_kill(const char *pathlist)
 	{
 		return ec;
 	}
-	if (path->entry.attributes & (FLEX_ATTR_WRITE | FLEX_ATTR_DELETE))
+	if (path->entry.attributes & FX_ATTR_UNDELETABLE)
 	{
 		return _fx_close_image(path, EOS_FNA);
 	}
@@ -80,7 +80,7 @@ error_code _flex_rename_ex(const char *pathlist, const char *new_name, flex_dir_
 	{
 		return ec;
 	}
-	if (path->entry.attributes & (FLEX_ATTR_WRITE | FLEX_ATTR_DELETE))
+	if (path->entry.attributes & FX_ATTR_UNDELETABLE)
 	{
 		return _fx_close_image(path, EOS_FNA);
 	}

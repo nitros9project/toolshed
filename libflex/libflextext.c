@@ -7,6 +7,8 @@
 #include "libflexint.h"
 
 #define FX_TEXT_COMPRESS	0x09	/* followed by a count of spaces */
+#define FX_TEXT_IGNORED		0x18	/* dropped when read, as $00 is */
+#define FX_COMPRESS_MAX		127	/* the most spaces FLEX puts in one count */
 #define FX_TAB_STOP		8
 #define FX_BINARY_DATA		0x02
 #define FX_BINARY_TRANSFER	0x16
@@ -39,7 +41,8 @@ error_code _flex_text_to_native(const u_char *in_buffer, u_int in_size, u_char *
 	{
 		u_char c = in_buffer[i];
 
-		if (c == '\0' || c == '\n')
+		/* As FLEX reads text, nul and $18 are dropped. */
+		if (c == '\0' || c == FX_TEXT_IGNORED)
 		{
 			continue;
 		}
@@ -64,12 +67,36 @@ error_code _flex_text_to_native(const u_char *in_buffer, u_int in_size, u_char *
 	return 0;
 }
 
+/* Record a run of spaces as FLEX does: one alone stays a space, and more
+   become $09 and a count, of at most 127. */
+static u_int put_spaces(u_char *out, u_int length, u_int spaces)
+{
+	while (spaces > 0)
+	{
+		u_int count = spaces > FX_COMPRESS_MAX ? FX_COMPRESS_MAX : spaces;
+
+		if (count == 1)
+		{
+			out[length++] = ' ';
+		}
+		else
+		{
+			out[length++] = FX_TEXT_COMPRESS;
+			out[length++] = (u_char)count;
+		}
+		spaces -= count;
+	}
+	return length;
+}
+
 error_code _flex_text_from_native(const u_char *in_buffer, u_int in_size, u_char **out_buffer, u_int *out_size)
 {
-	/* A tab becomes 2 bytes. */
+	/* No byte becomes more than 2: a tab, or a run of spaces, at most $09
+	   and a count each. */
 	u_char *out = malloc(in_size * 2 + 1);
 	u_int length = 0;
 	u_int column = 0;
+	u_int spaces = 0;
 	u_int i;
 
 	if (out == NULL)
@@ -81,6 +108,23 @@ error_code _flex_text_from_native(const u_char *in_buffer, u_int in_size, u_char
 	{
 		u_char c = in_buffer[i];
 
+		if (c == ' ')
+		{
+			spaces++;
+			column++;
+			continue;
+		}
+		if (c == '\t')
+		{
+			u_int to_stop = FX_TAB_STOP - column % FX_TAB_STOP;
+
+			spaces += to_stop;
+			column += to_stop;
+			continue;
+		}
+
+		length = put_spaces(out, length, spaces);
+		spaces = 0;
 		if (c == '\r' || c == '\n')
 		{
 			if (c == '\r' && i + 1 < in_size && in_buffer[i + 1] == '\n')
@@ -90,20 +134,13 @@ error_code _flex_text_from_native(const u_char *in_buffer, u_int in_size, u_char
 			out[length++] = '\r';
 			column = 0;
 		}
-		else if (c == '\t')
-		{
-			u_int spaces = FX_TAB_STOP - column % FX_TAB_STOP;
-
-			out[length++] = FX_TEXT_COMPRESS;
-			out[length++] = (u_char)spaces;
-			column += spaces;
-		}
 		else
 		{
 			out[length++] = c;
 			column++;
 		}
 	}
+	length = put_spaces(out, length, spaces);
 
 	*out_buffer = out;
 	*out_size = length;

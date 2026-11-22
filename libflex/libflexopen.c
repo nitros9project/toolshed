@@ -236,7 +236,7 @@ error_code _flex_create(flex_path_id *path, const char *pathlist, int mode)
 		{
 			return _fx_close_image(new_path, EOS_FAE);
 		}
-		if (existing.attributes & (FLEX_ATTR_WRITE | FLEX_ATTR_DELETE))
+		if (existing.attributes & FX_ATTR_UNDELETABLE)
 		{
 			return _fx_close_image(new_path, EOS_FNA);
 		}
@@ -290,13 +290,12 @@ error_code _flex_close(flex_path_id path)
 	if (!path->israw && (path->mode & FAM_WRITE))
 	{
 		ec = _fx_flush_buffer(path);
+
+		/* FLEX deletes a file left with no sectors when it is closed. */
 		if (ec == 0 && _flex_entry_sectors(&path->entry) == 0)
 		{
-			ec = _fx_extend(path, 1);
-			if (ec == 0)
-			{
-				ec = _fx_flush_buffer(path);
-			}
+			path->entry.filename[0] = 0xFF;
+			path->entry_dirty = 1;
 		}
 		if (ec == 0 && path->entry_dirty)
 		{

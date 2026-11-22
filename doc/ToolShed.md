@@ -2157,13 +2157,13 @@ Issuing the flex command without any parameters will provide a list of available
 
 Use flex to copy files to and from FLEX formatted disk images and your host file system. It works on raw, JVC, VDK, DMK and SDF images. A file on a disk is named `<disk>,<file>`.
 
-FLEX addresses a disk by track, from 0, and sector, from 1. Track 0 holds the boot sectors, the System Information Record (SIR) in sector 3, which names the volume, the geometry and the free chain, and the directory from sector 5. Every sector is linked to the next one of its file, the directory or the free chain, and holds 252 bytes of data. Only whole sectors are recorded, so a file's size is always a multiple of 252 bytes, and a file copied to the host is padded with nuls.
+FLEX addresses a disk by track, from 0, and sector, from 1. Track 0 holds the boot sectors, the System Information Record (SIR) in sector 3, which names the volume, the geometry and the free chain, and the directory from sector 5. Every sector is linked to the next one of its file, the directory or the free chain, and holds 252 bytes of data. Only whole sectors are recorded, so a file's size is always a multiple of 252 bytes, and a file copied to the host is padded with nuls. As FLEX does, a file left with no sectors when it is closed is deleted, so copying an empty file leaves nothing on the disk. The directory ends at the first entry that has never been used, as FLEX's search ends there.
 
 On a double sided disk, sector numbers carry on across the second side: a double density track has sectors 1 to 18 on side 0 and 19 to 36 on side 1. The Color Computer's FLEX also needs track 0 to be single density, with 10 sectors on each side, whatever the density of the other tracks. DMK and SDF images record this. A raw image holds the sectors of each track in order, with track 0 either holding only the sectors it has, or padded to as many as the other tracks. Which one is seen from the image's size, so images from both conventions can be read. JVC and VDK images can't have a short track 0, so they are always padded.
 
 Filenames are a letter, then up to 7 letters, digits, "-" or "_", then optionally "." and up to 3 more. Names match whatever their case, and new names are made upper case. Extra characters in the first part are ignored. Extra characters in the extension are an error. A drive number in front, as in `0.FLEX.SYS`, is ignored.
 
-A random file starts with two sectors that map the rest. Its data is what follows them, and it can be changed but not made larger.
+A random file starts with sectors that map the rest, as many as its directory entry says, which FLEX makes 2. Its data is what follows them, and it can be changed but not made larger.
 
 ---
 
@@ -2183,7 +2183,7 @@ A random file starts with two sectors that map the rest. Its data is what follow
 
 #### Description
 
-These are the protections of FLEX's PROT command. With no options, each file's protection is shown as `WDRC`, with a `.` for each one it doesn't have. A write protected file can't be written to, deleted or renamed, and a delete protected one can't be deleted or renamed. Read and catalog protection only matter to FLEX: flex reads and lists such files.
+These are the protections of FLEX's PROT command. With no options, each file's protection is shown as `WDRC`, with a `.` for each one it doesn't have. A write protected file can't be written to, deleted or renamed. As in FLEX, a delete or read protected one can't be deleted or renamed. flex still reads read protected files, and lists catalog protected ones, which FLEX doesn't.
 
 #### Examples
 
@@ -2207,7 +2207,7 @@ These are the protections of FLEX's PROT command. With no options, each file's p
 
 A target of `<disk>,` or a host directory takes each file under its own name. A new file's sectors are taken from the start of the free chain, as FLEX takes them.
 
-FLEX text ends lines with a carriage return, records a run of spaces as $09 and a count, and is padded with nuls. With -l, a text file copied from a FLEX disk has its lines end the way the target's system ends them, its spaces expanded and its padding removed. Text copied to a FLEX disk has its lines end with a carriage return, and a tab becomes the spaces to the next multiple of 8 columns. Between two FLEX disks, or two other places, -l does what it does in the other tools.
+FLEX text ends lines with a carriage return, records a run of spaces as $09 and a count, and is padded with nuls. With -l, a text file copied from a FLEX disk has its lines end the way the target's system ends them and its spaces expanded, and nul and $18 are dropped, as FLEX drops them when it reads text. Text copied to a FLEX disk has its lines end with a carriage return, a tab becomes the spaces to the next multiple of 8 columns, and runs of 2 to 127 spaces are compressed, as FLEX writes them. Between two FLEX disks, or two other places, -l does what it does in the other tools.
 
 An existing file on the host that is or looks like a disk image is never replaced, even with -r. A file that doesn't fit is removed, and the error reported.
 
@@ -2362,7 +2362,7 @@ A file's protection, type, date, size and first and last sectors are shown. A fi
 
 #### Description
 
-As in FLEX, the file's sectors go to the end of the free chain, and its entry is marked deleted by putting $FF at the start of its name. A write or delete protected file is refused.
+As in FLEX, the file's sectors go to the end of the free chain, and its entry is marked deleted by putting $FF at the start of its name. A write, delete or read protected file is refused.
 
 ---
 
@@ -2374,7 +2374,7 @@ As in FLEX, the file's sectors go to the end of the free chain, and its entry is
 
 #### Description
 
-Lines are shown with the host's line endings, compressed spaces are expanded, and padding is left out.
+Lines are shown with the host's line endings, compressed spaces are expanded, and nul and $18 are left out, as FLEX reads text.
 
 ---
 
@@ -2386,7 +2386,7 @@ Lines are shown with the host's line endings, compressed spaces are expanded, an
 
 #### Description
 
-As in FLEX, a new name with no extension keeps the file's extension.
+As in FLEX, a new name with no extension keeps the file's extension, and a write, delete or read protected file is refused.
 
 #### Examples
 

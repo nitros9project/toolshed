@@ -28,15 +28,19 @@ error_code _fx_set_data_start(flex_path_id path)
 		return EOS_SECT;
 	}
 
+	/* As FLEX does, skip as many sectors as the random flag says, which
+	   is the number of map sectors. */
 	if (path->entry.random)
 	{
-		if (sectors <= FLEX_RANDOM_MAP_SECTORS)
+		u_int map = path->entry.random;
+
+		if (sectors <= map)
 		{
 			path->data_sectors = 0;
 			return 0;
 		}
-		path->data_sectors = sectors - FLEX_RANDOM_MAP_SECTORS;
-		return _fx_follow(path, path->entry.start_track, path->entry.start_sector, FLEX_RANDOM_MAP_SECTORS,
+		path->data_sectors = sectors - map;
+		return _fx_follow(path, path->entry.start_track, path->entry.start_sector, map,
 				  &path->data_track, &path->data_sector);
 	}
 	return 0;

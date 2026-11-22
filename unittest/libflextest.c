@@ -110,10 +110,6 @@ static int file_matches(const char *pathlist, u_int size, u_char seed)
 	u_int got = sizeof(back);
 	u_int i;
 
-	if (sectors == 0)
-	{
-		sectors = 1;
-	}
 	if (read_whole(pathlist, back, &got) != 0 || got != sectors * FLEX_DATA_SIZE)
 	{
 		return 0;
@@ -553,9 +549,17 @@ static void round_trip(const char *image, diskimage_format format, u_int tracks,
 	for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++)
 	{
 		FORMAT(pathlist, "%s,F%u.BIN", image, i);
+		if (sizes[i] == 0)
+		{
+			/* Closed with no sectors, so deleted */
+			flex_path_id path;
+
+			ASSERT_EC(EOS_PNNF, _flex_open(&path, pathlist, FAM_READ));
+			continue;
+		}
 		ASSERT("the file reads back", file_matches(pathlist, sizes[i], (u_char)i));
 	}
-	ASSERT_EQUALS(8, check_disk(image));
+	ASSERT_EQUALS(7, check_disk(image));
 	remove(image);
 }
 
@@ -614,19 +618,64 @@ static void test_write_layout(void)
 }
 
 /* A file left empty still has a sector, as in FLEX. */
+/* A file closed with no sectors is deleted, as FLEX's close does. */
 static void test_empty_file(void)
 {
 	flex_path_id path;
-	u_int size;
+	flex_dir_entry entry;
 
 	fresh_disk(TEST_IMAGE, DISKIMAGE_RAW, 35, 1, 0);
 	ASSERT_EC(0, _flex_create(&path, TEST_FILE("EMPTY.TXT"), FAM_WRITE));
 	ASSERT_EC(0, _flex_close(path));
-	ASSERT_EC(0, _flex_open(&path, TEST_FILE("EMPTY.TXT"), FAM_READ));
-	ASSERT_EC(0, _flex_gs_size(path, &size));
-	ASSERT_EQUALS(252, size);
+	ASSERT_EC(EOS_PNNF, _flex_open(&path, TEST_FILE("EMPTY.TXT"), FAM_READ));
+	ASSERT_EC(0, _flex_open(&path, TEST_FILE(""), FAM_READ));
+	ASSERT_EC(0, _flex_readdir(path, &entry));
+	ASSERT_EQUALS(0xFF, entry.filename[0]);
 	_flex_close(path);
-	ASSERT_EQUALS(1, check_disk(TEST_IMAGE));
+	ASSERT_EQUALS(0, check_disk(TEST_IMAGE));
+	remove(TEST_IMAGE);
+}
+
+/* As in FLEX, the directory ends at the first entry never used, so a file
+   after one is not seen. */
+static void test_directory_ends_at_unused_entry(void)
+{
+	flex_path_id path;
+	flex_dir_entry entry;
+	FILE *fp;
+	int count = 0;
+
+	fresh_disk(TEST_IMAGE, DISKIMAGE_RAW, 35, 1, 0);
+	fill_pattern(10, 0);
+	ASSERT_EC(0, write_whole(TEST_FILE("A.TXT"), data, 10));
+	ASSERT_EC(0, write_whole(TEST_FILE("B.TXT"), data, 10));
+	ASSERT_EC(0, write_whole(TEST_FILE("C.TXT"), data, 10));
+
+	/* Make B's entry one never used. */
+	fp = fopen(TEST_IMAGE, "r+b");
+	ASSERT("the image opens", fp != NULL);
+	fseek(fp, 4 * 256 + 16 + 24, SEEK_SET);
+	fputc(0, fp);
+	fclose(fp);
+
+	ASSERT_EC(0, _flex_open(&path, TEST_FILE(""), FAM_READ));
+	while (_flex_readdir(path, &entry) == 0)
+	{
+		count++;
+	}
+	ASSERT_EQUALS(1, count);
+	_flex_close(path);
+	ASSERT_EC(EOS_PNNF, _flex_open(&path, TEST_FILE("C.TXT"), FAM_READ));
+
+	/* The unused entry is the next to be used. */
+	ASSERT_EC(0, write_whole(TEST_FILE("D.TXT"), data, 10));
+	ASSERT_EC(0, _flex_open(&path, TEST_FILE(""), FAM_READ));
+	ASSERT_EC(0, _flex_readdir(path, &entry));
+	ASSERT_EC(0, _flex_readdir(path, &entry));
+	ASSERT_MEM_EQUALS("D\0\0\0\0\0\0\0TXT", entry.filename, 11);
+	ASSERT_EC(0, _flex_readdir(path, &entry));
+	ASSERT_MEM_EQUALS("C\0\0\0\0\0\0\0TXT", entry.filename, 11);
+	_flex_close(path);
 	remove(TEST_IMAGE);
 }
 
@@ -719,8 +768,9 @@ static void test_disk_full(void)
 	ASSERT("what fit reads back", file_matches(TEST_FILE("BIG.BIN"), 340 * 252, 3));
 	ASSERT_EQUALS(1, check_disk(TEST_IMAGE));
 
+	/* The file that got no sectors was deleted when it was closed. */
 	ASSERT_EC(EOS_DF, write_whole(TEST_FILE("MORE.BIN"), data, 1));
-	ASSERT_EC(0, _flex_kill(TEST_FILE("MORE.BIN")));
+	ASSERT_EC(EOS_PNNF, _flex_kill(TEST_FILE("MORE.BIN")));
 	ASSERT_EC(0, _flex_kill(TEST_FILE("BIG.BIN")));
 	ASSERT_EQUALS(0, check_disk(TEST_IMAGE));
 	ASSERT_EC(0, write_whole(TEST_FILE("AGAIN.BIN"), data, 340 * 252));
@@ -769,6 +819,21 @@ static void test_protection(void)
 	ASSERT_EC(EOS_FNA, _flex_ss_size(path, 0));
 	_flex_close(path);
 	ASSERT_EC(EOS_FNA, _flex_kill(TEST_FILE("SAFE.TXT")));
+
+	/* Read protection stops deleting and renaming too, as in FLEX. */
+	ASSERT_EC(0, _flex_open(&path, TEST_FILE("SAFE.TXT"), RW));
+	stat.attributes = FLEX_ATTR_READ;
+	ASSERT_EC(0, _flex_ss_fd(path, &stat));
+	_flex_close(path);
+	ASSERT_EC(EOS_FNA, _flex_kill(TEST_FILE("SAFE.TXT")));
+	ASSERT_EC(EOS_FNA, _flex_rename(TEST_FILE("SAFE.TXT"), "OTHER"));
+	ASSERT_EC(EOS_FNA, _flex_create(&path, TEST_FILE("SAFE.TXT"), FAM_WRITE));
+	ASSERT("a read protected file can be read", file_matches(TEST_FILE("SAFE.TXT"), 500, 6));
+
+	ASSERT_EC(0, _flex_open(&path, TEST_FILE("SAFE.TXT"), RW));
+	stat.attributes = FLEX_ATTR_WRITE | 0x01;
+	ASSERT_EC(0, _flex_ss_fd(path, &stat));
+	_flex_close(path);
 
 	/* Bits FLEX doesn't define are kept. */
 	ASSERT_EC(0, _flex_open(&path, TEST_FILE("SAFE.TXT"), FAM_READ));
@@ -898,8 +963,9 @@ static void test_set_size(void)
 	ASSERT_EQUALS(8 * 252, size);
 	ASSERT_EC(0, _flex_ss_size(path, 0));
 	_flex_close(path);
-	/* Closing gives back the one sector a file always has. */
-	ASSERT_EQUALS(1, check_disk(TEST_IMAGE));
+	/* Closing a file with no sectors deletes it. */
+	ASSERT_EQUALS(0, check_disk(TEST_IMAGE));
+	ASSERT_EC(EOS_PNNF, _flex_open(&path, TEST_FILE("CUT.BIN"), FAM_READ));
 	remove(TEST_IMAGE);
 }
 
@@ -1117,7 +1183,7 @@ static void test_read_handmade_disk(void)
 	fill_pattern(756, 10);
 	ASSERT_EC(0, write_whole(TEST_FILE("FILL.BIN"), data, 756));
 	ASSERT_EC(EOS_DF, write_whole(TEST_FILE("OVER.BIN"), data, 1));
-	ASSERT_EC(0, _flex_kill(TEST_FILE("OVER.BIN")));
+	ASSERT_EC(EOS_PNNF, _flex_kill(TEST_FILE("OVER.BIN")));
 	ASSERT_EC(0, _flex_kill(TEST_FILE("RANDOM.DAT")));
 	ASSERT_EQUALS(2, check_chains(TEST_IMAGE));
 	ASSERT("the last file reads back", file_matches(TEST_FILE("FILL.BIN"), 756, 10));
@@ -1126,6 +1192,30 @@ static void test_read_handmade_disk(void)
 
 /* Raw images have track 0 short or padded, and some have tracks past the
    last one FLEX uses. */
+/* FLEX skips as many map sectors as the random flag says. */
+static void test_random_map_count(void)
+{
+	static u_char image[35 * 18 * 256];
+	u_int size;
+	long image_size = make_handmade_disk(image);
+
+	image[4 * 256 + 16 + 19] = 3;
+	write_file(TEST_IMAGE, image, image_size);
+	size = sizeof(back);
+	ASSERT_EC(0, read_whole(TEST_FILE("RANDOM.DAT"), back, &size));
+	ASSERT_EQUALS(2 * 252, size);
+	ASSERT_EQUALS('A' + 4, back[0]);
+	ASSERT_EQUALS('A' + 5, back[252]);
+
+	/* A flag as large as the file leaves no data. */
+	image[4 * 256 + 16 + 19] = 5;
+	write_file(TEST_IMAGE, image, image_size);
+	size = sizeof(back);
+	ASSERT_EC(0, read_whole(TEST_FILE("RANDOM.DAT"), back, &size));
+	ASSERT_EQUALS(0, size);
+	remove(TEST_IMAGE);
+}
+
 static void test_raw_track0(void)
 {
 	static u_char padded[35 * 18 * 256];
@@ -1175,10 +1265,19 @@ static void test_damaged_chains(void)
 	size = sizeof(back);
 	ASSERT_EC(EOS_SECT, read_whole(TEST_FILE("RANDOM.DAT"), back, &size));
 
-	/* A directory that loops ends with an error, not forever. */
+	/* A directory that loops ends with an error, not forever.  Its entries
+	   are all used, as an unused one would end it first. */
 	make_handmade_disk(image);
 	image[4 * 256 + 0] = 0;
 	image[4 * 256 + 1] = 5;
+	{
+		int slot;
+
+		for (slot = 2; slot < 10; slot++)
+		{
+			image[4 * 256 + 16 + slot * 24] = 0xFF;
+		}
+	}
 	write_file(TEST_IMAGE, image, image_size);
 	ASSERT_EC(0, _flex_open(&path, TEST_FILE(""), FAM_READ));
 	{
@@ -1290,19 +1389,40 @@ static void test_filesystem_names(void)
 
 static void test_text_conversion(void)
 {
-	const u_char flex_text[] = { 'A', '\t', 3, 'B', '\r', '\n', 'C', '\r', 0, 0, 0 };
+	/* FLEX drops nul and $18 when it reads text, but keeps a line feed. */
+	const u_char flex_text[] = { 'A', '\t', 3, 'B', '\r', 0x18, 'C', '\n', '\r', 0, 0, 0 };
 	const char *native = "\tX\r\nY\nZ";
+	const char *spaced = "A B  C \tD";
+	static u_char long_run[300];
 	u_char *out;
 	u_int size;
 
 	ASSERT_EC(0, _flex_text_to_native(flex_text, sizeof(flex_text), &out, &size));
-	ASSERT_EQUALS(8, size);
-	ASSERT_MEM_EQUALS("A   B\nC\n", out, 8);
+	ASSERT_EQUALS(9, size);
+	ASSERT_MEM_EQUALS("A   B\nC\n\n", out, 9);
 	free(out);
 
 	ASSERT_EC(0, _flex_text_from_native((const u_char *)native, (u_int)strlen(native), &out, &size));
 	ASSERT_EQUALS(7, size);
 	ASSERT_MEM_EQUALS("\t\010X\rY\rZ", out, 7);
+	free(out);
+
+	/* One space stays a space.  More are compressed, a tab with them. */
+	ASSERT_EC(0, _flex_text_from_native((const u_char *)spaced, (u_int)strlen(spaced), &out, &size));
+	ASSERT_EQUALS(9, size);
+	ASSERT_MEM_EQUALS("A B\t\002C\t\002D", out, 9);
+	free(out);
+
+	/* A count holds at most 127. */
+	memset(long_run, ' ', 200);
+	long_run[200] = 'E';
+	ASSERT_EC(0, _flex_text_from_native(long_run, 201, &out, &size));
+	ASSERT_EQUALS(5, size);
+	ASSERT_MEM_EQUALS("\t\177\t\111E", out, 5);
+	free(out);
+	ASSERT_EC(0, _flex_text_from_native(long_run, 128, &out, &size));
+	ASSERT_EQUALS(3, size);
+	ASSERT_MEM_EQUALS("\t\177 ", out, 3);
 	free(out);
 
 	ASSERT_EC(0, _flex_text_to_native((const u_char *)"", 0, &out, &size));
@@ -1401,6 +1521,7 @@ int main(void)
 	RUN(test_all_formats);
 	RUN(test_write_layout);
 	RUN(test_empty_file);
+	RUN(test_directory_ends_at_unused_entry);
 	RUN(test_kill);
 	RUN(test_directory_grows);
 	RUN(test_disk_full);
@@ -1414,6 +1535,7 @@ int main(void)
 	RUN(test_access_modes);
 	RUN(test_write_protected_image);
 	RUN(test_read_handmade_disk);
+	RUN(test_random_map_count);
 	RUN(test_raw_track0);
 	RUN(test_damaged_chains);
 	RUN(test_missing_sectors);

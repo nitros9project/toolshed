@@ -24,7 +24,8 @@
  * A file is a chain of sectors.  Its directory entry has the first and
  * last, how many there are, and the date.  Only whole sectors are recorded,
  * so a file's size is always a multiple of 252.  A random file starts with
- * two sectors that map the rest, which are not part of its data here.
+ * sectors that map the rest, as many as its random flag says, which FLEX
+ * makes 2.  They are not part of its data here.
  *
  * Writers are expected to be alone on an image.
  *
@@ -194,8 +195,8 @@ error_code _flex_dskinit(const char *pathname, diskimage_format format, u_int tr
 
 /* mode is FAM_READ and/or FAM_WRITE, optionally with
    DISKIMAGE_IGNORE_WRITE_PROTECT.  A write protected file can be opened
-   for writing, to change its attributes, but not written.  Read protection
-   only matters to FLEX, so it is ignored. */
+   for writing, to change its attributes, but not written.  A read
+   protected file can still be read, though FLEX refuses to. */
 error_code _flex_open(flex_path_id *path, const char *pathlist, int mode);
 
 /* Create an empty file, open for writing.  An existing file of that name is
@@ -203,7 +204,7 @@ error_code _flex_open(flex_path_id *path, const char *pathlist, int mode);
    protected file is never replaced. */
 error_code _flex_create(flex_path_id *path, const char *pathlist, int mode);
 
-/* A file left with no sectors is given one, as FLEX always has one. */
+/* A file written to and left with no sectors is deleted, as FLEX does. */
 error_code _flex_close(flex_path_id path);
 
 /* On entry *size is the number of bytes to transfer; on return it is the
@@ -221,16 +222,18 @@ error_code _flex_readln(flex_path_id path, void *buffer, u_int *size);
 error_code _flex_seek(flex_path_id path, long offset, int mode);
 
 /* Deleting gives the file's sectors to the end of the free chain and puts
-   $FF at the start of its name, as FLEX does. */
+   $FF at the start of its name, as FLEX does.  As in FLEX, a file that is
+   write, delete or read protected can't be deleted or renamed. */
 error_code _flex_kill(const char *pathlist);
 error_code _flex_rename(const char *pathlist, const char *new_name);
 
 /* As _flex_rename, and gets the renamed file's directory entry. */
 error_code _flex_rename_ex(const char *pathlist, const char *new_name, flex_dir_entry *entry);
 
-/* Read directory entries in order, unused and deleted entries too.  EOS_EOF
-   marks the end.  A directory sector that cannot be read returns its error,
-   and the directory is taken to end there. */
+/* Read directory entries in order, deleted entries too.  EOS_EOF marks the
+   end, which as in FLEX is the first entry never used, or the end of the
+   directory's chain.  A directory sector that cannot be read returns its
+   error, and the directory is taken to end there. */
 error_code _flex_readdir(flex_path_id path, flex_dir_entry *entry);
 error_code _flex_rewinddir(flex_path_id path);
 
@@ -268,8 +271,11 @@ error_code _flex_count_free_chain(flex_path_id path, u_int *sectors);
 
 /* Text files end lines with a carriage return, and record a run of spaces
    as $09 and a count.  Nuls are padding.  _flex_text_to_native makes lines
-   end with a line feed, and _flex_text_from_native ends them with a
-   carriage return, without compressing spaces.  The caller frees out_buffer. */
+   end with a line feed, expands spaces, and drops nul and $18, as FLEX does
+   when it reads text.  _flex_text_from_native ends lines with a carriage
+   return, makes a tab the spaces to the next multiple of 8 columns, and
+   records runs of 2 to 127 spaces as FLEX writes them.  The caller frees
+   out_buffer. */
 error_code _flex_text_to_native(const u_char *in_buffer, u_int in_size, u_char **out_buffer, u_int *out_size);
 error_code _flex_text_from_native(const u_char *in_buffer, u_int in_size, u_char **out_buffer, u_int *out_size);
 

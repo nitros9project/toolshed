@@ -9,6 +9,9 @@
 #define FX_ENTRY_SIZE		24
 #define FX_ATTR_DEFINED		(FLEX_ATTR_WRITE | FLEX_ATTR_DELETE | FLEX_ATTR_READ | FLEX_ATTR_CATALOG)
 
+/* FLEX refuses to delete or rename a file with any of these. */
+#define FX_ATTR_UNDELETABLE	(FLEX_ATTR_WRITE | FLEX_ATTR_DELETE | FLEX_ATTR_READ)
+
 /* SIR offsets */
 #define FX_SIR_NAME		0x10
 #define FX_SIR_NAME_SIZE	11

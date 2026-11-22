@@ -149,12 +149,15 @@ typedef struct
 {
 	const u_char *name;
 	int want_free;
+	int ended;		/* an entry never used ended the search */
 	u_int track;
 	u_int sector;
 	u_int slot;
 	flex_dir_entry entry;
 } find_context;
 
+/* As in FLEX, a search ends at the first entry that has never been used.
+   Entries after it are not seen. */
 static int find_visitor(const u_char *sector, u_int track, u_int number, void *context)
 {
 	find_context *find = context;
@@ -166,6 +169,11 @@ static int find_visitor(const u_char *sector, u_int track, u_int number, void *c
 		int match = find->want_free ? !_flex_entry_in_use(entry) :
 					      _flex_entry_in_use(entry) && same_name(entry, find->name);
 
+		if (!find->want_free && entry->filename[0] == FLEX_ENTRY_UNUSED)
+		{
+			find->ended = 1;
+			return 1;
+		}
 		if (match)
 		{
 			find->track = track;
@@ -193,7 +201,7 @@ error_code _fx_find_file(flex_path_id path, const u_char *name, u_int *track, u_
 	{
 		return ec;
 	}
-	if (!stopped)
+	if (!stopped || find.ended)
 	{
 		return EOS_PNNF;
 	}
@@ -296,6 +304,14 @@ error_code _flex_readdir(flex_path_id path, flex_dir_entry *entry)
 	}
 
 	memcpy(entry, &buffer[FLEX_DIR_HEADER + path->dir_slot * FX_ENTRY_SIZE], FX_ENTRY_SIZE);
+
+	/* The directory ends at the first entry never used. */
+	if (entry->filename[0] == FLEX_ENTRY_UNUSED)
+	{
+		path->dir_sector = 0;
+		return EOS_EOF;
+	}
+
 	if (++path->dir_slot == FLEX_DIR_ENTRIES)
 	{
 		path->dir_slot = 0;
