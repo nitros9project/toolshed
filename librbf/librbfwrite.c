@@ -101,10 +101,16 @@ error_code _os9_write(os9_path_id path, void *buffer, u_int * size)
 			ec = _os9_extendSegList(path, segptr, &delta);
 
 
-			/* 1. If there is an error, time to abort. */
+			/* 1. If there is an error, time to abort.  Clusters added
+			 * before it are already taken in the bitmap, so the
+			 * descriptor must list them, or no file owns them.  Closing
+			 * the path gives back those past the file's size.
+			 */
 
 			if (ec != 0)
 			{
+				_os9_lsn_put(path, path->pl_fd_lsn, 0, &fd_sector, sizeof(fd_stats));
+
 				return (ec);
 			}
 

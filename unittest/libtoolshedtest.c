@@ -348,11 +348,59 @@ void test_dir_lists_other_filesystems()
 	remove(FS_IMAGE);
 }
 
+/* A copy that fills the disk leaves no file behind, and takes no space. */
+void test_copy_disk_full_leaves_nothing()
+{
+	static const char image[] = "test_copy_full.dsk";
+	static char data[200000];
+	char buffer[4096];
+	char dname[64];
+	u_int month, day, year, bps, total_sectors, bytes_free, free_before, free_after,
+		largest_free_block, sectors_per_cluster, largest_count, sector_count;
+	unsigned int totalSectors, totalBytes;
+	int clusterSize = 0;
+	coco_path_id p;
+	error_code ec;
+	size_t written;
+	FILE *f;
+
+	ec = _os9_format((char *) image, 0, 35, 18, 18, 1, 256, &clusterSize, "Full", 8, 8,
+			 1, 1, 0, 0, 3, &totalSectors, &totalBytes);
+	ASSERT_EQUALS(0, ec);
+	ec = TSRBFFree((char *) image, dname, &month, &day, &year, &bps, &total_sectors,
+		       &bytes_free, &free_before, &largest_free_block, &sectors_per_cluster,
+		       &largest_count, &sector_count);
+	ASSERT_EQUALS(0, ec);
+
+	memset(data, 0x5A, sizeof(data));
+	f = fopen("test-full.dat", "wb");
+	ASSERT("fopen", f != NULL);
+	written = fwrite(data, 1, sizeof(data), f);
+	fclose(f);
+	ASSERT_EQUALS(sizeof(data), written);
+
+	ec = TSCopyFile("test-full.dat", "test_copy_full.dsk,BIG", 0, 0, 0, 0, buffer,
+			sizeof(buffer));
+	ASSERT_EQUALS(EOS_DF, ec);
+
+	ec = _coco_open(&p, "test_copy_full.dsk,BIG", FAM_READ);
+	ASSERT_EQUALS(EOS_PNNF, ec);
+	ec = TSRBFFree((char *) image, dname, &month, &day, &year, &bps, &total_sectors,
+		       &bytes_free, &free_after, &largest_free_block, &sectors_per_cluster,
+		       &largest_count, &sector_count);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(free_before, free_after);
+
+	remove(image);
+	remove("test-full.dat");
+}
+
 int main()
 {
 	RUN(test_native2coco);
 	RUN(test_coco2native);
 	RUN(test_via_disk_image);
+	RUN(test_copy_disk_full_leaves_nothing);
 
 	RUN(test_detect_filesystems);
 	RUN(test_dir_lists_other_filesystems);
