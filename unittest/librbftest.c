@@ -978,6 +978,56 @@ void test_os9_no_allocation_past_last_cluster()
 	remove(image);
 }
 
+/* Free sectors on an OS-9 image, as `os9 free` counts them; 0 if it can't
+ * be read. */
+static u_int image_free_sectors(const char *image)
+{
+	char dname[64];
+	u_int month, day, year, bps, total_sectors, bytes_free, free_sectors = 0,
+		largest_free_block, sectors_per_cluster, largest_count, sector_count;
+
+	if (TSRBFFree((char *) image, dname, &month, &day, &year, &bps, &total_sectors,
+		      &bytes_free, &free_sectors, &largest_free_block, &sectors_per_cluster,
+		      &largest_count, &sector_count) != 0)
+	{
+		return 0;
+	}
+	return free_sectors;
+}
+
+/* A write that fills the disk part way through takes nothing for good: the
+ * clusters it found before running out go back when the file is closed.
+ */
+void test_os9_write_disk_full_keeps_no_clusters()
+{
+	static const char image[] = "test_write_full.dsk";
+	static u_char buffer[200000];
+	char pathlist[64];
+	os9_path_id p;
+	unsigned int totalSectors, totalBytes;
+	int clusterSize = 0;
+	u_int before, size;
+
+	ASSERT_EC(0, _os9_format((char *) image, 0, 35, 18, 18, 1, 256, &clusterSize, "Full", 8, 8,
+				 1, 1, 0, 0, 3, &totalSectors, &totalBytes));
+	before = image_free_sectors(image);
+	ASSERT("the write is larger than the disk", sizeof(buffer) > before * 256);
+
+	snprintf(pathlist, sizeof(pathlist), "%s,BIG", image);
+	ASSERT_EC(0, _os9_create(&p, pathlist, FAM_READ | FAM_WRITE, FAP_READ | FAP_WRITE));
+	memset(buffer, 0x5A, sizeof(buffer));
+	size = sizeof(buffer);
+	ASSERT_EC(EOS_DF, _os9_write(p, buffer, &size));
+	ASSERT_EC(0, _os9_close(p));
+
+	/* Only the descriptor is left in use. */
+	ASSERT_EQUALS(before - 1, image_free_sectors(image));
+	ASSERT_EC(0, _os9_delete(pathlist));
+	ASSERT_EQUALS(before, image_free_sectors(image));
+
+	remove(image);
+}
+
 void test_os9_file_allocation()
 {
 	os9_path_id p;
@@ -2957,6 +3007,7 @@ int main()
 	RUN(test_os9_failed_create_frees_its_cluster);
 	RUN(test_os9_read_stops_at_segment_list_end);
 	RUN(test_os9_no_allocation_past_last_cluster);
+	RUN(test_os9_write_disk_full_keeps_no_clusters);
 	RUN(test_os9_file_allocation);
 	RUN(test_os9_allocation_bitmap_boundaries);
 	RUN(test_os9_short_t0_segment_io);

@@ -403,6 +403,7 @@ error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 	coco_file_stat fdesc;
 	int mode = FAM_NOCREATE | FAM_WRITE;
 	coco_file_stat fstat;
+	int dest_raw;
 
 
 	/* 1. Set mode based on rewrite. */
@@ -520,6 +521,8 @@ error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 
 	_coco_close(path);
 
+	dest_raw = is_raw_path(destpath);
+
 	/* Close the dest file before setting metadata. fclose() flushes
 	 * buffered writes and causes the OS to update mtime, which would
 	 * overwrite any utime() call made before it. Instead, close first,
@@ -529,6 +532,19 @@ error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 	if (ec == 0)
 	{
 		ec = close_ec;
+	}
+
+	/* A copy that failed leaves no partial file behind.  A raw destination
+	 * is the whole image, which is never removed. */
+
+	if (ec != 0)
+	{
+		if (!dest_raw)
+		{
+			_coco_delete(dstfile);
+		}
+
+		return ec;
 	}
 
 	/* --- Intercept for Reproducible Builds --- */
