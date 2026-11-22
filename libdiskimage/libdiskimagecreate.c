@@ -9,6 +9,11 @@
  * A track can instead start with an index mark, the layout of a disk
  * formatted by Dragon DOS as MAME records it.  The sectors are recorded the
  * same way, only later on the track.
+ *
+ * Track 0, or every track, can instead be single density, as FLEX needs.
+ * Its bytes are recorded twice each, as DMK and SDF images hold single
+ * density, and the track is half as long in the 6250 bytes of a double
+ * density one.
  ********************************************************************/
 #include <errno.h>
 #include <stdlib.h>
@@ -31,6 +36,17 @@
 
 /* Everything recorded for a sector besides its data and the gap after it. */
 #define MFM_SECTOR_OVERHEAD	(MFM_ID_SYNC_ZEROS + 3 + MFM_ID_FIELD + MFM_GAP2 + MFM_DATA_SYNC_ZEROS + 3 + 1 + 2)
+
+#define FM_GAP_BYTE		0xFF
+#define FM_TRACK_SIZE		(DI_MFM_TRACK_SIZE / 2)	/* bytes in a single density track */
+#define FM_GAP1			26
+#define FM_GAP2			11
+#define FM_GAP3			27
+#define FM_GAP3_MIN		8
+#define FM_GAP4A		40
+#define FM_SYNC_ZEROS		6
+#define FM_INDEX_START		(FM_GAP4A + FM_SYNC_ZEROS + 1)	/* the gap, zeros and $FC index mark */
+#define FM_SECTOR_OVERHEAD	(FM_SYNC_ZEROS + MFM_ID_FIELD + FM_GAP2 + FM_SYNC_ZEROS + 1 + 2)
 
 #define DMK_MAX_CYLINDERS	255
 #define DMK_MAX_SECTORS		64
@@ -70,10 +86,70 @@ static int mfm_gap3(u_int sectors, const di_layout *layout)
 }
 
 
+/* As mfm_gap3, for a single density track. */
+static int fm_gap3(u_int sectors, const di_layout *layout)
+{
+	int start = FM_GAP1 + (layout->index_mark ? FM_INDEX_START : 0);
+	int gap = (int)((FM_TRACK_SIZE - start) / sectors) - (int)(FM_SECTOR_OVERHEAD + layout->sector_size);
+
+	if (gap < FM_GAP3_MIN)
+	{
+		return -1;
+	}
+
+	return gap > FM_GAP3 ? FM_GAP3 : gap;
+}
+
+
 static u_char *put_bytes(u_char *p, u_char byte, int count)
 {
 	memset(p, byte, count);
 	return p + count;
+}
+
+
+/* Record single density bytes, each twice. */
+static u_char *put_fm(u_char *p, const u_char *bytes, int count)
+{
+	int i;
+
+	for (i = 0; i < count; i++)
+	{
+		*p++ = bytes[i];
+		*p++ = bytes[i];
+	}
+	return p;
+}
+
+
+static u_char *put_fm_bytes(u_char *p, u_char byte, int count)
+{
+	return put_bytes(p, byte, count * 2);
+}
+
+
+/* Whether a track is recorded in single density. */
+static int fm_track(const di_layout *layout, u_int cylinder)
+{
+	return layout->fm_all || (layout->fm_track0 && cylinder == 0);
+}
+
+
+/* The sectors on one side of a track. */
+static u_int track_sectors(const di_layout *layout, u_int cylinder, u_int side)
+{
+	if (cylinder == 0 && (side == 0 || layout->fm_track0))
+	{
+		return layout->sectors_track0;
+	}
+	return layout->sectors_per_track;
+}
+
+
+/* The number of a track's first sector, less one. */
+static u_int track_id_base(const di_layout *layout, u_int cylinder, u_int side)
+{
+	return (layout->span_sides && side == 1) ? track_sectors(layout, cylinder, 0) : 0;
 }
 
 
@@ -97,17 +173,90 @@ static void sector_order(u_int sectors, u_int interleave, u_char *order)
 }
 
 
-/* Record a formatted track.  Returns the number of sectors, and for each
-   the position in raw of its ID address mark and first data byte. */
-int di_mfm_track(const di_layout *layout, u_int cylinder, u_int side, u_char *raw, int *id_pos, int *data_pos)
+/* Record a single density track, each byte twice, in DI_MFM_TRACK_SIZE bytes. */
+static int fm_format_track(const di_layout *layout, u_int cylinder, u_int side, u_char *raw, int *id_pos, int *data_pos)
 {
-	u_int sectors = (cylinder == 0 && side == 0) ? layout->sectors_track0 : layout->sectors_per_track;
+	u_int sectors = track_sectors(layout, cylinder, side);
+	u_int base = track_id_base(layout, cylinder, side);
+	int gap3 = fm_gap3(sectors, layout);
+	u_char field[1 + DI_MAX_SECTOR_SIZE];
+	u_char order[DI_MAX_TRACK_IDS];
+	u_char *p = raw;
+	u_char crc_bytes[2];
+	unsigned short crc;
+	u_int i;
+
+	sector_order(sectors, layout->interleave, order);
+	memset(raw, FM_GAP_BYTE, DI_MFM_TRACK_SIZE);
+	if (layout->index_mark)
+	{
+		u_char mark = 0xFC;
+
+		p = put_fm_bytes(p, FM_GAP_BYTE, FM_GAP4A);
+		p = put_fm_bytes(p, 0x00, FM_SYNC_ZEROS);
+		p = put_fm(p, &mark, 1);
+	}
+	p = put_fm_bytes(p, FM_GAP_BYTE, FM_GAP1);
+
+	field[0] = 0xFB;
+	memset(&field[1], layout->fill, layout->sector_size);
+
+	for (i = 0; i < sectors; i++)
+	{
+		u_char id[5];
+
+		id[0] = 0xFE;
+		id[1] = (u_char)cylinder;
+		id[2] = (u_char)side;
+		id[3] = (u_char)(base + order[i]);
+		id[4] = (u_char)layout->size_code;
+
+		p = put_fm_bytes(p, 0x00, FM_SYNC_ZEROS);
+		id_pos[i] = (int)(p - raw);
+		p = put_fm(p, id, sizeof(id));
+		crc = di_crc16(DI_CRC_INIT_SD, id, sizeof(id));
+		crc_bytes[0] = (u_char)(crc >> 8);
+		crc_bytes[1] = (u_char)crc;
+		p = put_fm(p, crc_bytes, 2);
+
+		p = put_fm_bytes(p, FM_GAP_BYTE, FM_GAP2);
+		p = put_fm_bytes(p, 0x00, FM_SYNC_ZEROS);
+		p = put_fm(p, field, 1);
+		data_pos[i] = (int)(p - raw);
+		p = put_fm(p, &field[1], (int)layout->sector_size);
+		crc = di_crc16(DI_CRC_INIT_SD, field, 1 + layout->sector_size);
+		crc_bytes[0] = (u_char)(crc >> 8);
+		crc_bytes[1] = (u_char)crc;
+		p = put_fm(p, crc_bytes, 2);
+
+		p += gap3 * 2;
+	}
+
+	return (int)sectors;
+}
+
+
+/* Record a formatted track.  Returns the number of sectors, and for each
+   the position in raw of its ID address mark and first data byte.  A
+   single density track records each byte twice, and sets *double_density
+   to 0. */
+int di_format_track(const di_layout *layout, u_int cylinder, u_int side, u_char *raw, int *id_pos, int *data_pos,
+		    int *double_density)
+{
+	u_int sectors = track_sectors(layout, cylinder, side);
+	u_int base = track_id_base(layout, cylinder, side);
 	int gap3 = mfm_gap3(sectors, layout);
 	u_char field[1 + DI_MAX_SECTOR_SIZE];
 	u_char order[DI_MAX_TRACK_IDS];
 	u_char *p = raw;
 	unsigned short crc;
 	u_int i;
+
+	*double_density = !fm_track(layout, cylinder);
+	if (!*double_density)
+	{
+		return fm_format_track(layout, cylinder, side, raw, id_pos, data_pos);
+	}
 
 	sector_order(sectors, layout->interleave, order);
 	memset(raw, MFM_GAP_BYTE, DI_MFM_TRACK_SIZE);
@@ -131,7 +280,7 @@ int di_mfm_track(const di_layout *layout, u_int cylinder, u_int side, u_char *ra
 		id[0] = 0xFE;
 		id[1] = (u_char)cylinder;
 		id[2] = (u_char)side;
-		id[3] = order[i];
+		id[3] = (u_char)(base + order[i]);
 		id[4] = (u_char)layout->size_code;
 
 		p = put_bytes(p, 0x00, MFM_ID_SYNC_ZEROS);
@@ -292,12 +441,19 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 	{
 		u_int max_cylinders = format == DISKIMAGE_DMK ? DMK_MAX_CYLINDERS : SDF_MAX_CYLINDERS;
 		u_int max_sectors = format == DISKIMAGE_DMK ? DMK_MAX_SECTORS : SDF_MAX_SECTORS;
+		int track0_gap = fm_track(layout, 0) ? fm_gap3(layout->sectors_track0, layout) :
+						       mfm_gap3(layout->sectors_track0, layout);
+		int track_gap = layout->fm_all ? fm_gap3(layout->sectors_per_track, layout) :
+						 mfm_gap3(layout->sectors_per_track, layout);
+		u_int track0_interleave_limit = layout->fm_track0 ? layout->sectors_track0 : layout->sectors_per_track;
 
 		if (layout->cylinders > max_cylinders ||
 		    (layout->interleave > 1 && layout->interleave >= layout->sectors_per_track) ||
+		    (layout->interleave > 1 && layout->interleave >= track0_interleave_limit) ||
 		    layout->sectors_per_track > max_sectors || layout->sectors_track0 > max_sectors ||
-		    mfm_gap3(layout->sectors_per_track, layout) < 0 ||
-		    mfm_gap3(layout->sectors_track0, layout) < 0)
+		    track_gap < 0 || track0_gap < 0 ||
+		    (layout->span_sides && layout->sides == 2 &&
+		     (layout->sectors_per_track * 2 > 255 || layout->sectors_track0 * 2 > 255)))
 		{
 			return EOS_IA;
 		}
@@ -308,13 +464,19 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 		return EOS_IA;
 	}
 
+	/* Only DMK and SDF images record density. */
+	if ((layout->fm_track0 || layout->fm_all) && format != DISKIMAGE_DMK && format != DISKIMAGE_SDF)
+	{
+		return EOS_IA;
+	}
+
 	return 0;
 }
 
 
 static error_code create_image(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
 			       u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
-			       u_int interleave, u_char fill, int index_mark)
+			       u_int interleave, u_char fill, u_int flags)
 {
 	di_layout layout;
 	struct stat st;
@@ -322,7 +484,9 @@ static error_code create_image(const char *pathname, diskimage_format format, u_
 	FILE *fd;
 	error_code ec;
 
-	if (pathname == NULL || (sides != 1 && sides != 2) || tracks == 0 || sectors_per_track == 0)
+	if (pathname == NULL || (sides != 1 && sides != 2) || tracks == 0 || sectors_per_track == 0 ||
+	    (flags & ~(DISKIMAGE_CREATE_INDEX_MARK | DISKIMAGE_CREATE_FM_TRACK0 | DISKIMAGE_CREATE_SPAN_SIDES |
+		       DISKIMAGE_CREATE_SINGLE_DENSITY)) != 0)
 	{
 		return EOS_IA;
 	}
@@ -334,7 +498,10 @@ static error_code create_image(const char *pathname, diskimage_format format, u_
 	layout.sectors_track0 = sectors_track0 ? sectors_track0 : sectors_per_track;
 	layout.interleave = interleave ? interleave : 1;
 	layout.fill = fill;
-	layout.index_mark = index_mark;
+	layout.index_mark = (flags & DISKIMAGE_CREATE_INDEX_MARK) != 0;
+	layout.fm_track0 = (flags & DISKIMAGE_CREATE_FM_TRACK0) != 0;
+	layout.span_sides = (flags & DISKIMAGE_CREATE_SPAN_SIDES) != 0;
+	layout.fm_all = (flags & DISKIMAGE_CREATE_SINGLE_DENSITY) != 0;
 	for (layout.size_code = 0; layout.size_code < 4; layout.size_code++)
 	{
 		if (sector_size == 128U << layout.size_code)
@@ -348,6 +515,10 @@ static error_code create_image(const char *pathname, diskimage_format format, u_
 	}
 
 	total = (long long)tracks * sides * sectors_per_track - sectors_per_track + layout.sectors_track0;
+	if (layout.fm_track0 && sides == 2)
+	{
+		total += (long long)layout.sectors_track0 - sectors_per_track;
+	}
 	ec = check_layout(format, &layout, total);
 	if (ec != 0)
 	{
@@ -411,5 +582,14 @@ error_code _diskimage_create_index_mark(const char *pathname, diskimage_format f
 					u_int interleave, u_char fill)
 {
 	return create_image(pathname, format, sides, tracks, sector_size, sectors_per_track,
-			    sectors_track0, interleave, fill, 1);
+			    sectors_track0, interleave, fill, DISKIMAGE_CREATE_INDEX_MARK);
+}
+
+
+error_code _diskimage_create_ex(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
+				u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
+				u_int interleave, u_char fill, u_int flags)
+{
+	return create_image(pathname, format, sides, tracks, sector_size, sectors_per_track,
+			    sectors_track0, interleave, fill, flags);
 }

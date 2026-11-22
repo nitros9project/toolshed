@@ -60,10 +60,11 @@ error_code di_sdf_create(FILE *fd, const di_layout *layout)
 	{
 		for (side = 0; side < layout->sides && ec == 0; side++)
 		{
-			int count, i;
+			int count, i, double_density;
 
 			memset(record, 0, sizeof(record));
-			count = di_mfm_track(layout, cylinder, side, &record[SDF_TRACK_HEADER_SIZE], id_pos, data_pos);
+			count = di_format_track(layout, cylinder, side, &record[SDF_TRACK_HEADER_SIZE], id_pos, data_pos,
+						&double_density);
 			record[0] = (u_char)count;
 			for (i = 0; i < count; i++)
 			{
@@ -77,7 +78,7 @@ error_code di_sdf_create(FILE *fd, const di_layout *layout)
 				entry[3] = (u_char)(data >> 8);
 				entry[4] = (u_char)cylinder;
 				entry[5] = (u_char)side;
-				entry[6] = record[SDF_TRACK_HEADER_SIZE + id_pos[i] + 3];
+				entry[6] = record[SDF_TRACK_HEADER_SIZE + id_pos[i] + 3 * (double_density ? 1 : 2)];
 				entry[7] = (u_char)layout->size_code;
 			}
 			ec = di_file_write(fd, record, sizeof(record));
