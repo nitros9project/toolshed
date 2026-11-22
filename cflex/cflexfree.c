@@ -1,10 +1,10 @@
 /********************************************************************
- * flexfree.c - Disk utilization reporting utility for FLEX
+ * cflexfree.c - Disk utilization reporting utility for FLEX
  ********************************************************************/
 #include <util.h>
 #include <flexpath.h>
 
-#include "flex.h"
+#include "cflex.h"
 
 
 /* Help message */
@@ -23,7 +23,7 @@ static error_code do_free(char *disk)
 	flex_path_id path;
 	flex_sir sir;
 	u_int sectors, counted;
-	error_code ec = flex_disk_pathlist(disk, pathlist, sizeof(pathlist));
+	error_code ec = cflex_disk_pathlist(disk, pathlist, sizeof(pathlist));
 
 	if (ec == 0)
 	{
@@ -58,7 +58,7 @@ static error_code do_free(char *disk)
 }
 
 
-int flexfree(int argc, char *argv[])
+int cflexfree(int argc, char *argv[])
 {
 	error_code ec = 0;
 	char *p = NULL;
@@ -80,7 +80,7 @@ int flexfree(int argc, char *argv[])
 
 				default:
 					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
-					return (FLEX_USAGE_ERROR);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}

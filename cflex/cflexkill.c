@@ -1,10 +1,10 @@
 /********************************************************************
- * flexkill.c - Delete FLEX file
+ * cflexkill.c - Delete FLEX file
  ********************************************************************/
 #include <util.h>
 #include <flexpath.h>
 
-#include "flex.h"
+#include "cflex.h"
 
 
 /* Help message */
@@ -16,7 +16,7 @@ static char const *const helpMessage[] = {
 };
 
 
-int flexkill(int argc, char *argv[])
+int cflexkill(int argc, char *argv[])
 {
 	error_code ec = 0;
 	char *p = NULL;
@@ -39,7 +39,7 @@ int flexkill(int argc, char *argv[])
 
 				default:
 					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
-					return (FLEX_USAGE_ERROR);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}

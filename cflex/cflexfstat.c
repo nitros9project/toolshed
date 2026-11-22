@@ -1,11 +1,11 @@
 /********************************************************************
- * flexfstat.c - File status utility for FLEX
+ * cflexfstat.c - File status utility for FLEX
  ********************************************************************/
 #include <stdlib.h>
 #include <util.h>
 #include <flexpath.h>
 
-#include "flex.h"
+#include "cflex.h"
 
 
 /* Help message */
@@ -99,7 +99,7 @@ static error_code do_fstat(char *file)
 }
 
 
-int flexfstat(int argc, char *argv[])
+int cflexfstat(int argc, char *argv[])
 {
 	error_code ec = 0;
 	char *p = NULL;
@@ -122,7 +122,7 @@ int flexfstat(int argc, char *argv[])
 
 				default:
 					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
-					return (FLEX_USAGE_ERROR);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}

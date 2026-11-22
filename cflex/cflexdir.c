@@ -1,10 +1,10 @@
 /********************************************************************
- * flexdir.c - Directory utility for FLEX
+ * cflexdir.c - Directory utility for FLEX
  ********************************************************************/
 #include <util.h>
 #include <flexpath.h>
 
-#include "flex.h"
+#include "cflex.h"
 
 
 /* Help Message */
@@ -43,7 +43,7 @@ static error_code do_dir(char *disk)
 	u_int used = 0;
 	int files = 0;
 
-	ec = flex_disk_pathlist(disk, pathlist, sizeof(pathlist));
+	ec = cflex_disk_pathlist(disk, pathlist, sizeof(pathlist));
 	if (ec == 0)
 	{
 		ec = _flex_open(&path, pathlist, FAM_READ);
@@ -56,11 +56,11 @@ static error_code do_dir(char *disk)
 	_flex_gs_sir(path, &sir);
 	printf("Directory of: %s\n\n", pathlist);
 	printf("Volume: ");
-	flex_print_field((const u_char *)sir.volume_name, 8, 0);
+	cflex_print_field((const u_char *)sir.volume_name, 8, 0);
 	if (sir.volume_name[8] != '\0')
 	{
 		putchar('.');
-		flex_print_field((const u_char *)&sir.volume_name[8], 3, 0);
+		cflex_print_field((const u_char *)&sir.volume_name[8], 3, 0);
 	}
 	printf("  Number: %u  Created: %02u/%02u/%02u\n\n", sir.volume_number, sir.month, sir.day, sir.year);
 
@@ -83,9 +83,9 @@ static error_code do_dir(char *disk)
 		}
 
 		sectors = _flex_entry_sectors(&entry);
-		flex_print_field(entry.filename, 8, 1);
+		cflex_print_field(entry.filename, 8, 1);
 		putchar(' ');
-		flex_print_field(entry.file_extension, 3, 1);
+		cflex_print_field(entry.file_extension, 3, 1);
 		printf("  %5u  ", sectors);
 		print_attributes(entry.attributes, entry.random);
 		printf("  %02u/%02u/%02u\n", entry.month, entry.day, entry.year);
@@ -109,7 +109,7 @@ static error_code do_dir(char *disk)
 }
 
 
-int flexdir(int argc, char *argv[])
+int cflexdir(int argc, char *argv[])
 {
 	error_code ec = 0;
 	char *p = NULL;
@@ -131,7 +131,7 @@ int flexdir(int argc, char *argv[])
 
 				default:
 					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
-					return (FLEX_USAGE_ERROR);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}

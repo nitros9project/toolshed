@@ -101,12 +101,12 @@ static void check_commands(const char *tool, int expected_count)
 static void test_decb_aliases(void) { check_commands("decb", 15); }
 static void test_os9_aliases(void) { check_commands("os9", 22); }
 static void test_dgndos_aliases(void) { check_commands("dgndos", 13); }
-static void test_flex_aliases(void) { check_commands("flex", 13); }
+static void test_cflex_aliases(void) { check_commands("cflex", 13); }
 static void test_cecb_aliases(void) { check_commands("cecb", 8); }
 
 static void test_info_status_alias(void)
 {
-	const char *tools[] = {"decb", "os9", "dgndos", "flex"};
+	const char *tools[] = {"decb", "os9", "dgndos", "cflex"};
 	char output[8192], alias_output[8192];
 	int result, alias_result, i;
 
@@ -129,7 +129,7 @@ int main(void)
 	RUN(test_decb_aliases);
 	RUN(test_os9_aliases);
 	RUN(test_dgndos_aliases);
-	RUN(test_flex_aliases);
+	RUN(test_cflex_aliases);
 	RUN(test_cecb_aliases);
 	RUN(test_info_status_alias);
 	return TEST_REPORT();

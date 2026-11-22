@@ -1,6 +1,6 @@
 * flexboot.asm - Load FLEX on the Color Computer, from Disk BASIC
 *
-* Written for ToolShed's flex gen.  The FLEX.BAS that gen writes reads
+* Written for ToolShed's cflex gen.  The FLEX.BAS that gen writes reads
 * this from track 16, sector 9, into a string, and runs it there, so it
 * must be position independent and at most 255 bytes long.
 *

@@ -48,7 +48,7 @@ static const u_char loader[] = {
 /* As a Disk BASIC program, which DSKI$ reads into two strings.  Together they
    are 255 bytes, from where the loader runs. */
 static const char flex_bas[] =
-	"10 ' BOOT FLEX, FROM TOOLSHED FLEX GEN\r"
+	"10 ' BOOT FLEX, FROM TOOLSHED CFLEX GEN\r"
 	"20 CLEAR 1000\r"
 	"30 DSKI$ 0,16,9,A$,B$\r"
 	"40 L$=A$+LEFT$(B$,127):V=VARPTR(L$)\r"

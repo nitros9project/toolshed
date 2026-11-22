@@ -1,4 +1,4 @@
-/* Tests for the flex command. */
+/* Tests for the cflex command. */
 
 #include <string.h>
 #include <unistd.h>
@@ -9,7 +9,7 @@
 #include "toolshed.h"
 #include "commandrun.h"
 
-#define FLEXCMD "../flex/flex "
+#define FLEXCMD "../cflex/cflex "
 #define QUIET " > /dev/null 2>&1"
 #define TEST_IMAGE "flexcmd.dsk"
 #define TEST_DMK "flexcmd.dmk"
@@ -124,7 +124,7 @@ static void test_help(void)
 
 	ASSERT_RUN(1, FLEXCMD "nosuchcommand" CAPTURE);
 	read_output();
-	ASSERT_STRING_EQUALS("flex: unknown command 'nosuchcommand'\n", output);
+	ASSERT_STRING_EQUALS("cflex: unknown command 'nosuchcommand'\n", output);
 	ASSERT_RUN(1, FLEXCMD "dir -z x" QUIET);
 	remove(OUTPUT_FILE);
 }
@@ -375,7 +375,7 @@ static void test_dsave(void)
 	write_native(NATIVE_FILE, 1000);
 	ASSERT_RUN(0, FLEXCMD "copy " NATIVE_FILE " " TEST_IMAGE ",A.BIN");
 	ASSERT_RUN(0, FLEXCMD "copy " NATIVE_FILE " " TEST_IMAGE ",B.BIN");
-	ASSERT_RUN(0, FLEXCMD "dsave -e -x../flex/flex " TEST_IMAGE ", " TEST_DMK "," QUIET);
+	ASSERT_RUN(0, FLEXCMD "dsave -e -x../cflex/cflex " TEST_IMAGE ", " TEST_DMK "," QUIET);
 	ASSERT_RUN(0, FLEXCMD "copy " TEST_DMK ",B.BIN " NATIVE_OTHER);
 	size = file_size(NATIVE_OTHER, back, sizeof(back));
 	ASSERT_EQUALS(4 * 252, size);

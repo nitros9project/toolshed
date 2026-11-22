@@ -1,10 +1,10 @@
 /********************************************************************
- * flexrename.c - Rename a FLEX file
+ * cflexrename.c - Rename a FLEX file
  ********************************************************************/
 #include <util.h>
 #include <flexpath.h>
 
-#include "flex.h"
+#include "cflex.h"
 
 
 /* Help message */
@@ -16,7 +16,7 @@ static char const *const helpMessage[] = {
 };
 
 
-int flexrename(int argc, char *argv[])
+int cflexrename(int argc, char *argv[])
 {
 	error_code ec = 0;
 	char *p = NULL, *file = NULL, *new_name = NULL;
@@ -38,7 +38,7 @@ int flexrename(int argc, char *argv[])
 
 				default:
 					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
-					return (FLEX_USAGE_ERROR);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}

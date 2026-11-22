@@ -1,11 +1,11 @@
 /********************************************************************
- * flexlist.c - List utility for FLEX
+ * cflexlist.c - List utility for FLEX
  ********************************************************************/
 #include <util.h>
 #include <cococonv.h>
 #include <cocopath.h>
 
-#include "flex.h"
+#include "cflex.h"
 
 
 /* Help message */
@@ -46,7 +46,7 @@ static error_code do_list(char *file)
 }
 
 
-int flexlist(int argc, char *argv[])
+int cflexlist(int argc, char *argv[])
 {
 	error_code ec = 0;
 	char *p = NULL;
@@ -69,7 +69,7 @@ int flexlist(int argc, char *argv[])
 
 				default:
 					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
-					return (FLEX_USAGE_ERROR);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}

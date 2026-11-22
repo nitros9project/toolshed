@@ -1,10 +1,10 @@
 /********************************************************************
- * flexattr.c - File attribute utility for FLEX
+ * cflexattr.c - File attribute utility for FLEX
  ********************************************************************/
 #include <util.h>
 #include <flexpath.h>
 
-#include "flex.h"
+#include "cflex.h"
 
 
 /* Help message */
@@ -58,7 +58,7 @@ static error_code do_attr(char *file, int clear, u_int set)
 }
 
 
-int flexattr(int argc, char *argv[])
+int cflexattr(int argc, char *argv[])
 {
 	error_code ec = 0;
 	char *p = NULL;
@@ -102,7 +102,7 @@ int flexattr(int argc, char *argv[])
 
 				default:
 					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
-					return (FLEX_USAGE_ERROR);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}

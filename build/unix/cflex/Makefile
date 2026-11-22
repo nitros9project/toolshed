@@ -1,12 +1,12 @@
-# Makefile for flex
+# Makefile for cflex
 include ../rules.mak
 
-vpath %.c ../../../flex
+vpath %.c ../../../cflex
 
 CFLAGS	+= -I../../../include -Wall -MMD -MP
 
-SRCS = flex_main.c flexattr.c flexcopy.c flexdir.c flexdskinit.c flexdsave.c flexfree.c \
-	flexfstat.c flexgen.c flexkill.c flexlist.c flexrename.c
+SRCS = cflex_main.c cflexattr.c cflexcopy.c cflexdir.c cflexdskinit.c cflexdsave.c cflexfree.c \
+	cflexfstat.c cflexgen.c cflexkill.c cflexlist.c cflexrename.c
 
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)
@@ -20,10 +20,10 @@ LDFLAGS += $(patsubst %,-L%,$(dir $(LIBDEPS))) \
            $(patsubst ../lib%/lib%.a,-l%,$(LIBDEPS)) \
            -lm
 
-flex$(SUFEXE): $(OBJS) $(LIBDEPS)
+cflex$(SUFEXE): $(OBJS) $(LIBDEPS)
 	$(CC) -o $@ $(OBJS) $(LDFLAGS)
 
 clean:
-	$(RM) *.o *.d flex flex.exe
+	$(RM) *.o *.d cflex cflex.exe
 
 -include $(DEPS)

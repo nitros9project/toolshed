@@ -1,11 +1,11 @@
 /********************************************************************
- * flexdsave.c - Copy the contents of a FLEX disk or a directory
+ * cflexdsave.c - Copy the contents of a FLEX disk or a directory
  ********************************************************************/
 #include <string.h>
 #include <toolshed.h>
 #include <util.h>
 
-#include "flex.h"
+#include "cflex.h"
 
 
 /* Help message */
@@ -16,12 +16,12 @@ static char const *const helpMessage[] = {
 	"     -e         actually execute commands\n",
 	"     -l         translate text on copy\n",
 	"     -r         force rewrite on copy\n",
-	"     -x=path    flex executable to run the commands with\n",
+	"     -x=path    cflex executable to run the commands with\n",
 	NULL
 };
 
 
-int flexdsave(int argc, char *argv[])
+int cflexdsave(int argc, char *argv[])
 {
 	ts_dsave_options options;
 	error_code ec;
@@ -30,7 +30,7 @@ int flexdsave(int argc, char *argv[])
 	int i, count = 0;
 
 	memset(&options, 0, sizeof(options));
-	options.program = "flex";
+	options.program = "cflex";
 
 	/* FLEX has no directories, and so no makdir. */
 	options.no_directories = 1;
@@ -64,7 +64,7 @@ int flexdsave(int argc, char *argv[])
 					if (*p == '\0')
 					{
 						fprintf(stderr, "%s: -x needs the path of an executable\n", argv[0]);
-						return (FLEX_USAGE_ERROR);
+						return (CFLEX_USAGE_ERROR);
 					}
 					options.executable = p;
 					p += strlen(p) - 1;
@@ -77,7 +77,7 @@ int flexdsave(int argc, char *argv[])
 
 				default:
 					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
-					return (FLEX_USAGE_ERROR);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}
@@ -105,7 +105,7 @@ int flexdsave(int argc, char *argv[])
 	if (count < 1 || count > 2)
 	{
 		show_help(helpMessage);
-		return (FLEX_USAGE_ERROR);
+		return (CFLEX_USAGE_ERROR);
 	}
 
 	/* if target is NULL, then source is really . and target is source */

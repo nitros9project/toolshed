@@ -1,5 +1,5 @@
 /********************************************************************
- * flexcopy.c - Copy utility for FLEX
+ * cflexcopy.c - Copy utility for FLEX
  ********************************************************************/
 #include <string.h>
 #include <strings.h>
@@ -7,7 +7,7 @@
 #include <toolshed.h>
 #include <util.h>
 
-#include "flex.h"
+#include "cflex.h"
 
 
 
@@ -166,7 +166,7 @@ static error_code copy_file(char *source, char *target, int target_is_directory,
 
 	if (_coco_refuse_disk_image_target("copy", destination))
 	{
-		return FLEX_USAGE_ERROR;
+		return CFLEX_USAGE_ERROR;
 	}
 
 	handled = 0;
@@ -185,7 +185,7 @@ static error_code copy_file(char *source, char *target, int target_is_directory,
 }
 
 
-int flexcopy(int argc, char *argv[])
+int cflexcopy(int argc, char *argv[])
 {
 	error_code ec = 0;
 	char *p = NULL, *target = NULL;
@@ -218,7 +218,7 @@ int flexcopy(int argc, char *argv[])
 
 				default:
 					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
-					return (FLEX_USAGE_ERROR);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}
@@ -242,7 +242,7 @@ int flexcopy(int argc, char *argv[])
 	if (!target_is_directory && count > 2)
 	{
 		fprintf(stderr, "%s: two or more sources requires target to be a directory\n", argv[0]);
-		return (FLEX_USAGE_ERROR);
+		return (CFLEX_USAGE_ERROR);
 	}
 
 	for (i = 1; i < argc; i++)
@@ -257,7 +257,7 @@ int flexcopy(int argc, char *argv[])
 		copy_ec = copy_file(argv[i], target, target_is_directory, eol_translate, rewrite);
 		if (copy_ec != 0)
 		{
-			if (copy_ec != FLEX_USAGE_ERROR)
+			if (copy_ec != CFLEX_USAGE_ERROR)
 			{
 				fprintf(stderr, "%s: error %d copying '%s'\n", argv[0], copy_ec, argv[i]);
 			}

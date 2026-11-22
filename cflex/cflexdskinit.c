@@ -1,12 +1,12 @@
 /********************************************************************
- * flexdskinit.c - FLEX Format Utility
+ * cflexdskinit.c - FLEX Format Utility
  ********************************************************************/
 #include <stdlib.h>
 #include <string.h>
 #include <util.h>
 #include <flexpath.h>
 
-#include "flex.h"
+#include "cflex.h"
 
 
 /* Help message */
@@ -47,7 +47,7 @@ static char *option_value(char **p)
 }
 
 
-int flexdskinit(int argc, char **argv)
+int cflexdskinit(int argc, char **argv)
 {
 	error_code ec = 0;
 	char *p = NULL;
@@ -99,7 +99,7 @@ int flexdskinit(int argc, char **argv)
 					if (format == DISKIMAGE_UNKNOWN)
 					{
 						fprintf(stderr, "%s: unknown format '%s'\n", argv[0], name);
-						return (FLEX_USAGE_ERROR);
+						return (CFLEX_USAGE_ERROR);
 					}
 					break;
 				}
@@ -111,7 +111,7 @@ int flexdskinit(int argc, char **argv)
 
 				default:
 					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
-					return (FLEX_USAGE_ERROR);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}
@@ -120,12 +120,12 @@ int flexdskinit(int argc, char **argv)
 	if (volume_number < 0 || volume_number > 0xFFFF)
 	{
 		fprintf(stderr, "%s: the volume number must be 0 to 65535\n", argv[0]);
-		return (FLEX_USAGE_ERROR);
+		return (CFLEX_USAGE_ERROR);
 	}
 	if (tracks < 2 || tracks > 256 || (sides != 1 && sides != 2))
 	{
 		fprintf(stderr, "%s: a disk has 2 to 256 tracks and 1 or 2 sides\n", argv[0]);
-		return (FLEX_USAGE_ERROR);
+		return (CFLEX_USAGE_ERROR);
 	}
 
 	/* 2. Walk command line for pathnames. */
@@ -145,13 +145,13 @@ int flexdskinit(int argc, char **argv)
 		if (ec == EOS_BPNAM)
 		{
 			fprintf(stderr, "%s: '%s' is not a volume name\n", argv[0], volume_name);
-			return (FLEX_USAGE_ERROR);
+			return (CFLEX_USAGE_ERROR);
 		}
 		if (ec == EOS_IA)
 		{
 			fprintf(stderr, "%s: '%s' can't have %d tracks, %d sides and %s density in this format\n",
 				argv[0], p, tracks, sides, double_density ? "double" : "single");
-			return (FLEX_USAGE_ERROR);
+			return (CFLEX_USAGE_ERROR);
 		}
 		if (ec != 0)
 		{

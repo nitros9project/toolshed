@@ -1,12 +1,12 @@
 /********************************************************************
- * flexgen.c - Make a FLEX disk bootable on the Color Computer
+ * cflexgen.c - Make a FLEX disk bootable on the Color Computer
  ********************************************************************/
 #include <string.h>
 #include <toolshed.h>
 #include <util.h>
 #include <flexpath.h>
 
-#include "flex.h"
+#include "cflex.h"
 
 
 /* Help message */
@@ -27,7 +27,7 @@ static error_code do_gen(const char *command, char *disk, char *file, const char
 	char pathlist[1024];
 	char target[1024];
 	int length;
-	error_code ec = flex_disk_pathlist(disk, pathlist, sizeof(pathlist));
+	error_code ec = cflex_disk_pathlist(disk, pathlist, sizeof(pathlist));
 
 	if (ec != 0)
 	{
@@ -44,13 +44,13 @@ static error_code do_gen(const char *command, char *disk, char *file, const char
 	{
 		fprintf(stderr, "%s: '%s' can't boot FLEX: it must be double density, with at least 19 tracks. "
 			"Make one with dskinit -d.\n", command, disk);
-		return FLEX_USAGE_ERROR;
+		return CFLEX_USAGE_ERROR;
 	}
 	if (ec == EOS_FNA)
 	{
 		fprintf(stderr, "%s: '%s' has files in the sectors a boot disk needs, track 16 sectors 1 to 9 "
 			"and track 17 sectors 2 and 3. Use a new disk.\n", command, disk);
-		return FLEX_USAGE_ERROR;
+		return CFLEX_USAGE_ERROR;
 	}
 	if (ec != 0)
 	{
@@ -72,13 +72,13 @@ static error_code do_gen(const char *command, char *disk, char *file, const char
 	{
 		fprintf(stderr, "%s: the loader can't read all of '%s': it reads only side 0 of tracks past 0. "
 			"Put it on a new single sided disk first.\n", command, target);
-		return FLEX_USAGE_ERROR;
+		return CFLEX_USAGE_ERROR;
 	}
 	return ec;
 }
 
 
-int flexgen(int argc, char *argv[])
+int cflexgen(int argc, char *argv[])
 {
 	error_code ec = 0;
 	char *p = NULL;
@@ -107,7 +107,7 @@ int flexgen(int argc, char *argv[])
 
 				default:
 					fprintf(stderr, "%s: unknown option '%c'\n", argv[0], *p);
-					return (FLEX_USAGE_ERROR);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}
@@ -122,7 +122,7 @@ int flexgen(int argc, char *argv[])
 		else
 		{
 			fprintf(stderr, "%s: too many arguments\n", argv[0]);
-			return (FLEX_USAGE_ERROR);
+			return (CFLEX_USAGE_ERROR);
 		}
 	}
 
@@ -134,11 +134,11 @@ int flexgen(int argc, char *argv[])
 	if (name[0] == '\0')
 	{
 		fprintf(stderr, "%s: -n needs a filename\n", argv[0]);
-		return (FLEX_USAGE_ERROR);
+		return (CFLEX_USAGE_ERROR);
 	}
 
 	ec = do_gen(argv[0], disk, file, name);
-	if (ec != 0 && ec != FLEX_USAGE_ERROR)
+	if (ec != 0 && ec != CFLEX_USAGE_ERROR)
 	{
 		fprintf(stderr, "%s: error %d with '%s'\n", argv[0], ec, disk);
 	}

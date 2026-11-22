@@ -82,20 +82,20 @@ ToolShed v2.7.0
   * [LIST](#list_dgndos) - Display the contents of a text file
   * [REVEAL](#reveal_dgndos) - Explain a disk image location
   * [RENAME](#rename_dgndos) - Give a file a new filename
-* [flex](#flex) - Manipulate FLEX formatted disk images
-  * [ATTR](#attr_flex) - Display or change the protection of files
-  * [COPY](#copy_flex) - Copy one or more files to a target file or directory
-  * [DIR](#dir_flex) - Display the contents of a disk's directory
-  * [DSAVE](#dsave_flex) - Copy the contents of a disk or directory
-  * [DSKINIT](#dskinit_flex) - Create a FLEX image
-  * [DUMP](#dump_flex) - Display the contents of a binary file
-  * [FREE](#free_flex) - Display the amount of free space on an image
-  * [FSTAT](#fstat_flex) - Display detailed information about a file
-  * [GEN](#gen_flex) - Make a disk boot FLEX on the Color Computer
+* [cflex](#cflex) - Manipulate FLEX formatted disk images
+  * [ATTR](#attr_cflex) - Display or change the protection of files
+  * [COPY](#copy_cflex) - Copy one or more files to a target file or directory
+  * [DIR](#dir_cflex) - Display the contents of a disk's directory
+  * [DSAVE](#dsave_cflex) - Copy the contents of a disk or directory
+  * [DSKINIT](#dskinit_cflex) - Create a FLEX image
+  * [DUMP](#dump_cflex) - Display the contents of a binary file
+  * [FREE](#free_cflex) - Display the amount of free space on an image
+  * [FSTAT](#fstat_cflex) - Display detailed information about a file
+  * [GEN](#gen_cflex) - Make a disk boot FLEX on the Color Computer
   * [INFO](#info) - Report disk image format and track layout, or change write protection
-  * [KILL](#kill_flex) - Delete one or more files
-  * [LIST](#list_flex) - Display the contents of a text file
-  * [RENAME](#rename_flex) - Give a file a new filename
+  * [KILL](#kill_cflex) - Delete one or more files
+  * [LIST](#list_cflex) - Display the contents of a text file
+  * [RENAME](#rename_cflex) - Give a file a new filename
 
 ---
 
@@ -117,7 +117,7 @@ ToolShed started out life in the mid-to-late 1990s as a 6809 cross-assembler und
 
 The main task of the these tools is to allow the manipulation, inspection and copying of files from disk and cassette images to your PC's file system, and vice versa. The os9 tool recognizes disk images that contain data in the RBF file format created under OS-9 or NitrOS-9, while the decb tool recognizes disk images formatted under Disk BASIC for the Color Computer. The cecb tool recognizes cassette data in the wave, CAS, and C10 formats, for both Color BASIC and Micro Color BASIC.
 
-The `os9`, `decb`, `dgndos`, `flex`, and `cecb` executives also accept two-letter
+The `os9`, `decb`, `dgndos`, `cflex`, and `cecb` executives also accept two-letter
 subcommand codes. Run an executive without arguments (or with `-h`) to list
 each full name, its code in parentheses, and a short description. For example,
 `decb dr disk.dsk,` is equivalent to `decb dir disk.dsk,`. Shared subcommands
@@ -154,13 +154,13 @@ This is a tool used to convert lwasm listing files into MAME comment files.
 
 ### info subcommand
 
-The os9, decb, dgndos and flex tools share an info subcommand to report the format and track layout of DMK, SDF, JVC, VDK and raw disk images.
+The os9, decb, dgndos and cflex tools share an info subcommand to report the format and track layout of DMK, SDF, JVC, VDK and raw disk images.
 
 ### dgndos
 
 This is a tool used to manipulate, inspect and copy files on disk images formatted under Dragon DOS.
 
-### flex
+### cflex
 
 This is a tool used to manipulate, inspect and copy files on disk images formatted under FLEX, the operating system from Technical Systems Consultants that Frank Hogg Laboratory sold for the Color Computer.
 
@@ -193,7 +193,7 @@ The library source directories are at the project root. Their public headers are
 | `librbf` | `os9path.h`, `rbfutil.h` | Implements OS-9/NitrOS-9 RBF filesystems, including directories, allocation bitmaps, file attributes, formatting and file I/O. Supplies the filesystem operations behind `os9` and the OS-9 backend of `libcoco`. |
 | `libdecb` | `decbpath.h`, `decbutil.h` | Implements Disk BASIC filesystems, FAT/granule allocation, directory entries, formatting and HDB-DOS drive/offset access. Also supplies BASIC token conversion and binary conversion helpers. Used by `decb` and the Disk BASIC backend of `libcoco`. |
 | `libdragondos` | `dragondospath.h` | Implements Dragon DOS directories, allocation, file access, protection attributes, formatting and BASIC token conversion. Used by `dgndos` and the Dragon DOS backend of `libcoco`. |
-| `libflex` | `flexpath.h` | Implements FLEX directories, the free chain, sector-chained file access, random files, protection attributes and formatting, with FLEX text and binary file helpers. Used by `flex` and the FLEX backend of `libcoco`. |
+| `libflex` | `flexpath.h` | Implements FLEX directories, the free chain, sector-chained file access, random files, protection attributes and formatting, with FLEX text and binary file helpers. Used by `cflex` and the FLEX backend of `libcoco`. |
 | `libcecb` | `cecbpath.h` | Implements cassette file access for WAV, CAS and C10 containers, including cassette blocks and BASIC token conversion. Used by `cecb` and the cassette backend of `libcoco`; it does not use the disk-sector layer. |
 | `libnative` | `nativepath.h` | Wraps host files and directories in a path-based API similar to the image backends. Enables transfers between host files and image contents through `libcoco`. |
 | `libcoco` | `cocopath.h` | Dispatches common open, read, write, seek, directory and metadata operations to native, OS-9, Disk BASIC, Dragon DOS, FLEX or cassette paths. Also detects possible disk filesystems, including multiple filesystems in one image. Used by shared copy operations and applications that work across several backends. |
@@ -308,7 +308,7 @@ On our theoretical host computer, a file exists that you wished to have copied t
 
 Notice the use of the comma at the end of the second parameter. This tells the os9 program that you wish to copy the file test1 over to the root directory of the os9.dsk image.
 
-What happens if you don't put the comma at the end of the second parameter?  os9 copy would copy test1 on top of the os9.dsk image, replacing your entire disk image with the contents of test1, so the copy commands refuse to do that. An existing file on the host that is or looks like a disk image is never replaced, even with -r. The copy is refused, and says why. A file looks like one if it has the extension .dsk, .vdk, .dmk, .sdf, .jvc, .os9, .img or .ima, has the header of a disk image format, or is at least a track long (4608 bytes) and a whole number of sectors. This applies to os9, decb, cecb, dgndos and flex copy, and to dsave. To replace such a file, delete it first.
+What happens if you don't put the comma at the end of the second parameter?  os9 copy would copy test1 on top of the os9.dsk image, replacing your entire disk image with the contents of test1, so the copy commands refuse to do that. An existing file on the host that is or looks like a disk image is never replaced, even with -r. The copy is refused, and says why. A file looks like one if it has the extension .dsk, .vdk, .dmk, .sdf, .jvc, .os9, .img or .ima, has the header of a disk image format, or is at least a track long (4608 bytes) and a whole number of sectors. This applies to os9, decb, cecb, dgndos and cflex copy, and to dsave. To replace such a file, delete it first.
 
 Let's take the example a step further. A file exists in the os9.dsk image file, in RBF format, that you wish to copy to your host file system, in the root directory. The file on the disk image is named test2, and resides in the RBF subdirectory path DIR1/DIR2. How would you copy the file to your host file system's root?
 
@@ -1825,7 +1825,7 @@ This tool allows you to process lwasm's listing files to produce a file MAME can
 
 ---
 
-<h2 id="info">info (os9, decb, dgndos and flex)</h2>
+<h2 id="info">info (os9, decb, dgndos and cflex)</h2>
 
 This shared subcommand reports the format and track layout of disk images, and sets or clears their write protect flag. Each tool accepts every supported image format, regardless of its filesystem.
 
@@ -1834,7 +1834,7 @@ This shared subcommand reports the format and track layout of disk images, and s
     os9 info {[<opts>]} <file> {<file> ...}
     decb info {[<opts>]} <file> {<file> ...}
     dgndos info {[<opts>]} <file> {<file> ...}
-    flex info {[<opts>]} <file> {<file> ...}
+    cflex info {[<opts>]} <file> {<file> ...}
     -p  set the write protect flag of a DMK, SDF or VDK image
     -u  clear the write protect flag of a DMK, SDF or VDK image
     -s  report one file's possible filesystems in the exit status
@@ -1863,7 +1863,7 @@ If the image could hold an OS-9, Disk BASIC, Dragon DOS or FLEX filesystem, info
     Possible filesystems: OS-9, Disk BASIC
     Tracks 0 to 34 are 18 sectors (1-18), 256 bytes each.
 
-`os9 dir`, `decb dir`, `dgndos dir` and `flex dir` end their listing by naming any other filesystems the image could hold.
+`os9 dir`, `decb dir`, `dgndos dir` and `cflex dir` end their listing by naming any other filesystems the image could hold.
 
     Other possible filesystems: Disk BASIC
 
@@ -1881,7 +1881,7 @@ The filesystems add together, so 3 is OS-9 and Disk BASIC. -s takes one file, an
     os9 info -s disk.dmk; fs=$?
     if [ $((fs & 64)) -ne 0 ]; then echo "error"; elif [ $((fs & 1)) -ne 0 ]; then echo "has OS-9"; fi
 
-With -p or -u, info changes the write protect flag instead of reporting the layout. Raw and JVC images have no such flag. os9, decb, dgndos and flex can read a write protected image, but cannot change it.
+With -p or -u, info changes the write protect flag instead of reporting the layout. Raw and JVC images have no such flag. os9, decb, dgndos and cflex can read a write protected image, but cannot change it.
 
     file.txt is not a DMK, SDF, JVC, VDK, nor raw disk image.
 
@@ -2150,13 +2150,13 @@ or a `0x` hexadecimal prefix.
 
 ---
 
-<h2 id="flex">flex</h2>
+<h2 id="cflex">cflex</h2>
 
-The following pages document the commands built into the flex tool. Its interface is similar to that of the dgndos tool.
+The following pages document the commands built into the cflex tool. Its interface is similar to that of the dgndos tool.
 
-Issuing the flex command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using the subcommand.
+Issuing the cflex command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using the subcommand.
 
-Use flex to copy files to and from FLEX formatted disk images and your host file system. It works on raw, JVC, VDK, DMK and SDF images. A file on a disk is named `<disk>,<file>`.
+Use cflex to copy files to and from FLEX formatted disk images and your host file system. It works on raw, JVC, VDK, DMK and SDF images. A file on a disk is named `<disk>,<file>`.
 
 FLEX addresses a disk by track, from 0, and sector, from 1. Track 0 holds the boot sectors, the System Information Record (SIR) in sector 3, which names the volume, the geometry and the free chain, and the directory from sector 5. Every sector is linked to the next one of its file, the directory or the free chain, and holds 252 bytes of data. Only whole sectors are recorded, so a file's size is always a multiple of 252 bytes, and a file copied to the host is padded with nuls. As FLEX does, a file left with no sectors when it is closed is deleted, so copying an empty file leaves nothing on the disk. The directory ends at the first entry that has never been used, as FLEX's search ends there.
 
@@ -2168,7 +2168,7 @@ A random file starts with sectors that map the rest, as many as its directory en
 
 ---
 
-<h3 id="attr_flex">ATTR - Display or change the protection of files</h3>
+<h3 id="attr_cflex">ATTR - Display or change the protection of files</h3>
 
 #### Syntax and Scope
 
@@ -2184,16 +2184,16 @@ A random file starts with sectors that map the rest, as many as its directory en
 
 #### Description
 
-These are the protections of FLEX's PROT command. With no options, each file's protection is shown as `WDRC`, with a `.` for each one it doesn't have. A write protected file can't be written to, deleted or renamed. As in FLEX, a delete or read protected one can't be deleted or renamed. flex still reads read protected files, and lists catalog protected ones, which FLEX doesn't.
+These are the protections of FLEX's PROT command. With no options, each file's protection is shown as `WDRC`, with a `.` for each one it doesn't have. A write protected file can't be written to, deleted or renamed. As in FLEX, a delete or read protected one can't be deleted or renamed. cflex still reads read protected files, and lists catalog protected ones, which FLEX doesn't.
 
 #### Examples
 
-    flex attr -w -d disk.dsk,FLEX.SYS
-    flex attr -x disk.dsk,FLEX.SYS
+    cflex attr -w -d disk.dsk,FLEX.SYS
+    cflex attr -x disk.dsk,FLEX.SYS
 
 ---
 
-<h3 id="copy_flex">COPY - Copy one or more files to a target file or directory</h3>
+<h3 id="copy_cflex">COPY - Copy one or more files to a target file or directory</h3>
 
 #### Syntax and Scope
 
@@ -2214,13 +2214,13 @@ An existing file on the host that is or looks like a disk image is never replace
 
 #### Examples
 
-    flex copy prog.cmd disk.dsk,PROG.CMD
-    flex copy -l notes.txt readme.txt disk.dmk,
-    flex copy -l disk.dmk,README.TXT readme.txt
+    cflex copy prog.cmd disk.dsk,PROG.CMD
+    cflex copy -l notes.txt readme.txt disk.dmk,
+    cflex copy -l disk.dmk,README.TXT readme.txt
 
 ---
 
-<h3 id="dir_flex">DIR - Display the contents of a disk's directory</h3>
+<h3 id="dir_cflex">DIR - Display the contents of a disk's directory</h3>
 
 #### Syntax and Scope
 
@@ -2244,7 +2244,7 @@ The free space is that the SIR records. A directory that can't be read, or whose
 
 ---
 
-<h3 id="dsave_flex">DSAVE - Copy the contents of a disk or directory</h3>
+<h3 id="dsave_cflex">DSAVE - Copy the contents of a disk or directory</h3>
 
 #### Syntax and Scope
 
@@ -2255,21 +2255,21 @@ The free space is that the SIR records. A directory that can't be read, or whose
 <tr><td>-e</td><td>actually execute commands</td></tr>
 <tr><td>-l</td><td>translate text on copy</td></tr>
 <tr><td>-r</td><td>force rewrite on copy</td></tr>
-<tr><td>-x=path</td><td>flex executable to run the commands with, rather than the one the shell finds</td></tr>
+<tr><td>-x=path</td><td>cflex executable to run the commands with, rather than the one the shell finds</td></tr>
 </table>
 
 #### Description
 
-This works as dgndos dsave does, running `flex copy` for each file. FLEX has no directories, so a source directory that holds one is refused when dsave reaches it.
+This works as dgndos dsave does, running `cflex copy` for each file. FLEX has no directories, so a source directory that holds one is refused when dsave reaches it.
 
 #### Examples
 
-    flex dsave -e disk.dsk, saved
-    flex dsave -e -x=build/unix/flex/flex saved disk.dmk,
+    cflex dsave -e disk.dsk, saved
+    cflex dsave -e -x=build/unix/cflex/cflex saved disk.dmk,
 
 ---
 
-<h3 id="dskinit_flex">DSKINIT - Create a FLEX image</h3>
+<h3 id="dskinit_cflex">DSKINIT - Create a FLEX image</h3>
 
 #### Syntax and Scope
 
@@ -2287,19 +2287,19 @@ This works as dgndos dsave does, running `flex copy` for each file. FLEX has no 
 
 #### Description
 
-Without -f, the format comes from the disk's extension, and otherwise it is raw. An existing file is not replaced. Disks are laid out as NEWDISK lays them out: the directory fills the rest of track 0, and every sector of the other tracks is in the free chain, in order. The SIR has the date, from SOURCE_DATE_EPOCH if it is set. Track 0 is single density, with 10 sectors on each side, even on a double density disk. The boot sectors of track 0 are left empty, as the Color Computer doesn't use them. To make a disk that boots, use [gen](#gen_flex) on a double density disk.
+Without -f, the format comes from the disk's extension, and otherwise it is raw. An existing file is not replaced. Disks are laid out as NEWDISK lays them out: the directory fills the rest of track 0, and every sector of the other tracks is in the free chain, in order. The SIR has the date, from SOURCE_DATE_EPOCH if it is set. Track 0 is single density, with 10 sectors on each side, even on a double density disk. The boot sectors of track 0 are left empty, as the Color Computer doesn't use them. To make a disk that boots, use [gen](#gen_cflex) on a double density disk.
 
 DMK and SDF images are recorded as a Color Computer floppy controller would format them, with track 0, or every track of a single density disk, in single density. A raw image keeps only track 0's sectors unless -p is given. VDK images hold only double density disks.
 
 #### Examples
 
-    flex dskinit work.dsk
-    flex dskinit -d -t40 -nWORK.DSK work.dmk
-    flex dskinit -d -s2 -t40 -p big.dsk
+    cflex dskinit work.dsk
+    cflex dskinit -d -t40 -nWORK.DSK work.dmk
+    cflex dskinit -d -s2 -t40 -p big.dsk
 
 ---
 
-<h3 id="dump_flex">DUMP - Display the contents of a binary file</h3>
+<h3 id="dump_cflex">DUMP - Display the contents of a binary file</h3>
 
 #### Syntax and Scope
 
@@ -2311,7 +2311,7 @@ This is the same dump command as in the os9, decb and dgndos tools.
 
 ---
 
-<h3 id="free_flex">FREE - Display the amount of free space on an image</h3>
+<h3 id="free_cflex">FREE - Display the amount of free space on an image</h3>
 
 #### Syntax and Scope
 
@@ -2327,7 +2327,7 @@ The geometry and free space that the SIR records are shown. The free chain is th
 
 ---
 
-<h3 id="fstat_flex">FSTAT - Display detailed information about a file</h3>
+<h3 id="fstat_cflex">FSTAT - Display detailed information about a file</h3>
 
 #### Syntax and Scope
 
@@ -2355,7 +2355,7 @@ A file's protection, type, date, size and first and last sectors are shown. A fi
 
 ---
 
-<h3 id="gen_flex">GEN - Make a disk boot FLEX on the Color Computer</h3>
+<h3 id="gen_cflex">GEN - Make a disk boot FLEX on the Color Computer</h3>
 
 #### Syntax and Scope
 
@@ -2377,13 +2377,13 @@ Disk BASIC sees the disk as one of its own, but the other ToolShed commands, suc
 
 #### Examples
 
-    flex dskinit -d -t35 boot.dmk
-    flex gen boot.dmk FLEX.SYS
-    flex gen -nFLEX2.SYS boot.dmk
+    cflex dskinit -d -t35 boot.dmk
+    cflex gen boot.dmk FLEX.SYS
+    cflex gen -nFLEX2.SYS boot.dmk
 
 ---
 
-<h3 id="kill_flex">KILL - Delete one or more files</h3>
+<h3 id="kill_cflex">KILL - Delete one or more files</h3>
 
 #### Syntax and Scope
 
@@ -2395,7 +2395,7 @@ As in FLEX, the file's sectors go to the end of the free chain, and its entry is
 
 ---
 
-<h3 id="list_flex">LIST - Display the contents of a text file</h3>
+<h3 id="list_cflex">LIST - Display the contents of a text file</h3>
 
 #### Syntax and Scope
 
@@ -2407,7 +2407,7 @@ Lines are shown with the host's line endings, compressed spaces are expanded, an
 
 ---
 
-<h3 id="rename_flex">RENAME - Give a file a new filename</h3>
+<h3 id="rename_cflex">RENAME - Give a file a new filename</h3>
 
 #### Syntax and Scope
 
@@ -2419,5 +2419,5 @@ As in FLEX, a new name with no extension keeps the file's extension, and a write
 
 #### Examples
 
-    flex rename disk.dsk,OLD.TXT NEW
-    flex rename disk.dsk,NEW.TXT NEW.BAK
+    cflex rename disk.dsk,OLD.TXT NEW
+    cflex rename disk.dsk,NEW.TXT NEW.BAK
