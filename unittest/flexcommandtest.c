@@ -79,6 +79,19 @@ static void write_native(const char *pathname, u_int size)
 	fclose(fp);
 }
 
+/* A file larger than data can hold */
+static void write_zeros(const char *pathname, u_int size)
+{
+	FILE *fp = fopen(pathname, "wb");
+	u_int i;
+
+	for (i = 0; i < size; i++)
+	{
+		fputc(0, fp);
+	}
+	fclose(fp);
+}
+
 static void write_text(const char *pathname, const char *text)
 {
 	FILE *fp = fopen(pathname, "wb");
@@ -386,6 +399,51 @@ static void test_other_tools(void)
 	clean_up();
 }
 
+
+static void test_gen(void)
+{
+	clean_up();
+	write_native(NATIVE_FILE, 3000);
+
+	/* Only a double density disk can boot. */
+	ASSERT_RUN(0, FLEXCMD "dskinit " TEST_DMK);
+	ASSERT_RUN(1, FLEXCMD "gen " TEST_DMK " " NATIVE_FILE CAPTURE);
+	read_output();
+	ASSERT("single density is refused", strstr(output, "must be double density") != NULL);
+	remove(TEST_DMK);
+
+	ASSERT_RUN(0, FLEXCMD "dskinit -d " TEST_DMK);
+	ASSERT_RUN(0, FLEXCMD "gen " TEST_DMK " " NATIVE_FILE);
+	ASSERT_RUN(0, FLEXCMD "dir " TEST_DMK CAPTURE);
+	read_output();
+	ASSERT("FLEX.SYS is copied", strstr(output, "\nFLEX     SYS     12  ") != NULL);
+	ASSERT("the boot sectors are taken", strstr(output, "12 sectors used, 589 sectors free") != NULL);
+	ASSERT("Disk BASIC is seen", strstr(output, "Other possible filesystems: Disk BASIC") != NULL);
+
+	ASSERT_RUN(0, "../decb/decb dir " TEST_DMK CAPTURE);
+	read_output();
+	ASSERT("Disk BASIC lists FLEX.BAS", strstr(output, "FLEX     BAS  0  A") != NULL);
+
+	/* Again, linking another file already there */
+	ASSERT_RUN(0, FLEXCMD "copy " NATIVE_FILE " " TEST_DMK ",OTHER.SYS");
+	ASSERT_RUN(0, FLEXCMD "gen -nOTHER.SYS " TEST_DMK);
+	ASSERT_RUN(EOS_PNNF, FLEXCMD "gen -nNONE.SYS " TEST_DMK QUIET);
+	ASSERT_RUN(1, FLEXCMD "gen " TEST_DMK " " NATIVE_FILE " extra" QUIET);
+	ASSERT_RUN(0, FLEXCMD "free " TEST_DMK CAPTURE);
+	read_output();
+	ASSERT("the free chain agrees", strstr(output, "The free chain") == NULL);
+
+	/* A disk whose boot sectors hold a file */
+	remove(TEST_DMK);
+	ASSERT_RUN(0, FLEXCMD "dskinit -d -t19 " TEST_DMK);
+	write_zeros(NATIVE_OTHER, 252 * 18 * 18);
+	ASSERT_RUN(0, FLEXCMD "copy " NATIVE_OTHER " " TEST_DMK ",BIG.BIN");
+	ASSERT_RUN(1, FLEXCMD "gen " TEST_DMK " " NATIVE_FILE CAPTURE);
+	read_output();
+	ASSERT("the sectors in use are named", strstr(output, "track 16 sectors 1 to 9") != NULL);
+	clean_up();
+}
+
 int main(void)
 {
 	RUN(test_help);
@@ -398,6 +456,7 @@ int main(void)
 	RUN(test_kill_and_rename);
 	RUN(test_free_reports_damage);
 	RUN(test_dsave);
+	RUN(test_gen);
 	RUN(test_other_tools);
 	return TEST_REPORT();
 }

@@ -101,7 +101,7 @@ static void check_commands(const char *tool, int expected_count)
 static void test_decb_aliases(void) { check_commands("decb", 15); }
 static void test_os9_aliases(void) { check_commands("os9", 22); }
 static void test_dgndos_aliases(void) { check_commands("dgndos", 13); }
-static void test_flex_aliases(void) { check_commands("flex", 12); }
+static void test_flex_aliases(void) { check_commands("flex", 13); }
 static void test_cecb_aliases(void) { check_commands("cecb", 8); }
 
 static void test_info_status_alias(void)

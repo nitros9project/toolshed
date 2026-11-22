@@ -16,6 +16,7 @@ int flexdsave(int, char **);
 int flexdskinit(int, char **);
 int flexfree(int, char **);
 int flexfstat(int, char **);
+int flexgen(int, char **);
 int flexkill(int, char **);
 int flexlist(int, char **);
 int flexrename(int, char **);

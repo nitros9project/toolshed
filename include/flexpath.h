@@ -287,6 +287,30 @@ error_code _flex_text_from_native(const u_char *in_buffer, u_int in_size, u_char
 error_code _flex_binary_info(const u_char *buffer, u_int size, u_int *load_low, u_int *load_high,
 			     u_int *transfer, int *has_transfer, u_int *records);
 
+/* A Color Computer boot disk, as FHL's PUTLDR and LINK make one */
+#define FLEX_BOOT_TRACK		16
+#define FLEX_BOOT_LOADER_SECTOR	9
+#define FLEX_BOOT_LINK_OFFSET	5	/* in the loader: the file's first track and sector */
+
+/* Make a disk able to boot FLEX on the Color Computer, with RUN "FLEX" in
+   Disk BASIC, as FHL's PUTLDR does.  pathlist names the disk, as "disk,".
+   The disk becomes a Disk BASIC disk too, holding FLEX.BAS, which runs the
+   loader in track 16 sector 9.  Track 16 sectors 1 to 9 and track 17
+   sectors 2 and 3 are taken from the free chain.  FLEX.BAS and the loader
+   are ToolShed's own, and the loader reads sectors with Disk BASIC.
+
+   The disk must be double density, 17 or 18 sectors a side, with at least
+   19 tracks, as PUTLDR requires: EOS_IA if not.  The sectors must be free, or the disk set up
+   before, which is set up again, linked to nothing: EOS_FNA if not.  Then
+   use _flex_link. */
+error_code _flex_putldr(const char *pathlist);
+
+/* Make the loader of a boot disk load a file, as FLEX's LINK does.  The
+   file's first track and sector go in the loader.  EOS_FNA if the disk
+   isn't set up by _flex_putldr.  The loader reads only side 0, so a file
+   with a sector on side 1, or on track 0, is EOS_IA. */
+error_code _flex_link(const char *pathlist);
+
 #include <cocopath.h>
 
 #ifdef __cplusplus

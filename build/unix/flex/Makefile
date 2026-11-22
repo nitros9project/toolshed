@@ -6,7 +6,7 @@ vpath %.c ../../../flex
 CFLAGS	+= -I../../../include -Wall -MMD -MP
 
 SRCS = flex_main.c flexattr.c flexcopy.c flexdir.c flexdskinit.c flexdsave.c flexfree.c \
-	flexfstat.c flexkill.c flexlist.c flexrename.c
+	flexfstat.c flexgen.c flexkill.c flexlist.c flexrename.c
 
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)

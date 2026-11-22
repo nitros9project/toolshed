@@ -3,7 +3,7 @@ include ../rules.mak
 
 CFLAGS += -I../../../include -Wall -MMD -MP
 
-SRCS = libflexchain.c libflexdir.c libflexdisk.c libflexdskinit.c libflexkill.c libflexopen.c \
+SRCS = libflexboot.c libflexchain.c libflexdir.c libflexdisk.c libflexdskinit.c libflexkill.c libflexopen.c \
 	libflexread.c libflextext.c libflexwrite.c
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)

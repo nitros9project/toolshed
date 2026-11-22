@@ -380,6 +380,7 @@ static void test_dskinit_sizes(void)
 	}
 
 	remove(TEST_IMAGE);
+	remove(TEST_DMK);
 	ASSERT_EC(EOS_IA, _flex_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 1, 1, 0, 0, NULL, 1));
 	ASSERT_EC(EOS_IA, _flex_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 257, 1, 0, 0, NULL, 1));
 	ASSERT_EC(EOS_IA, _flex_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 35, 3, 0, 0, NULL, 1));
@@ -1511,6 +1512,218 @@ static void test_coco_file_operations(void)
 	remove(TEST_DMK);
 }
 
+
+/* Whether a sector is in the free chain. */
+static int in_free_chain(const char *image, u_int track, u_int number)
+{
+	char pathlist[256];
+	flex_path_id path;
+	flex_sir sir;
+	u_int t, n, count;
+	int found = 0;
+	int length = snprintf(pathlist, sizeof(pathlist), "%s,", image);
+
+	if (length < 0 || (size_t)length >= sizeof(pathlist) || _flex_open(&path, pathlist, FAM_READ) != 0)
+	{
+		return -1;
+	}
+	_flex_gs_sir(path, &sir);
+	t = sir.free_track;
+	n = sir.free_sector;
+	for (count = 0; !(t == 0 && n == 0) && count < 100000; count++)
+	{
+		if (t == track && n == number)
+		{
+			found = 1;
+		}
+		if ((t == sir.last_free_track && n == sir.last_free_sector) || _flex_gs_sector(path, t, n, sector) != 0)
+		{
+			break;
+		}
+		t = sector[0];
+		n = sector[1];
+	}
+	_flex_close(path);
+	return found;
+}
+
+static const u_char boot_sector_list[11][2] = {
+	{16, 1}, {16, 2}, {16, 3}, {16, 4}, {16, 5}, {16, 6}, {16, 7}, {16, 8}, {16, 9}, {17, 2}, {17, 3}
+};
+
+static int boot_sectors_free(const char *image)
+{
+	int i, free_ones = 0;
+
+	for (i = 0; i < 11; i++)
+	{
+		free_ones += in_free_chain(image, boot_sector_list[i][0], boot_sector_list[i][1]) == 1;
+	}
+	return free_ones;
+}
+
+/* A boot disk is laid out as FHL's PUTLDR lays it out. */
+static void test_putldr_layout(void)
+{
+	flex_path_id path;
+	u_int free_sectors, i;
+
+	fresh_disk(TEST_DMK, DISKIMAGE_DMK, 35, 1, 1);
+	ASSERT_EC(0, _flex_putldr(TEST_DMK ","));
+	ASSERT_EQUALS(0, boot_sectors_free(TEST_DMK));
+	ASSERT_EQUALS(1, in_free_chain(TEST_DMK, 17, 1));
+	ASSERT_EQUALS(1, in_free_chain(TEST_DMK, 16, 10));
+
+	ASSERT_EC(0, _flex_open(&path, TEST_DMK ",", FAM_READ));
+	ASSERT_EC(0, _flex_gs_free(path, &free_sectors));
+	ASSERT_EQUALS(34 * 18 - 11, free_sectors);
+	ASSERT_EC(0, _flex_count_free_chain(path, &free_sectors));
+	ASSERT_EQUALS(34 * 18 - 11, free_sectors);
+
+	/* The links that skip them, as on an FHL disk */
+	ASSERT_EC(0, _flex_gs_sector(path, 15, 18, sector));
+	ASSERT_EQUALS(16, sector[0]);
+	ASSERT_EQUALS(10, sector[1]);
+	ASSERT_EC(0, _flex_gs_sector(path, 17, 1, sector));
+	ASSERT_EQUALS(17, sector[0]);
+	ASSERT_EQUALS(4, sector[1]);
+
+	/* FLEX.BAS, as ASCII BASIC */
+	ASSERT_EC(0, _flex_gs_sector(path, 16, 1, sector));
+	ASSERT_MEM_EQUALS("10 ' BOOT FLEX", sector, 14);
+	ASSERT("FLEX.BAS reads the loader", strstr((char *)sector, "DSKI$ 0,16,9,A$,B$\r") != NULL);
+	ASSERT_EQUALS(0xFF, sector[255]);
+
+	/* The loader, with no file linked yet */
+	ASSERT_EC(0, _flex_gs_sector(path, 16, 9, sector));
+	ASSERT_EQUALS(0x20, sector[0]);
+	ASSERT_EQUALS(0, sector[FLEX_BOOT_LINK_OFFSET]);
+	ASSERT_EQUALS(0, sector[FLEX_BOOT_LINK_OFFSET + 1]);
+	ASSERT_EQUALS(0xFF, sector[255]);
+
+	/* The allocation table PUTLDR writes */
+	ASSERT_EC(0, _flex_gs_sector(path, 17, 2, sector));
+	for (i = 0; i < 68; i++)
+	{
+		ASSERT_EQUALS(i == 32 ? 0xC1 : 0xC0, sector[i]);
+	}
+	ASSERT_EQUALS(0, sector[68]);
+
+	/* The directory, with FLEX.BAS in granule 32 */
+	ASSERT_EC(0, _flex_gs_sector(path, 17, 3, sector));
+	ASSERT_MEM_EQUALS("FLEX    BAS\0\377\040", sector, 14);
+	ASSERT_EQUALS(0xFF, sector[32]);
+	_flex_close(path);
+
+	/* Disk BASIC is seen there too. */
+	{
+		u_int filesystems;
+
+		ASSERT_EC(0, _coco_detect_filesystems(TEST_DMK, &filesystems));
+		ASSERT("Disk BASIC is found", (filesystems & COCO_FS_DECB) != 0);
+		ASSERT("FLEX is found", (filesystems & COCO_FS_FLEX) != 0);
+	}
+	remove(TEST_DMK);
+}
+
+static void test_link(void)
+{
+	flex_path_id path;
+	flex_file_stat stat;
+
+	fresh_disk(TEST_DMK, DISKIMAGE_DMK, 35, 1, 1);
+	fill_pattern(5000, 13);
+	ASSERT_EC(0, write_whole(TEST_DMK ",FLEX.SYS", data, 5000));
+	ASSERT_EC(EOS_FNA, _flex_link(TEST_DMK ",FLEX.SYS"));
+	ASSERT_EC(0, _flex_putldr(TEST_DMK ","));
+	ASSERT_EC(0, _flex_link(TEST_DMK ",flex.sys"));
+	ASSERT_EC(EOS_PNNF, _flex_link(TEST_DMK ",NONE.SYS"));
+	ASSERT_EC(EOS_BPNAM, _flex_link(TEST_DMK ","));
+
+	ASSERT_EC(0, _flex_open(&path, TEST_DMK ",FLEX.SYS", FAM_READ));
+	ASSERT_EC(0, _flex_gs_fd(path, &stat));
+	ASSERT_EC(0, _flex_gs_sector(path, 16, 9, sector));
+	ASSERT_EQUALS(stat.start_track, sector[FLEX_BOOT_LINK_OFFSET]);
+	ASSERT_EQUALS(stat.start_sector, sector[FLEX_BOOT_LINK_OFFSET + 1]);
+	_flex_close(path);
+	ASSERT("the file is as it was", file_matches(TEST_DMK ",FLEX.SYS", 5000, 13));
+
+	/* Setting up again keeps the file, but links nothing. */
+	ASSERT_EC(0, _flex_putldr(TEST_DMK ","));
+	ASSERT_EC(0, _flex_open(&path, TEST_DMK ",", FAM_READ));
+	ASSERT_EC(0, _flex_gs_sector(path, 16, 9, sector));
+	ASSERT_EQUALS(0, sector[FLEX_BOOT_LINK_OFFSET]);
+	_flex_close(path);
+	ASSERT_EQUALS(1, check_chains(TEST_DMK));
+	remove(TEST_DMK);
+}
+
+/* The boot sectors are found wherever they are in the free chain. */
+static void test_putldr_after_use(void)
+{
+	char pathlist[64];
+	int i;
+
+	fresh_disk(TEST_IMAGE, DISKIMAGE_RAW, 35, 1, 1);
+	fill_pattern(252 * 30, 14);
+	for (i = 0; i < 12; i++)
+	{
+		FORMAT(pathlist, TEST_FILE("F%d.BIN"), i);
+		ASSERT_EC(0, write_whole(pathlist, data, 252 * 30));
+	}
+	/* Deleting puts these at the end of the chain, out of order. */
+	for (i = 11; i >= 0; i -= 2)
+	{
+		FORMAT(pathlist, TEST_FILE("F%d.BIN"), i);
+		ASSERT_EC(0, _flex_kill(pathlist));
+	}
+	ASSERT_EQUALS(11, boot_sectors_free(TEST_IMAGE));
+	ASSERT_EC(0, _flex_putldr(TEST_FILE("")));
+	ASSERT_EQUALS(0, boot_sectors_free(TEST_IMAGE));
+	ASSERT_EQUALS(6, check_chains(TEST_IMAGE));
+	{
+		flex_path_id path;
+		u_int recorded, counted;
+
+		ASSERT_EC(0, _flex_open(&path, TEST_FILE(""), FAM_READ));
+		ASSERT_EC(0, _flex_gs_free(path, &recorded));
+		ASSERT_EC(0, _flex_count_free_chain(path, &counted));
+		ASSERT_EQUALS(recorded, counted);
+		ASSERT_EQUALS(34 * 18 - 6 * 30 - 11, recorded);
+		_flex_close(path);
+	}
+	remove(TEST_IMAGE);
+}
+
+static void test_putldr_refuses(void)
+{
+	/* Single density, too few tracks, sectors in use */
+	fresh_disk(TEST_DMK, DISKIMAGE_DMK, 35, 1, 0);
+	ASSERT_EC(EOS_IA, _flex_putldr(TEST_DMK ","));
+	fresh_disk(TEST_DMK, DISKIMAGE_DMK, 18, 1, 1);
+	ASSERT_EC(EOS_IA, _flex_putldr(TEST_DMK ","));
+	fresh_disk(TEST_DMK, DISKIMAGE_DMK, 19, 1, 1);
+	ASSERT_EC(0, _flex_putldr(TEST_DMK ","));
+	fresh_disk(TEST_DMK, DISKIMAGE_DMK, 35, 1, 1);
+	ASSERT_EC(EOS_BPNAM, _flex_putldr(TEST_DMK ",FILE.TXT"));
+	fill_pattern(252 * 16 * 18, 15);
+	ASSERT_EC(0, write_whole(TEST_DMK ",BIG.BIN", data, 252 * 16 * 18));
+	ASSERT_EC(EOS_FNA, _flex_putldr(TEST_DMK ","));
+	ASSERT("the file is as it was", file_matches(TEST_DMK ",BIG.BIN", 252 * 16 * 18, 15));
+	ASSERT_EQUALS(1, check_disk(TEST_DMK));
+	remove(TEST_DMK);
+
+	/* The loader reads only side 0, so a file on side 1 can't be linked. */
+	fresh_disk(TEST_DMK, DISKIMAGE_DMK, 40, 2, 1);
+	ASSERT_EC(0, _flex_putldr(TEST_DMK ","));
+	fill_pattern(252 * 20, 16);
+	ASSERT_EC(0, write_whole(TEST_DMK ",FLEX.SYS", data, 252 * 20));
+	ASSERT_EC(EOS_IA, _flex_link(TEST_DMK ",FLEX.SYS"));
+	ASSERT_EC(0, write_whole(TEST_DMK ",SMALL.SYS", data, 252 * 10));
+	ASSERT_EC(EOS_IA, _flex_link(TEST_DMK ",SMALL.SYS"));
+	remove(TEST_DMK);
+}
+
 int main(void)
 {
 	RUN(test_parse_names);
@@ -1544,5 +1757,9 @@ int main(void)
 	RUN(test_text_conversion);
 	RUN(test_binary_info);
 	RUN(test_coco_file_operations);
+	RUN(test_putldr_layout);
+	RUN(test_link);
+	RUN(test_putldr_after_use);
+	RUN(test_putldr_refuses);
 	return TEST_REPORT();
 }

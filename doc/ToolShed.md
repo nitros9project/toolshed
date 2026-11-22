@@ -91,6 +91,7 @@ ToolShed v2.7.0
   * [DUMP](#dump_flex) - Display the contents of a binary file
   * [FREE](#free_flex) - Display the amount of free space on an image
   * [FSTAT](#fstat_flex) - Display detailed information about a file
+  * [GEN](#gen_flex) - Make a disk boot FLEX on the Color Computer
   * [INFO](#info) - Report disk image format and track layout, or change write protection
   * [KILL](#kill_flex) - Delete one or more files
   * [LIST](#list_flex) - Display the contents of a text file
@@ -2286,7 +2287,7 @@ This works as dgndos dsave does, running `flex copy` for each file. FLEX has no 
 
 #### Description
 
-Without -f, the format comes from the disk's extension, and otherwise it is raw. An existing file is not replaced. Disks are laid out as NEWDISK lays them out: the directory fills the rest of track 0, and every sector of the other tracks is in the free chain, in order. The SIR has the date, from SOURCE_DATE_EPOCH if it is set. Track 0 is single density, with 10 sectors on each side, even on a double density disk. The boot sectors are left empty, so the disk can't be booted until FLEX's LINK and a boot loader have been put on it.
+Without -f, the format comes from the disk's extension, and otherwise it is raw. An existing file is not replaced. Disks are laid out as NEWDISK lays them out: the directory fills the rest of track 0, and every sector of the other tracks is in the free chain, in order. The SIR has the date, from SOURCE_DATE_EPOCH if it is set. Track 0 is single density, with 10 sectors on each side, even on a double density disk. The boot sectors of track 0 are left empty, as the Color Computer doesn't use them. To make a disk that boots, use [gen](#gen_flex) on a double density disk.
 
 DMK and SDF images are recorded as a Color Computer floppy controller would format them, with track 0, or every track of a single density disk, in single density. A raw image keeps only track 0's sectors unless -p is given. VDK images hold only double density disks.
 
@@ -2351,6 +2352,34 @@ A file's protection, type, date, size and first and last sectors are shown. A fi
       Binary records     : 4
       Load addresses     : $C100 to $C331
       Transfer address   : $C100
+
+---
+
+<h3 id="gen_flex">GEN - Make a disk boot FLEX on the Color Computer</h3>
+
+#### Syntax and Scope
+
+    gen {[<opts>]} <disk> {<file>} {[<opts>]}
+
+#### Options
+
+    -n<name> = the file on the disk to load (default FLEX.SYS)
+
+#### Description
+
+The Color Computer starts FLEX from Disk BASIC, by typing `RUN "FLEX"`. gen makes a disk that can do this, as FHL's PUTLDR and LINK do. A file from the host, normally FLEX.SYS for the Color Computer, is copied to the disk first, replacing one there. Without a file, one already on the disk is used.
+
+The disk becomes a Disk BASIC disk too. Track 17 holds a Disk BASIC directory in sector 3 and its allocation table in sector 2, with one file, FLEX.BAS, in granule 32, which is track 16 sectors 1 to 9. FLEX.BAS is in sector 1, and reads the loader in sector 9 and runs it. The loader reads the file's chain of sectors with Disk BASIC, loads its binary records, and jumps to its transfer address with all of the 64K RAM switched in. These 11 sectors are taken out of FLEX's free chain. FLEX.BAS and the loader are ToolShed's own, and are laid out where FHL's are, so FLEX's LINK command works with them too.
+
+The disk must be double density, with at least 19 tracks, and the 11 sectors must be free, as they are on a new disk. Running gen again on a disk it set up is allowed, and links the file again. The loader reads only side 0 of each track, so on a double sided disk a file that reaches side 1 can't be loaded. Copy FLEX.SYS to a new single sided disk first.
+
+Disk BASIC sees the disk as one of its own, but the other ToolShed commands, such as decb list, open its files as FLEX files.
+
+#### Examples
+
+    flex dskinit -d -t35 boot.dmk
+    flex gen boot.dmk FLEX.SYS
+    flex gen -nFLEX2.SYS boot.dmk
 
 ---
 

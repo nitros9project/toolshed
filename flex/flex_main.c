@@ -39,6 +39,7 @@ static struct cmdtbl table[] = {
 	{cocodump, "dump", "du", "Display a hexadecimal dump of a file."},
 	{flexfree, "free", "fr", "Display free space on a disk image."},
 	{flexfstat, "fstat", "fs", "Display detailed file information."},
+	{flexgen, "gen", "ge", "Make a disk boot FLEX on the Color Computer."},
 	{cocoinfo, "info", "in", "Report disk image format and track layout."},
 	{flexkill, "kill", "ki", "Delete files."},
 	{flexlist, "list", "li", "Display the contents of a text file."},
