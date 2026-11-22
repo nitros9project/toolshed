@@ -36,6 +36,10 @@ error_code _coco_seek(coco_path_id path, int pos, int mode)
 		ec = _dragondos_seek(path->path.dragondos, pos, mode);
 		break;
 
+	case FLEX:
+		ec = _flex_seek(path->path.flex, pos, mode);
+		break;
+
 	case CECB:
 		ec = _cecb_seek(path->path.cecb, pos, mode);
 		break;

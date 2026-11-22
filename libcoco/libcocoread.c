@@ -37,6 +37,10 @@ error_code _coco_read(coco_path_id path, void *buffer, u_int * size)
 		ec = _dragondos_read(path->path.dragondos, buffer, size);
 		break;
 
+	case FLEX:
+		ec = _flex_read(path->path.flex, buffer, size);
+		break;
+
 	case CECB:
 		ec = _cecb_read(path->path.cecb, buffer, size);
 		break;
@@ -78,6 +82,15 @@ error_code _coco_readdir(coco_path_id path, coco_dir_entry * e)
 		while (ec == 0 && (e->dentry.dragondos.flags & (DRAGONDOS_FLAG_DELETED | DRAGONDOS_FLAG_CONTINUATION)));
 		break;
 
+	case FLEX:
+		/* Only entries in use have a file. */
+		do
+		{
+			ec = _flex_readdir(path->path.flex, &e->dentry.flex);
+		}
+		while (ec == 0 && !_flex_entry_in_use(&e->dentry.flex));
+		break;
+
 	case CECB:
 		fprintf(stderr,
 			"_coco_readdir not implemented in libcecb yet.\n");
@@ -110,6 +123,10 @@ error_code _coco_ncpy_name(coco_dir_entry * e, u_char * name, size_t len)
 
 	case DRAGONDOS:
 		ec = _dragondos_ncpy_name(&e->dentry.dragondos, (char *) name, len);
+		break;
+
+	case FLEX:
+		ec = _flex_ncpy_name(&e->dentry.flex, (char *) name, len);
 		break;
 
 	case CECB:

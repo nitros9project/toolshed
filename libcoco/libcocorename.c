@@ -49,6 +49,10 @@ error_code _coco_rename_ex(char *pathlist, char *new_name,
 					  &dentry->dentry.dragondos);
 		break;
 
+	case FLEX:
+		ec = _flex_rename_ex(pathlist, new_name, &dentry->dentry.flex);
+		break;
+
 	case CECB:
 		fprintf(stderr,
 			"_coco_rename not implemented in libcecb yet.\n");

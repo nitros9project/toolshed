@@ -8,11 +8,11 @@ OS := $(shell uname)
 ifeq ($(OS),Darwin)
 CFLAGS	+= -I../../../include -Wall -DDEBUG
 CFLAGS  += -F/Library/Frameworks
-LDFLAGS	+= -L/usr/local/lib -L../libtoolshed -L../libcoco -L../libdragondos -L../libdiskimage -L../libnative -L../libcecb -L../libdecb -L../libmisc -L../librbf -L../libsys -ltoolshed -lcoco -ldragondos -ldiskimage -lnative -lcecb -ldecb -lrbf -lmisc -lsys -lm
+LDFLAGS	+= -L/usr/local/lib -L../libtoolshed -L../libcoco -L../libdragondos -L../libflex -L../libdiskimage -L../libnative -L../libcecb -L../libdecb -L../libmisc -L../librbf -L../libsys -ltoolshed -lcoco -ldragondos -lflex -ldiskimage -lnative -lcecb -ldecb -lrbf -lmisc -lsys -lm
 LDFLAGS += -lfuse-t
 else
 CFLAGS	+= -I../../../include -Wall -DDEBUG
-LDFLAGS	+= -L/usr/local/lib -L../libtoolshed -L../libcoco -L../libdragondos -L../libdiskimage -L../libnative -L../libcecb -L../libdecb -L../libmisc -L../librbf -L../libsys -ltoolshed -lcoco -ldragondos -ldiskimage -lnative -lcecb -ldecb -lrbf -lmisc -lsys -lm -lfuse
+LDFLAGS	+= -L/usr/local/lib -L../libtoolshed -L../libcoco -L../libdragondos -L../libflex -L../libdiskimage -L../libnative -L../libcecb -L../libdecb -L../libmisc -L../librbf -L../libsys -ltoolshed -lcoco -ldragondos -lflex -ldiskimage -lnative -lcecb -ldecb -lrbf -lmisc -lsys -lm -lfuse
 endif
 
 $(BINARY):	$(BINARY).o

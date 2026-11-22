@@ -54,6 +54,50 @@ static error_code dragondos_attributes(dragondos_path_id path, int *attributes)
 
 
 
+/* FLEX's write and delete protection both make a file read only.  A raw
+   path is the root directory. */
+static error_code flex_attributes(flex_path_id path, int *attributes)
+{
+	flex_file_stat stat;
+	error_code ec;
+
+	*attributes = FAP_READ | FAP_WRITE | FAP_PREAD;
+	if (path->israw)
+	{
+		*attributes |= FAP_DIR;
+		return 0;
+	}
+
+	ec = _flex_gs_fd(path, &stat);
+	if (ec == 0 && (stat.attributes & (FLEX_ATTR_WRITE | FLEX_ATTR_DELETE)))
+	{
+		*attributes &= ~FAP_WRITE;
+	}
+	return ec;
+}
+
+
+/* A FLEX date has only two digits of the year. */
+static time_t flex_time(flex_path_id path)
+{
+	flex_file_stat stat;
+	struct tm when;
+
+	if (path->israw || _flex_gs_fd(path, &stat) != 0 || stat.month < 1 || stat.month > 12 || stat.day < 1)
+	{
+		return GetSafeTimestamp();
+	}
+
+	memset(&when, 0, sizeof(when));
+	when.tm_year = stat.year < 70 ? (int)stat.year + 100 : (int)stat.year;
+	when.tm_mon = (int)stat.month - 1;
+	when.tm_mday = (int)stat.day;
+	when.tm_hour = 12;
+	when.tm_isdst = -1;
+	return mktime(&when);
+}
+
+
 error_code _coco_gs_attr(coco_path_id path, int *perms)
 {
 	error_code ec = 0;
@@ -77,6 +121,10 @@ error_code _coco_gs_attr(coco_path_id path, int *perms)
 
 	case DRAGONDOS:
 		ec = dragondos_attributes(path->path.dragondos, perms);
+		break;
+
+	case FLEX:
+		ec = flex_attributes(path->path.flex, perms);
 		break;
 
 	case CECB:
@@ -115,6 +163,10 @@ error_code _coco_gs_eof(coco_path_id path)
 
 	case DRAGONDOS:
 		ec = _dragondos_gs_eof(path->path.dragondos);
+		break;
+
+	case FLEX:
+		ec = _flex_gs_eof(path->path.flex);
 		break;
 
 	case CECB:
@@ -251,6 +303,13 @@ error_code _coco_gs_fd(coco_path_id path, coco_file_stat * statbuf)
 		statbuf->last_modified_time = tp;
 		break;
 
+	case FLEX:
+		ec = flex_attributes(path->path.flex, &statbuf->attributes);
+		tp = flex_time(path->path.flex);
+		statbuf->create_time = tp;
+		statbuf->last_modified_time = tp;
+		break;
+
 	case CECB:
 		ec = _cecb_gs_fd(path->path.cecb, &cecb_stat);
 		statbuf->file_type = cecb_stat.file_type;
@@ -330,6 +389,10 @@ error_code _coco_gs_size(coco_path_id path, u_int * size)
 		ec = _dragondos_gs_size(path->path.dragondos, size);
 		break;
 
+	case FLEX:
+		ec = _flex_gs_size(path->path.flex, size);
+		break;
+
 	case CECB:
 		size = 0;
 		fprintf(stderr,
@@ -398,6 +461,10 @@ error_code _coco_gs_pos(coco_path_id path, u_int * pos)
 
 	case DRAGONDOS:
 		ec = _dragondos_gs_pos(path->path.dragondos, pos);
+		break;
+
+	case FLEX:
+		ec = _flex_gs_pos(path->path.flex, pos);
 		break;
 
 	case CECB:

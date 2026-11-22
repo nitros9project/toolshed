@@ -35,6 +35,10 @@ error_code _coco_write(coco_path_id path, void *buffer, u_int * size)
 		ec = _dragondos_write(path->path.dragondos, buffer, size);
 		break;
 
+	case FLEX:
+		ec = _flex_write(path->path.flex, buffer, size);
+		break;
+
 	case CECB:
 		ec = _cecb_write(path->path.cecb, buffer, size);
 		break;

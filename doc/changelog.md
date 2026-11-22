@@ -1,5 +1,12 @@
 # ToolShed Changelog
 
+## [Unreleased]
+
+### New Features & Enhancements
+
+* **FLEX support**: Added `libflex` and the `flex` utility for formatting disks, managing files and their protection, and inspecting FLEX images, with FLEX text translation and binary file decoding. Reads raw images with short or padded track 0, and JVC, VDK, DMK and SDF images, and is integrated with `libcoco`, `cocofuse` and the `info` filesystem report.
+* **Disk image creation**: Added `_diskimage_create_ex`, which can make DMK and SDF images with a single density track 0, or every track single density, and sector numbers that carry on across the second side, as FLEX disks need.
+
 ## [v2.7.0] - 2026-11-19
 
 ### New Features & Enhancements

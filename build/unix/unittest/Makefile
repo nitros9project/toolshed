@@ -9,9 +9,9 @@ vpath %.c ../../../unittest
 # A test is rebuilt when a header it includes changes.
 CFLAGS += -MMD -MP
 
-LDLIBS += -L../libtoolshed -L../libcoco -L../libcecb -L../libdecb -L../libdragondos -L../libdiskimage \
+LDLIBS += -L../libtoolshed -L../libcoco -L../libcecb -L../libdecb -L../libdragondos -L../libflex -L../libdiskimage \
           -L../librbf -L../libnative -L../libmisc -L../libsys \
-          -ltoolshed -lcoco -lcecb -ldecb -ldragondos -ldiskimage -lrbf -lnative -lmisc -lsys -lm
+          -ltoolshed -lcoco -lcecb -ldecb -ldragondos -lflex -ldiskimage -lrbf -lnative -lmisc -lsys -lm
 
 TEST_LIBS = \
     ../libtoolshed/libtoolshed.a \
@@ -19,6 +19,7 @@ TEST_LIBS = \
     ../libcecb/libcecb.a \
     ../libdecb/libdecb.a \
     ../libdragondos/libdragondos.a \
+    ../libflex/libflex.a \
     ../libdiskimage/libdiskimage.a \
     ../librbf/librbf.a \
     ../libnative/libnative.a \
@@ -27,7 +28,7 @@ TEST_LIBS = \
 
 
 TESTS = librbftest libdecbtest libcecbtest libtoolshedtest libnativetest libmisctest os9commandtest \
-	decbcommandtest cecbcommandtest libsystest libdiskimagetest infocommandtest libdragondostest dgndoscommandtest commandaliastest
+	decbcommandtest cecbcommandtest libsystest libdiskimagetest infocommandtest libdragondostest dgndoscommandtest libflextest flexcommandtest commandaliastest
 
 # Only the source and libraries are linked, not the headers the .d files add.
 $(TESTS): %: %.c $(TEST_LIBS)
@@ -49,6 +50,8 @@ ifeq (,$(NOTEST))
 	./infocommandtest
 	./libdragondostest
 	./dgndoscommandtest
+	./libflextest
+	./flexcommandtest
 	./commandaliastest
 endif
 
