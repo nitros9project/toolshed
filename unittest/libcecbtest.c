@@ -8,6 +8,13 @@
 
 #include "tinytest.h"
 #include <toolshed.h>
+#include <stdint.h>
+#include <sys/stat.h>
+
+static unsigned int int4le(const unsigned char *p)
+{
+	return p[0] | p[1] << 8 | p[2] << 16 | (unsigned int) p[3] << 24;
+}
 
 #define TEST_STRING "Line1\nLine2\n"
 #define TEST_PROGRAM "10 PRINT \"TEST \\xff\"\n20 GOTO 10\n"
@@ -458,6 +465,180 @@ void test_cecb_wav_trailing_chunk()
 	ASSERT_EQUALS(final_size - 8, riff_size);
 }
 
+/* The header bulkerase writes must agree with the file it writes. */
+void test_cecb_bulkerase_header()
+{
+	const int bits[] = {8, 16, 24, 32};
+	unsigned char header[44];
+	struct stat info;
+	size_t count;
+	FILE *file;
+	int i, stat_ec;
+	error_code ec;
+
+	for (i = 0; i < 4; i++)
+	{
+		ec = _cecb_bulkerase("header.wav", 44100, bits[i], 0.25);
+		ASSERT_EQUALS(0, ec);
+		stat_ec = stat("header.wav", &info);
+		ASSERT_EQUALS(0, stat_ec);
+		file = fopen("header.wav", "rb");
+		ASSERT("open WAV header", file != NULL);
+		count = fread(header, 1, sizeof(header), file);
+		fclose(file);
+		remove("header.wav");
+
+		ASSERT_EQUALS(sizeof(header), count);
+		ASSERT_EQUALS((unsigned int) info.st_size - 8, int4le(header + 4));
+		ASSERT_EQUALS(16, int4le(header + 16));
+		ASSERT_EQUALS(bits[i] / 8, header[32] | header[33] << 8);
+		ASSERT_EQUALS(bits[i], header[34] | header[35] << 8);
+		ASSERT_EQUALS((unsigned int) info.st_size - 44, int4le(header + 40));
+	}
+}
+
+static void put_le(FILE *file, unsigned long long value, int size)
+{
+	int i;
+
+	for (i = 0; i < size; i++)
+		fputc((int) ((value >> (8 * i)) & 0xff), file);
+}
+
+/* Write a tape holding test_string as 16-bit PCM, then copy its audio to
+   'name' in another format: PCM or float (format 3), with the fmt chunk
+   given 'fmt_size' bytes and, if 'extra' is set, an odd-sized LIST chunk
+   placed between the fmt and data chunks. */
+static void make_converted_tape(const char *name, int format, int bits,
+				int fmt_size, int extra)
+{
+	unsigned char header[44];
+	unsigned int data_length, samples, i, size;
+	unsigned int out_length;
+	cecb_path_id path;
+	error_code ec;
+	size_t count;
+	FILE *in, *out;
+
+	ec = _cecb_bulkerase("convert16.wav", 44100, 16, 0.5);
+	ASSERT_EQUALS(0, ec);
+	ec = _cecb_create(&path, "convert16.wav,FILE", FAM_WRITE, 1, 255, 0, 0, 0);
+	ASSERT_EQUALS(0, ec);
+	size = test_string_size;
+	ec = _cecb_write(path, test_string, &size);
+	ASSERT_EQUALS(0, ec);
+	ec = _cecb_close(path);
+	ASSERT_EQUALS(0, ec);
+
+	in = fopen("convert16.wav", "rb");
+	ASSERT("open 16-bit tape", in != NULL);
+	count = fread(header, 1, sizeof(header), in);
+	ASSERT_EQUALS(sizeof(header), count);
+	data_length = int4le(header + 40);
+	samples = data_length / 2;
+	out_length = samples * (bits / 8);
+
+	out = fopen(name, "wb");
+	ASSERT("create converted tape", out != NULL);
+	fwrite("RIFF", 1, 4, out);
+	put_le(out, 4 + 8 + fmt_size + (extra ? 8 + 6 : 0) + 8 + out_length, 4);
+	fwrite("WAVEfmt ", 1, 8, out);
+	put_le(out, fmt_size, 4);
+	put_le(out, format, 2);
+	put_le(out, 1, 2);
+	put_le(out, 44100, 4);
+	put_le(out, 44100 * (bits / 8), 4);
+	put_le(out, bits / 8, 2);
+	put_le(out, bits, 2);
+	for (i = 16; i < (unsigned int) fmt_size; i++)
+		fputc(0, out);
+	if (extra)
+	{
+		/* Five bytes and a pad byte. */
+		fwrite("LIST", 1, 4, out);
+		put_le(out, 5, 4);
+		fwrite("INFO!", 1, 5, out);
+		fputc(0, out);
+	}
+	fwrite("data", 1, 4, out);
+	put_le(out, out_length, 4);
+
+	for (i = 0; i < samples; i++)
+	{
+		int lo = fgetc(in), hi = fgetc(in);
+		short sample = (short) (lo | hi << 8);
+		double value = sample / 32768.0;
+
+		if (format == 1)
+			put_le(out, (unsigned short) sample, 2);
+		else if (bits == 32)
+		{
+			float f = (float) value;
+			uint32_t u;
+
+			memcpy(&u, &f, sizeof(u));
+			put_le(out, u, 4);
+		}
+		else
+		{
+			uint64_t u;
+
+			memcpy(&u, &value, sizeof(u));
+			put_le(out, u, 8);
+		}
+	}
+
+	fclose(in);
+	fclose(out);
+	remove("convert16.wav");
+}
+
+static void check_converted_tape(const char *name)
+{
+	char pathlist[64], buffer[64];
+	cecb_path_id path;
+	error_code ec, read_ec, close_ec;
+	unsigned int size;
+	int length;
+
+	length = snprintf(pathlist, sizeof(pathlist), "%s,FILE", name);
+	ASSERT("pathlist fits", length > 0 && (size_t) length < sizeof(pathlist));
+	ec = _cecb_open(&path, pathlist, FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(buffer);
+	read_ec = _cecb_read(path, buffer, &size);
+	close_ec = _cecb_close(path);
+	ASSERT_EQUALS(0, read_ec);
+	ASSERT_EQUALS(0, close_ec);
+	ASSERT_EQUALS(test_string_size, size);
+	ASSERT_MEM_EQUALS(test_string, buffer, size);
+}
+
+/* Audio editors put chunks such as LIST between fmt and data. */
+void test_cecb_wav_chunk_before_data()
+{
+	make_converted_tape("listchunk.wav", 1, 16, 16, 1);
+	check_converted_tape("listchunk.wav");
+	remove("listchunk.wav");
+}
+
+/* Float tapes are read, and writing to one is refused, not fatal. */
+void test_cecb_wav_float()
+{
+	cecb_path_id path;
+	error_code ec;
+
+	make_converted_tape("float32.wav", 3, 32, 18, 0);
+	check_converted_tape("float32.wav");
+	ec = _cecb_create(&path, "float32.wav,NEW", FAM_WRITE, 1, 255, 0, 0, 0);
+	ASSERT_EQUALS(EOS_WT, ec);
+	remove("float32.wav");
+
+	make_converted_tape("float64.wav", 3, 64, 16, 1);
+	check_converted_tape("float64.wav");
+	remove("float64.wav");
+}
+
 void test_cecb_write_read_only()
 {
 	cecb_path_id path;
@@ -532,6 +713,9 @@ int main()
 	RUN(test_cecb_wav_trailing_chunk);
 	RUN(test_cecb_write_read_only);
 	RUN(test_cecb_token);
+	RUN(test_cecb_bulkerase_header);
+	RUN(test_cecb_wav_chunk_before_data);
+	RUN(test_cecb_wav_float);
 
 	return TEST_REPORT();
 }

@@ -189,6 +189,49 @@ void test_cecb_command_copy_detokenize_metadata()
 	ASSERT_EQUALS(255, statbuf.data_type);
 }
 
+/* A Disk BASIC program starts with $FF and a 2-byte size, which -k skips. */
+void test_cecb_command_copy_detokenize_disk_basic()
+{
+	const unsigned char program[] = {
+		0xff, 0x00, 0x0a,
+		0x26, 0x0b, 0x00, 0x0a, 0x87, ' ', '1', 0x00,
+		0x00, 0x00
+	};
+	const char expected[] = "10 PRINT 1";
+	char result[64];
+	error_code ec, read_ec, close_ec;
+	cecb_path_id path;
+	FILE *file;
+	u_int size;
+	size_t written;
+	int status;
+
+	file = fopen("cecb_disk_basic", "wb");
+	ASSERT("create Disk BASIC source", file != NULL);
+	written = fwrite(program, 1, sizeof(program), file);
+	ec = fclose(file);
+	ASSERT_EQUALS(sizeof(program), written);
+	ASSERT_EQUALS(0, ec);
+	remove("cecb_disk_basic.cas");
+	ec = _cecb_bulkerase("cecb_disk_basic.cas", 0, 0, 0);
+	ASSERT_EQUALS(0, ec);
+
+	status = system("../cecb/cecb copy -k cecb_disk_basic cecb_disk_basic.cas,PROG > /dev/null 2>&1");
+	ec = _cecb_open(&path, "cecb_disk_basic.cas,PROG", FAM_READ);
+	ASSERT_EQUALS(0, status);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(result);
+	read_ec = _cecb_read(path, result, &size);
+	close_ec = _cecb_close(path);
+	remove("cecb_disk_basic");
+	remove("cecb_disk_basic.cas");
+
+	ASSERT_EQUALS(0, read_ec);
+	ASSERT_EQUALS(0, close_ec);
+	ASSERT("the program text", size >= sizeof(expected) - 1);
+	ASSERT_MEM_EQUALS(expected, result, sizeof(expected) - 1);
+}
+
 static char cecb_dir_output[65536];
 
 /* Put two files on a tape, list it, then list it again cut off at each of
@@ -249,6 +292,7 @@ int main()
 	RUN(test_cecb_command_copy_to_native_directory);
 	RUN(test_cecb_command_copy_eol_same_type);
 	RUN(test_cecb_command_copy_detokenize_metadata);
+	RUN(test_cecb_command_copy_detokenize_disk_basic);
 	RUN(test_cecb_command_dir_cut_tapes);
 
 	return TEST_REPORT();
