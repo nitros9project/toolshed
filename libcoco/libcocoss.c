@@ -23,6 +23,29 @@ static error_code dragondos_set_attributes(dragondos_path_id path, int attribute
 }
 
 
+/* FLEX has no permissions, but write protecting a file makes it read only.
+   Making it writable also takes away delete protection. */
+static error_code flex_set_attributes(flex_path_id path, int attributes)
+{
+	flex_file_stat stat;
+	error_code ec = _flex_gs_fd(path, &stat);
+
+	if (ec != 0)
+	{
+		return ec;
+	}
+	if (attributes & FAP_WRITE)
+	{
+		stat.attributes &= ~(FLEX_ATTR_WRITE | FLEX_ATTR_DELETE);
+	}
+	else
+	{
+		stat.attributes |= FLEX_ATTR_WRITE;
+	}
+	return _flex_ss_fd(path, &stat);
+}
+
+
 error_code _coco_ss_attr(coco_path_id path, int perms)
 {
 	error_code ec = 0;
@@ -46,6 +69,10 @@ error_code _coco_ss_attr(coco_path_id path, int perms)
 
 	case DRAGONDOS:
 		ec = dragondos_set_attributes(path->path.dragondos, perms);
+		break;
+
+	case FLEX:
+		ec = flex_set_attributes(path->path.flex, perms);
 		break;
 
 	case CECB:
@@ -196,6 +223,10 @@ error_code _coco_ss_fd(coco_path_id path, coco_file_stat * statbuf)
 		ec = dragondos_set_attributes(path->path.dragondos, statbuf->attributes);
 		break;
 
+	case FLEX:
+		ec = flex_set_attributes(path->path.flex, statbuf->attributes);
+		break;
+
 	case CECB:
 		fprintf(stderr,
 			"_coco_ss_fd not implemented in libcecb yet.\n");
@@ -232,6 +263,10 @@ error_code _coco_ss_size(coco_path_id path, int size)
 
 	case DRAGONDOS:
 		ec = _dragondos_ss_size(path->path.dragondos, size);
+		break;
+
+	case FLEX:
+		ec = _flex_ss_size(path->path.flex, size);
 		break;
 
 	case CECB:

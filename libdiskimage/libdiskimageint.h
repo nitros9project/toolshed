@@ -114,11 +114,15 @@ typedef struct
 	u_int interleave;
 	u_char fill;
 	int index_mark;		/* tracks of a DMK or SDF image start with an index mark */
+	int fm_track0;		/* both sides of track 0 are single density, of sectors_track0 */
+	int span_sides;		/* side 1 sector numbers follow side 0's */
+	int fm_all;		/* every track is single density */
 } di_layout;
 
 /* libdiskimagecreate.c */
 error_code di_file_write(FILE *fd, const void *buffer, size_t size);
-int di_mfm_track(const di_layout *layout, u_int cylinder, u_int side, u_char *raw, int *id_pos, int *data_pos);
+int di_format_track(const di_layout *layout, u_int cylinder, u_int side, u_char *raw, int *id_pos, int *data_pos,
+		    int *double_density);
 void di_raw_stamp_lsn0(u_char *sector, const di_layout *layout, long long total);
 
 /* libdiskimagetable.c */

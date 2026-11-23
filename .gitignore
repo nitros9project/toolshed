@@ -15,6 +15,7 @@ build/unix/decb/decb
 build/unix/dis68/dis68
 build/unix/dgndos/dgndos
 build/unix/doc/ToolShed.html
+build/unix/cflex/cflex
 build/unix/lst2cmt/lst2cmt
 build/unix/makewav/makewav
 build/unix/mamou/mamou
@@ -24,11 +25,13 @@ build/unix/unittest/cecbcommandtest
 build/unix/unittest/commandaliastest
 build/unix/unittest/decbcommandtest
 build/unix/unittest/dgndoscommandtest
+build/unix/unittest/cflexcommandtest
 build/unix/unittest/infocommandtest
 build/unix/unittest/libcecbtest
 build/unix/unittest/libdecbtest
 build/unix/unittest/libdiskimagetest
 build/unix/unittest/libdragondostest
+build/unix/unittest/libflextest
 build/unix/unittest/libmisctest
 build/unix/unittest/libnativetest
 build/unix/unittest/librbftest

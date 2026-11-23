@@ -83,6 +83,16 @@ set(TOOLSHED_CORE_SOURCES
     ${TOOLSHED_ROOT}/libdragondos/libdragondosread.c
     ${TOOLSHED_ROOT}/libdragondos/libdragondostokenize.c
     ${TOOLSHED_ROOT}/libdragondos/libdragondoswrite.c
+    ${TOOLSHED_ROOT}/libflex/libflexboot.c
+    ${TOOLSHED_ROOT}/libflex/libflexchain.c
+    ${TOOLSHED_ROOT}/libflex/libflexdir.c
+    ${TOOLSHED_ROOT}/libflex/libflexdisk.c
+    ${TOOLSHED_ROOT}/libflex/libflexdskinit.c
+    ${TOOLSHED_ROOT}/libflex/libflexkill.c
+    ${TOOLSHED_ROOT}/libflex/libflexopen.c
+    ${TOOLSHED_ROOT}/libflex/libflexread.c
+    ${TOOLSHED_ROOT}/libflex/libflextext.c
+    ${TOOLSHED_ROOT}/libflex/libflexwrite.c
     ${TOOLSHED_ROOT}/libmisc/libmisccococonv.c
     ${TOOLSHED_ROOT}/libmisc/libmiscendian.c
     ${TOOLSHED_ROOT}/libmisc/libmiscqueue.c

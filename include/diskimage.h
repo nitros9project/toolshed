@@ -188,6 +188,24 @@ error_code _diskimage_create_index_mark(const char *pathname, diskimage_format f
 					u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
 					u_int interleave, u_char fill);
 
+/* _diskimage_create_ex flags */
+#define DISKIMAGE_CREATE_INDEX_MARK	0x01	/* as _diskimage_create_index_mark */
+#define DISKIMAGE_CREATE_FM_TRACK0	0x02
+	/* Both sides of track 0 are single density, each with sectors_track0
+	   sectors.  Only DMK and SDF images can record this. */
+#define DISKIMAGE_CREATE_SPAN_SIDES	0x04
+	/* Sector numbers on side 1 follow those of side 0 on the same track,
+	   as FLEX numbers them: 19 to 36 after 1 to 18.  Raw, JVC and VDK images
+	   record no numbers, so for them this changes nothing. */
+#define DISKIMAGE_CREATE_SINGLE_DENSITY	0x08
+	/* Every track is single density.  Only DMK and SDF images can record
+	   this. */
+
+/* As _diskimage_create, with flags. */
+error_code _diskimage_create_ex(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
+				u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
+				u_int interleave, u_char fill, u_int flags);
+
 /* Open an existing image.  mode is FAM_READ and/or FAM_WRITE, optionally with
    DISKIMAGE_IGNORE_WRITE_PROTECT, which allows writes to a DMK, SDF or VDK
    image whose write protect flag is set.  The flag itself is left as it is,

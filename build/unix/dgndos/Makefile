@@ -11,7 +11,7 @@ SRCS = dgndos_main.c dgndosattr.c dgndoscopy.c dgndosdir.c dgndosdskinit.c dgndo
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)
 
-LIBDEPS = ../libtoolshed/libtoolshed.a ../libcoco/libcoco.a ../libdragondos/libdragondos.a ../libdiskimage/libdiskimage.a \
+LIBDEPS = ../libtoolshed/libtoolshed.a ../libcoco/libcoco.a ../libdragondos/libdragondos.a ../libflex/libflex.a ../libdiskimage/libdiskimage.a \
 	../libnative/libnative.a ../libcecb/libcecb.a ../librbf/librbf.a ../libdecb/libdecb.a ../libmisc/libmisc.a \
 	../libsys/libsys.a
 

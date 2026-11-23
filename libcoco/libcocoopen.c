@@ -67,6 +67,10 @@ error_code _coco_create(coco_path_id * path, char *pathlist, int mode,
 		ec = _dragondos_create(&((*path)->path.dragondos), pathlist, mode);
 		break;
 
+	case FLEX:
+		ec = _flex_create(&((*path)->path.flex), pathlist, mode);
+		break;
+
 	case CECB:
 		ec = _cecb_create(&((*path)->path.cecb), pathlist, mode,
 				  fstat->file_type, fstat->data_type,
@@ -144,6 +148,10 @@ error_code _coco_open(coco_path_id * path, char *pathlist, int mode)
 		ec = _dragondos_open(&((*path)->path.dragondos), pathlist, mode);
 		break;
 
+	case FLEX:
+		ec = _flex_open(&((*path)->path.flex), pathlist, mode);
+		break;
+
 	case CECB:
 		ec = _cecb_open(&((*path)->path.cecb), pathlist, mode);
 		break;
@@ -188,6 +196,10 @@ error_code _coco_close(coco_path_id path)
 		ec = _dragondos_close(path->path.dragondos);
 		break;
 
+	case FLEX:
+		ec = _flex_close(path->path.flex);
+		break;
+
 	case CECB:
 		ec = _cecb_close(path->path.cecb);
 	}
@@ -206,18 +218,25 @@ error_code _coco_close(coco_path_id path)
 static _path_type not_os9_type(const char *image)
 {
 	int is_dragondos = 0;
+	int is_flex = 0;
 
 	_dragondos_identify(image, &is_dragondos);
+	if (is_dragondos)
+	{
+		return DRAGONDOS;
+	}
 
-	return is_dragondos ? DRAGONDOS : DECB;
+	_flex_identify(image, &is_flex);
+
+	return is_flex ? FLEX : DECB;
 }
 
 
 /*
  * _coco_identify_image()
  *
- * Determines if the passed <image,path> pathlist is native, OS-9, Disk BASIC, Cassette BASIC
- * or Dragon DOS.
+ * Determines if the passed <image,path> pathlist is native, OS-9, Disk BASIC, Cassette BASIC,
+ * Dragon DOS or FLEX.
  */
 error_code _coco_identify_image(char *pathlist, _path_type * type)
 {
@@ -377,6 +396,10 @@ error_code _coco_detect_filesystems(const char *pathlist, u_int *filesystems)
 		{
 			*filesystems |= COCO_FS_DRAGONDOS;
 		}
+		if (_flex_identify(image, &found) == 0 && found)
+		{
+			*filesystems |= COCO_FS_FLEX;
+		}
 	}
 
 	free(image);
@@ -392,12 +415,39 @@ error_code _coco_detect_filesystems(const char *pathlist, u_int *filesystems)
  */
 void _coco_filesystem_names(u_int filesystems, char *text, size_t size)
 {
-	snprintf(text, size, "%s%s%s%s%s",
-		 (filesystems & COCO_FS_OS9) ? "OS-9" : "",
-		 (filesystems & COCO_FS_OS9) && (filesystems & ~COCO_FS_OS9) ? ", " : "",
-		 (filesystems & COCO_FS_DECB) ? "Disk BASIC" : "",
-		 (filesystems & COCO_FS_DECB) && (filesystems & COCO_FS_DRAGONDOS) ? ", " : "",
-		 (filesystems & COCO_FS_DRAGONDOS) ? "Dragon DOS" : "");
+	static const struct
+	{
+		u_int filesystem;
+		const char *name;
+	} names[] = {
+		{COCO_FS_OS9, "OS-9"},
+		{COCO_FS_DECB, "Disk BASIC"},
+		{COCO_FS_DRAGONDOS, "Dragon DOS"},
+		{COCO_FS_FLEX, "FLEX"},
+	};
+	size_t length = 0;
+	size_t i;
+
+	if (size == 0)
+	{
+		return;
+	}
+	text[0] = '\0';
+	for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+	{
+		if (filesystems & names[i].filesystem)
+		{
+			int n = snprintf(text + length, size - length, "%s%s", length ? ", " : "", names[i].name);
+
+			/* A name that doesn't fit is left out whole. */
+			if (n < 0 || (size_t)n >= size - length)
+			{
+				text[length] = '\0';
+				return;
+			}
+			length += (size_t)n;
+		}
+	}
 }
 
 

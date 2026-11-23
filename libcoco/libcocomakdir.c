@@ -40,6 +40,7 @@ error_code _coco_makdir(char *pathlist)
 		break;
 
 	case DRAGONDOS:
+	case FLEX:
 		ec = EOS_FNA;
 		break;
 

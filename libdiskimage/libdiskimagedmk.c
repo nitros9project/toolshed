@@ -173,13 +173,15 @@ error_code di_dmk_create(FILE *fd, const di_layout *layout)
 	{
 		for (side = 0; side < layout->sides && ec == 0; side++)
 		{
-			int count, i;
+			int count, i, double_density;
 
 			memset(track, 0, DMK_TRACK_HEADER_SIZE);
-			count = di_mfm_track(layout, cylinder, side, &track[DMK_TRACK_HEADER_SIZE], id_pos, data_pos);
+			count = di_format_track(layout, cylinder, side, &track[DMK_TRACK_HEADER_SIZE], id_pos, data_pos,
+						&double_density);
 			for (i = 0; i < count; i++)
 			{
-				u_int pointer = (u_int)(DMK_TRACK_HEADER_SIZE + id_pos[i]) | DMK_IDAM_DOUBLE_DENSITY;
+				u_int pointer = (u_int)(DMK_TRACK_HEADER_SIZE + id_pos[i]) |
+						(double_density ? DMK_IDAM_DOUBLE_DENSITY : 0);
 
 				track[i * 2] = (u_char)pointer;
 				track[i * 2 + 1] = (u_char)(pointer >> 8);

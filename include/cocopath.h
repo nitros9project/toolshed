@@ -24,8 +24,9 @@ extern "C" {
 #include "decbpath.h"
 #include "cecbpath.h"
 #include "dragondospath.h"
+#include "flexpath.h"
 
-typedef enum { NATIVE, OS9, DECB, CECB, DRAGONDOS } _path_type;
+typedef enum { NATIVE, OS9, DECB, CECB, DRAGONDOS, FLEX } _path_type;
 
 
 /* ERROR CODES */
@@ -80,6 +81,7 @@ typedef struct _coco_path_id
 		struct _decb_path_id	*decb;
 		struct _cecb_path_id	*cecb;
 		struct _dragondos_path_id	*dragondos;
+		struct _flex_path_id	*flex;
 	} path;
 } *coco_path_id;
 
@@ -99,6 +101,7 @@ typedef struct coco_dir_entry
 		decb_dir_entry			decb;
 		cecb_dir_entry			cecb;
 		dragondos_dir_entry		dragondos;
+		flex_dir_entry			flex;
 	} dentry;
 } coco_dir_entry;
 
@@ -160,6 +163,7 @@ error_code _coco_identify_image(char *pathlist, _path_type *type);
 #define COCO_FS_OS9		0x01
 #define COCO_FS_DECB		0x02
 #define COCO_FS_DRAGONDOS	0x04
+#define COCO_FS_FLEX		0x08
 
 error_code _coco_detect_filesystems(const char *pathlist, u_int *filesystems);
 void _coco_filesystem_names(u_int filesystems, char *text, size_t size);
