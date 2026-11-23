@@ -66,7 +66,7 @@ static error_code locate(os9_path_id path, long long lsn, u_int offset, sector_a
 
 		address->cylinder = (u_int) (track / path->sides);
 		address->side = (u_int) (track % path->sides);
-		address->sector = (u_int) index + path->first_sector;
+		address->sector = (u_int) index + path->first_sector[address->side];
 		address->size = path->bps;
 		address->offset = offset;
 	}

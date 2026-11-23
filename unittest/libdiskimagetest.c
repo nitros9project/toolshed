@@ -404,7 +404,7 @@ static void test_raw_geometry(void)
 	ASSERT_EQUALS(1, g.sides);
 	ASSERT_EQUALS(18, g.sectors_per_track);
 	ASSERT_EQUALS(256, g.sector_size);
-	ASSERT_EQUALS(1, g.first_sector);
+	ASSERT_EQUALS(1, g.first_sector[0]);
 	ASSERT_EQUALS(36, g.total_sectors);
 	ASSERT_EQUALS(1, g.uniform);
 	ASSERT_EQUALS(0, g.write_protected);
@@ -518,7 +518,7 @@ static void test_jvc_header_geometry(void)
 	ASSERT_EQUALS(2, g.sides);
 	ASSERT_EQUALS(9, g.sectors_per_track);
 	ASSERT_EQUALS(512, g.sector_size);
-	ASSERT_EQUALS(5, g.first_sector);
+	ASSERT_EQUALS(5, g.first_sector[0]);
 	ASSERT_EQUALS(54, g.total_sectors);
 	ASSERT_EQUALS(0, g.extendable);
 
@@ -555,7 +555,7 @@ static void test_jvc_short_header_uses_defaults(void)
 	ASSERT_EQUALS(1, g.sides);
 	ASSERT_EQUALS(10, g.sectors_per_track);
 	ASSERT_EQUALS(256, g.sector_size);
-	ASSERT_EQUALS(1, g.first_sector);
+	ASSERT_EQUALS(1, g.first_sector[0]);
 }
 
 static void test_jvc_write_and_no_extend(void)
@@ -672,7 +672,7 @@ static void check_track_geometry_and_order(image_builder build, diskimage_format
 	ASSERT_EQUALS(1, g.sides);
 	ASSERT_EQUALS(2, g.sectors_per_track);
 	ASSERT_EQUALS(256, g.sector_size);
-	ASSERT_EQUALS(1, g.first_sector);
+	ASSERT_EQUALS(1, g.first_sector[0]);
 	ASSERT_EQUALS(4, g.total_sectors);
 	ASSERT_EQUALS(1, g.uniform);
 	ASSERT_EQUALS(0, g.extendable);
@@ -1305,7 +1305,7 @@ static void check_create_tracked(diskimage_format format)
 	ASSERT_EQUALS(3, g.cylinders);
 	ASSERT_EQUALS(2, g.sides);
 	ASSERT_EQUALS(18, g.sectors_per_track);
-	ASSERT_EQUALS(1, g.first_sector);
+	ASSERT_EQUALS(1, g.first_sector[0]);
 	ASSERT_EQUALS(1, g.uniform);
 	ASSERT_EQUALS(0, g.write_protected);
 
@@ -1360,6 +1360,7 @@ static void check_create_short_track0(diskimage_format format)
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
 }
+
 
 static void test_create_dmk_short_track0(void)
 {
@@ -1642,7 +1643,7 @@ static void check_create_interleave(diskimage_format format)
 	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, RW));
 	ASSERT_CALL(0, _diskimage_query_geometry(disk, &g));
 	ASSERT_EQUALS(1, g.uniform);
-	ASSERT_EQUALS(1, g.first_sector);
+	ASSERT_EQUALS(1, g.first_sector[0]);
 	for (i = 0; i < 18; i++)
 	{
 		ASSERT_CALL(0, _diskimage_query_sector(disk, i, &info));
@@ -1897,7 +1898,7 @@ static void test_vdk_geometry_and_sectors(void)
 	ASSERT_EQUALS(18, g.sectors_per_track);
 	ASSERT_EQUALS(18, g.sectors_track0);
 	ASSERT_EQUALS(256, g.sector_size);
-	ASSERT_EQUALS(1, g.first_sector);
+	ASSERT_EQUALS(1, g.first_sector[0]);
 	ASSERT_EQUALS(108, g.total_sectors);
 	ASSERT_EQUALS(1, g.uniform);
 	ASSERT_EQUALS(0, g.write_protected);

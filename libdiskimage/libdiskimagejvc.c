@@ -68,7 +68,8 @@ error_code di_jvc_load(diskimage_id disk, const di_jvc_header *jvc)
 	disk->sides = jvc->sides;
 	disk->sector_size = size;
 	disk->sectors_per_track = jvc->sectors_per_track;
-	disk->first_sector = jvc->first_sector;
+	disk->first_sector[0] = jvc->first_sector;
+	disk->first_sector[1] = jvc->first_sector;
 	disk->data_start = file_offset;
 
 	if (!jvc->attribute)

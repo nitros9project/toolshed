@@ -78,7 +78,7 @@ typedef struct
 	u_int sides;
 	u_int sectors_per_track;	/* most logical sectors on any track */
 	u_int sector_size;		/* largest logical sector, in bytes */
-	u_int first_sector;		/* lowest sector number in use */
+	u_int first_sector[2];		/* lowest sector number in use, per side */
 	u_int sectors_track0;		/* logical sectors on side 0 of track 0 */
 	u_int total_sectors;		/* logical sectors in the image */
 	int uniform;			/* every track has the same sectors */
@@ -201,10 +201,12 @@ error_code _diskimage_create_index_mark(const char *pathname, diskimage_format f
 	/* Every track is single density.  Only DMK and SDF images can record
 	   this. */
 
-/* As _diskimage_create, with flags. */
+/* As _diskimage_create, with flags.  first_sector says how each side's sectors
+   are numbered: 1 on a CoCo or Dragon disk, 0 on OS-9/68K and on machines with
+   a short track 0, and the two sides can differ. */
 error_code _diskimage_create_ex(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
 				u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
-				u_int interleave, u_char fill, u_int flags);
+				u_int interleave, const u_int first_sector[2], u_char fill, u_int flags);
 
 /* Open an existing image.  mode is FAM_READ and/or FAM_WRITE, optionally with
    DISKIMAGE_IGNORE_WRITE_PROTECT, which allows writes to a DMK, SDF or VDK

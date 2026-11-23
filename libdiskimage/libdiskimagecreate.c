@@ -147,9 +147,11 @@ static u_int track_sectors(const di_layout *layout, u_int cylinder, u_int side)
 
 
 /* The number of a track's first sector, less one. */
-static u_int track_id_base(const di_layout *layout, u_int cylinder, u_int side)
+static int track_id_base(const di_layout *layout, u_int cylinder, u_int side)
 {
-	return (layout->span_sides && side == 1) ? track_sectors(layout, cylinder, 0) : 0;
+	int base = (int)layout->first_sector[side] - 1;
+
+	return (layout->span_sides && side == 1) ? base + (int)track_sectors(layout, cylinder, 0) : base;
 }
 
 
@@ -177,7 +179,7 @@ static void sector_order(u_int sectors, u_int interleave, u_char *order)
 static int fm_format_track(const di_layout *layout, u_int cylinder, u_int side, u_char *raw, int *id_pos, int *data_pos)
 {
 	u_int sectors = track_sectors(layout, cylinder, side);
-	u_int base = track_id_base(layout, cylinder, side);
+	int base = track_id_base(layout, cylinder, side);
 	int gap3 = fm_gap3(sectors, layout);
 	u_char field[1 + DI_MAX_SECTOR_SIZE];
 	u_char order[DI_MAX_TRACK_IDS];
@@ -244,7 +246,7 @@ int di_format_track(const di_layout *layout, u_int cylinder, u_int side, u_char 
 		    int *double_density)
 {
 	u_int sectors = track_sectors(layout, cylinder, side);
-	u_int base = track_id_base(layout, cylinder, side);
+	int base = track_id_base(layout, cylinder, side);
 	int gap3 = mfm_gap3(sectors, layout);
 	u_char field[1 + DI_MAX_SECTOR_SIZE];
 	u_char order[DI_MAX_TRACK_IDS];
@@ -476,7 +478,7 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 
 static error_code create_image(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
 			       u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
-			       u_int interleave, u_char fill, u_int flags)
+			       u_int interleave, const u_int first_sector[2], u_char fill, u_int flags)
 {
 	di_layout layout;
 	struct stat st;
@@ -497,6 +499,8 @@ static error_code create_image(const char *pathname, diskimage_format format, u_
 	layout.sectors_per_track = sectors_per_track;
 	layout.sectors_track0 = sectors_track0 ? sectors_track0 : sectors_per_track;
 	layout.interleave = interleave ? interleave : 1;
+	layout.first_sector[0] = first_sector[0];
+	layout.first_sector[1] = first_sector[1];
 	layout.fill = fill;
 	layout.index_mark = (flags & DISKIMAGE_CREATE_INDEX_MARK) != 0;
 	layout.fm_track0 = (flags & DISKIMAGE_CREATE_FM_TRACK0) != 0;
@@ -572,8 +576,10 @@ error_code _diskimage_create(const char *pathname, diskimage_format format, u_in
 			     u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
 			     u_int interleave, u_char fill)
 {
+	static const u_int one_based[2] = { 1, 1 };
+
 	return create_image(pathname, format, sides, tracks, sector_size, sectors_per_track,
-			    sectors_track0, interleave, fill, 0);
+			    sectors_track0, interleave, one_based, fill, 0);
 }
 
 
@@ -581,15 +587,17 @@ error_code _diskimage_create_index_mark(const char *pathname, diskimage_format f
 					u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
 					u_int interleave, u_char fill)
 {
+	static const u_int one_based[2] = { 1, 1 };
+
 	return create_image(pathname, format, sides, tracks, sector_size, sectors_per_track,
-			    sectors_track0, interleave, fill, DISKIMAGE_CREATE_INDEX_MARK);
+			    sectors_track0, interleave, one_based, fill, DISKIMAGE_CREATE_INDEX_MARK);
 }
 
 
 error_code _diskimage_create_ex(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
 				u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
-				u_int interleave, u_char fill, u_int flags)
+				u_int interleave, const u_int first_sector[2], u_char fill, u_int flags)
 {
 	return create_image(pathname, format, sides, tracks, sector_size, sectors_per_track,
-			    sectors_track0, interleave, fill, flags);
+			    sectors_track0, interleave, first_sector, fill, flags);
 }

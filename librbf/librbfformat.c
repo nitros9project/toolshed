@@ -84,7 +84,7 @@ static void write_lsns(format_output *out, void *buffer, u_int size)
 /* Make a new image of the whole disk, and a path to reach its LSNs. */
 static error_code open_new_image(struct _os9_path_id *image, char *pathname, diskimage_format format,
 				 int tracks, int sectorsPerTrack, int sectorsTrack0, int heads,
-				 int sectorSize, int density, int interleave)
+				 int sectorSize, int density, int interleave, const u_int firstSector[2])
 {
 	diskimage_geometry geometry;
 	error_code ec;
@@ -95,8 +95,9 @@ static error_code open_new_image(struct _os9_path_id *image, char *pathname, dis
 		return EOS_IA;
 	}
 
-	ec = _diskimage_create(pathname, format, heads, tracks, sectorSize, sectorsPerTrack,
-			       sectorsTrack0 == sectorsPerTrack ? 0 : sectorsTrack0, interleave, 0xE5);
+	ec = _diskimage_create_ex(pathname, format, heads, tracks, sectorSize, sectorsPerTrack,
+				  sectorsTrack0 == sectorsPerTrack ? 0 : sectorsTrack0, interleave,
+				  firstSector, 0xE5, 0);
 	if (ec != 0)
 	{
 		return ec;
@@ -109,7 +110,8 @@ static error_code open_new_image(struct _os9_path_id *image, char *pathname, dis
 	image->spt = sectorsPerTrack;
 	image->t0s = sectorsTrack0;
 	image->sides = heads;
-	image->first_sector = 1;
+	image->first_sector[0] = firstSector[0];
+	image->first_sector[1] = firstSector[1];
 
 	ec = _diskimage_open(&image->disk, pathname, FAM_READ | FAM_WRITE);
 	if (ec != 0)
@@ -133,9 +135,11 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 		       int formatEntire, int isDragon, int isHDD, int interleave,
 		       unsigned int *totalSectors, unsigned int *totalBytes)
 {
+	static const u_int first_sector[2] = { 1, 1 };
+
 	return _os9_format_image(pathname, DISKIMAGE_RAW, os968k, tracks, sectorsPerTrack, sectorsTrack0,
 				 heads, sectorSize, clusterSize, diskName, sectorAllocationSize, tpi,
-				 density, formatEntire, isDragon, isHDD, interleave, totalSectors, totalBytes);
+				 density, formatEntire, isDragon, isHDD, interleave, first_sector, totalSectors, totalBytes);
 }
 
 
@@ -145,6 +149,7 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 			     int *clusterSize, char *diskName,
 			     int sectorAllocationSize, int tpi, int density,
 			     int formatEntire, int isDragon, int isHDD, int interleave,
+			     const u_int firstSector[2],
 			     unsigned int *totalSectors, unsigned int *totalBytes)
 {
 	error_code ec = 0;
@@ -189,7 +194,7 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 	else
 	{
 		ec = open_new_image(&image, pathname, format, tracks, sectorsPerTrack, sectorsTrack0, heads,
-				    sectorSize, density, interleave);
+				    sectorSize, density, interleave, firstSector);
 
 		if (ec != 0)
 		{

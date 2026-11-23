@@ -15,6 +15,9 @@
 
 #define DMK_TRACK_LENGTH 0x1900
 #define DMK_FLAG_SINGLE_SIDED 0x10
+
+/* The images these tests make number their sectors from 1 on both sides. */
+static const u_int one_based[2] = { 1, 1 };
 #define DMK_FIRST_SECTOR 128
 
 #define MARK_NORMAL 0xFB
@@ -523,7 +526,7 @@ static void test_detection_on_bad_crc(void)
 
 	remove(TEST_IMAGE);
 	ASSERT_CALL(0, _os9_format_image(TEST_IMAGE, DISKIMAGE_DMK, 0, 35, 18, 18, 1, 256, &cluster_size, "Test", 8, 48, 1, 1,
-					 0, 0, 3, &total_sectors, &total_bytes));
+					 0, 0, 3, one_based, &total_sectors, &total_bytes));
 	image_damage_sector(TEST_IMAGE, 0, 0, 3);
 	ASSERT_CALL(COCO_FS_OS9, filesystems_status("-s " TEST_IMAGE));
 	ASSERT_STRING_EQUALS("", errors);

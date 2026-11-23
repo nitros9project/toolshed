@@ -13,6 +13,9 @@
 #include "cococonv.h"
 #include "libflexint.h"
 
+/* These images number their sectors from 1 on both sides. */
+static const u_int one_based[2] = { 1, 1 };
+
 
 /* A raw image of zeros, written here as libdiskimage only makes raw images
    of 18 sectors per track. */
@@ -152,7 +155,7 @@ error_code _flex_dskinit(const char *pathname, diskimage_format format, u_int tr
 	case DISKIMAGE_DMK:
 	case DISKIMAGE_SDF:
 		path.track0_side0 = FLEX_SD_SECTORS;
-		ec = _diskimage_create_ex(pathname, format, sides, tracks, FLEX_SECTOR_SIZE, per_side, FLEX_SD_SECTORS, 1, 0,
+		ec = _diskimage_create_ex(pathname, format, sides, tracks, FLEX_SECTOR_SIZE, per_side, FLEX_SD_SECTORS, 1, one_based, 0,
 					  DISKIMAGE_CREATE_FM_TRACK0 | DISKIMAGE_CREATE_SPAN_SIDES |
 					  (double_density ? 0 : DISKIMAGE_CREATE_SINGLE_DENSITY));
 		break;

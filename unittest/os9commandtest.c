@@ -1119,7 +1119,7 @@ void test_os9_reveal_container_data()
 	};
 	char arguments[192], output[4096], expected[4096], pathlist[80];
 	os9_path_id path;
-	unsigned int bps, root, total, targets[5], spt, t0s, sides;
+		unsigned int bps, root, total, targets[5], spt, t0s, sides, first[2];
 	size_t i, j;
 	int status;
 
@@ -1137,6 +1137,8 @@ void test_os9_reveal_container_data()
 		spt = path->spt;
 		t0s = path->t0s;
 		sides = path->sides;
+		first[0] = path->first_sector[0];
+		first[1] = path->first_sector[1];
 		ASSERT_EC(0, _os9_close(path));
 		targets[0] = 0;
 		targets[1] = 1;
@@ -1147,7 +1149,7 @@ void test_os9_reveal_container_data()
 		{
 			unsigned int lsn = targets[j];
 			unsigned int track = lsn < t0s ? 0 : (lsn - t0s) / spt + 1;
-			unsigned int sector = lsn < t0s ? lsn + 1 : (lsn - t0s) % spt + 1;
+			unsigned int sector = (lsn < t0s ? lsn : (lsn - t0s) % spt) + first[track % sides];
 			long offset = -1;
 			char *description;
 

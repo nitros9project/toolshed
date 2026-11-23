@@ -10,6 +10,9 @@
 #include "toolshed.h"
 #include "../libflex/libflexint.h"
 
+/* These images number their sectors from 1 on both sides. */
+static const u_int one_based[2] = { 1, 1 };
+
 #define TEST_IMAGE "flex_test.dsk"
 #define TEST_DMK "flex_test.dmk"
 #define TEST_FILE(name) TEST_IMAGE "," name
@@ -517,19 +520,19 @@ static void test_dskinit_records_flex_layout(void)
 /* What libdiskimage does for FLEX, other formats aren't asked to do. */
 static void test_diskimage_create_flags(void)
 {
-	ASSERT_EC(EOS_IA, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_RAW, 1, 35, 256, 18, 10, 1, 0,
+	ASSERT_EC(EOS_IA, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_RAW, 1, 35, 256, 18, 10, 1, one_based, 0,
 					       DISKIMAGE_CREATE_FM_TRACK0));
-	ASSERT_EC(EOS_IA, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_JVC, 1, 35, 256, 10, 0, 1, 0,
+	ASSERT_EC(EOS_IA, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_JVC, 1, 35, 256, 10, 0, 1, one_based, 0,
 					       DISKIMAGE_CREATE_SINGLE_DENSITY));
-	ASSERT_EC(EOS_IA, _diskimage_create_ex(TEST_DMK, DISKIMAGE_DMK, 1, 35, 256, 18, 0, 1, 0, 0x80));
+	ASSERT_EC(EOS_IA, _diskimage_create_ex(TEST_DMK, DISKIMAGE_DMK, 1, 35, 256, 18, 0, 1, one_based, 0, 0x80));
 	/* Single density holds only so much. */
-	ASSERT_EC(EOS_IA, _diskimage_create_ex(TEST_DMK, DISKIMAGE_DMK, 1, 35, 256, 18, 0, 1, 0,
+	ASSERT_EC(EOS_IA, _diskimage_create_ex(TEST_DMK, DISKIMAGE_DMK, 1, 35, 256, 18, 0, 1, one_based, 0,
 					       DISKIMAGE_CREATE_SINGLE_DENSITY));
 	ASSERT_EQUALS(-1, read_file(TEST_IMAGE, data, sizeof(data)));
 	ASSERT_EQUALS(-1, read_file(TEST_DMK, data, sizeof(data)));
 
 	/* Raw images record no numbers, so spanning sides changes nothing. */
-	ASSERT_EC(0, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_RAW, 1, 35, 256, 18, 0, 1, 0,
+	ASSERT_EC(0, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_RAW, 1, 35, 256, 18, 0, 1, one_based, 0,
 					  DISKIMAGE_CREATE_SPAN_SIDES));
 	remove(TEST_IMAGE);
 }

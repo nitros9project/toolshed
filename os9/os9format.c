@@ -38,6 +38,8 @@ static char const *const helpMessage[] = {
 	"     -stX = sectors per track (default = 18)\n",
 	"     -szX = sectors for track 0 (default = 18)\n",
 	"     -iX  = interleave (default = 3)\n",
+	"     -In[,m] = a track's first sector number, or one per side (default 1,\n",
+	"               or 0 for -k and for a short track 0)\n",
 	"     -dr  = format a Dragon disk\n",
 	" Hard Drive Options:\n",
 	"     -lX  = number of logical sectors (floppy options ignored)\n",
@@ -65,6 +67,9 @@ int os9format(int argc, char **argv)
 	int clusterSize = 0;	/* assume no cluster size */
 	int sectorAllocationSize = 8;	/* default */
 	int interleave = DEF_INTERLEAVE;
+	int firstSector[2] = { -1, -1 };	/* -1 = not given, see the defaults below */
+	u_int sideFirstSector[2];
+	int side;
 	int os968k = 0;		/* assume OS-9/6809 LSN0 */
 	int formatEntire = 0;	/* format entire disk image */
 	int isDragon = 0;	/* format disk as Dragon, with reserved boot sectors at begining */
@@ -226,6 +231,17 @@ int os9format(int argc, char **argv)
 						p++;
 					break;
 
+				case 'I':	/* first sector numbers, one per side */
+				{
+					char *comma = strchr(p + 1, ',');
+
+					firstSector[0] = atoi(p + 1);
+					firstSector[1] = comma ? atoi(comma + 1) : firstSector[0];
+					while (*(p + 1) != '\0')
+						p++;
+					break;
+				}
+
 				case 't':	/* tracks */
 					tracks = atoi(p + 1);
 					while (*(p + 1) != '\0')
@@ -263,6 +279,23 @@ int os9format(int argc, char **argv)
 				}
 			}
 		}
+	}
+
+	/* Native OS-9/68K machines number a track's sectors from 0, as do machines whose
+	 * track 0 is short (MM/1, GIMIX, Dragon Beta); the CoCo, Dragon 64 and Dragon
+	 * Alpha number from 1.  -I overrides this for 68K machines that differ (BBC
+	 * second processor, Atari, Amiga, Macintosh). */
+	if (firstSector[0] < 0)
+	{
+		firstSector[0] = (os968k || (sectorsTrack0 != 0 && sectorsTrack0 != sectorsPerTrack)) ? 0 : 1;
+	}
+	if (firstSector[1] < 0)
+	{
+		firstSector[1] = firstSector[0];
+	}
+	for (side = 0; side < 2; side++)
+	{
+		sideFirstSector[side] = (u_int)firstSector[side];
 	}
 
 	/* match sectors on track 0 only if it's unset. */
@@ -331,6 +364,7 @@ int os9format(int argc, char **argv)
 						  diskName, sectorAllocationSize,
 						  tpi, density, formatEntire,
 						  isDragon, isHDD, interleave,
+						  sideFirstSector,
 						  &totalSectors, &totalBytes);
 
 			if (ec == EOS_FAE)
