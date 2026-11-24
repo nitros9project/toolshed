@@ -1,6 +1,8 @@
 /* Tests for the FLEX library. */
 
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "tinytest.h"
 #include "diskimage.h"
@@ -1217,6 +1219,223 @@ static void test_random_map_count(void)
 	remove(TEST_IMAGE);
 }
 
+/* A random file made here is laid out as FLEX lays one out: two map sectors
+   numbered 0, then its data numbered from 1, with the map listing runs of
+   data sectors.  Runs end at the end of a track. */
+static void test_random_create(void)
+{
+	static const u_char map[] = {1, 2, 0, 0, 1, 3, 8, 2, 1, 4, 0, 0, 0};
+	flex_path_id path;
+	flex_file_stat stat;
+	u_char buffer[FLEX_SECTOR_SIZE];
+	u_char zeros[FLEX_SECTOR_SIZE - 4];
+	u_int size = 12 * 252 - 5;
+	u_int count;
+	error_code ec;
+
+	/* Single density: 10 sectors a track */
+	fresh_disk(TEST_IMAGE, DISKIMAGE_RAW, 35, 1, 0);
+	fill_pattern(size, 3);
+	ASSERT_EC(0, _flex_create(&path, TEST_FILE("RAND.DAT"), FAM_WRITE));
+	ASSERT_EC(0, _flex_ss_random(path));
+	count = size;
+	ec = _flex_write(path, data, &count);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(size, count);
+	ASSERT_EC(0, _flex_close(path));
+
+	ASSERT_EC(0, _flex_open(&path, TEST_FILE("RAND.DAT"), FAM_READ));
+	ASSERT_EC(0, _flex_gs_fd(path, &stat));
+	ASSERT_EQUALS(1, stat.random);
+	ASSERT_EQUALS(14, stat.sectors);
+	ASSERT_EQUALS(12 * 252, stat.file_size);
+	ASSERT_EQUALS(1, stat.start_track);
+	ASSERT_EQUALS(1, stat.start_sector);
+	ASSERT_EQUALS(2, stat.end_track);
+	ASSERT_EQUALS(4, stat.end_sector);
+
+	memset(zeros, 0, sizeof(zeros));
+	ASSERT_EC(0, _flex_gs_sector(path, 1, 1, buffer));
+	ASSERT_MEM_EQUALS(map, buffer, sizeof(map));
+	ASSERT_MEM_EQUALS(zeros, &buffer[sizeof(map)], FLEX_SECTOR_SIZE - sizeof(map));
+	ASSERT_EC(0, _flex_gs_sector(path, 1, 2, buffer));
+	ASSERT_EQUALS(1, buffer[0]);
+	ASSERT_EQUALS(3, buffer[1]);
+	ASSERT_MEM_EQUALS(zeros, &buffer[2], FLEX_SECTOR_SIZE - 4);
+	ASSERT_EC(0, _flex_gs_sector(path, 1, 3, buffer));
+	ASSERT_EQUALS(0, buffer[2]);
+	ASSERT_EQUALS(1, buffer[3]);
+	ASSERT_EC(0, _flex_gs_sector(path, 2, 4, buffer));
+	ASSERT_EQUALS(0, buffer[0]);
+	ASSERT_EQUALS(0, buffer[1]);
+	ASSERT_EQUALS(0, buffer[2]);
+	ASSERT_EQUALS(12, buffer[3]);
+	_flex_close(path);
+	ASSERT("the data reads back", file_matches(TEST_FILE("RAND.DAT"), size, 3));
+	ASSERT_EQUALS(1, check_disk(TEST_IMAGE));
+
+	/* Once made, it can be written but can't grow. */
+	ASSERT_EC(0, _flex_open(&path, TEST_FILE("RAND.DAT"), RW));
+	ASSERT_EC(0, _flex_seek(path, 0, SEEK_SET));
+	count = 10;
+	ec = _flex_write(path, data, &count);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EC(0, _flex_seek(path, 12 * 252, SEEK_SET));
+	count = 1;
+	ec = _flex_write(path, data, &count);
+	ASSERT_EQUALS(EOS_FNA, ec);
+	ASSERT_EC(0, _flex_close(path));
+
+	/* Only a file with nothing written yet can be made random. */
+	ASSERT_EC(0, _flex_create(&path, TEST_FILE("LATE.DAT"), FAM_WRITE));
+	count = 10;
+	ec = _flex_write(path, data, &count);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EC(EOS_BMODE, _flex_ss_random(path));
+	ASSERT_EC(0, _flex_close(path));
+
+	/* With nothing written, there is no file, as for any other. */
+	ASSERT_EC(0, _flex_create(&path, TEST_FILE("EMPTY.DAT"), FAM_WRITE));
+	ASSERT_EC(0, _flex_ss_random(path));
+	ASSERT_EC(0, _flex_close(path));
+	ASSERT_EC(EOS_PNNF, _flex_open(&path, TEST_FILE("EMPTY.DAT"), FAM_READ));
+	ASSERT_EQUALS(2, check_disk(TEST_IMAGE));
+	remove(TEST_IMAGE);
+}
+
+/* Write a random file of sectors from the free chain. */
+static error_code write_random(const char *pathlist, u_int sectors)
+{
+	flex_path_id path;
+	u_int count = sectors * FLEX_DATA_SIZE;
+	error_code ec = _flex_create(&path, pathlist, FAM_WRITE);
+	error_code close_ec;
+
+	if (ec != 0)
+	{
+		return ec;
+	}
+	ec = _flex_ss_random(path);
+	if (ec == 0)
+	{
+		fill_pattern(count, 9);
+		ec = _flex_write(path, data, &count);
+	}
+	close_ec = _flex_close(path);
+	return ec != 0 ? ec : close_ec;
+}
+
+/* Two map sectors hold 168 runs.  A file in more can't be closed, but is
+   left whole, so it can be deleted. */
+static void test_random_map_full(void)
+{
+	char name[32];
+	flex_path_id path;
+	u_int i, free_sectors;
+
+	/* 169 free sectors, none next to another, at the end of the free chain,
+	   after 2 for a map */
+	fresh_disk(TEST_IMAGE, DISKIMAGE_RAW, 35, 1, 1);
+	for (i = 0; i < 2 * 169; i++)
+	{
+		FORMAT(name, TEST_IMAGE ",F%u", i);
+		ASSERT_EC(0, write_whole(name, data, 1));
+	}
+	for (i = 1; i < 2 * 169; i += 2)
+	{
+		FORMAT(name, TEST_IMAGE ",F%u", i);
+		ASSERT_EC(0, _flex_kill(name));
+	}
+	ASSERT_EC(0, _flex_open(&path, TEST_FILE(""), FAM_READ));
+	ASSERT_EC(0, _flex_gs_free(path, &free_sectors));
+	_flex_close(path);
+	ASSERT_EC(0, write_whole(TEST_FILE("FILLER"), data, (free_sectors - 169 - 2) * FLEX_DATA_SIZE));
+
+	ASSERT_EC(0, write_random(TEST_FILE("FITS.DAT"), 168));
+	ASSERT_EQUALS(2 * 169 / 2 + 2, check_disk(TEST_IMAGE));
+	ASSERT_EC(0, _flex_kill(TEST_FILE("FITS.DAT")));
+
+	ASSERT_EC(EOS_DF, write_random(TEST_FILE("TOOMANY.DAT"), 169));
+	ASSERT_EQUALS(2 * 169 / 2 + 2, check_disk(TEST_IMAGE));
+	ASSERT_EC(0, _flex_kill(TEST_FILE("TOOMANY.DAT")));
+	ASSERT_EQUALS(2 * 169 / 2 + 1, check_disk(TEST_IMAGE));
+	remove(TEST_IMAGE);
+}
+
+/* Set or clear an environment variable, returning a copy of what it was. */
+static char *swap_env(const char *name, const char *value)
+{
+	char *old = getenv(name);
+
+	old = old != NULL ? strdup(old) : NULL;
+	if (value != NULL)
+	{
+		setenv(name, value, 1);
+	}
+	else
+	{
+		unsetenv(name);
+	}
+	tzset();
+	return old;
+}
+
+static void restore_env(const char *name, char *old)
+{
+	swap_env(name, old);
+	free(old);
+}
+
+/* SOURCE_DATE_EPOCH is read in UTC, so a disk made with it is the same in
+   any time zone.  Other times are local. */
+static void test_dates(void)
+{
+	flex_file_stat stat;
+	flex_path_id path;
+	flex_sir sir;
+	char *old_tz = swap_env("TZ", "<+14>-14");
+	char *old_sde = swap_env("SOURCE_DATE_EPOCH", NULL);
+
+	/* 1700000000 is 22:13 on 11/14/23 in UTC, and 11/15/23 at UTC+14. */
+	memset(&stat, 0, sizeof(stat));
+	_flex_stat_date(&stat, 1700000000);
+	ASSERT_EQUALS(11, stat.month);
+	ASSERT_EQUALS(15, stat.day);
+	ASSERT_EQUALS(23, stat.year);
+	ASSERT_EQUALS(0, _flex_reproducible_date(&stat));
+	ASSERT_EQUALS(15, stat.day);
+
+	free(swap_env("SOURCE_DATE_EPOCH", "1700000000"));
+	_flex_stat_date(&stat, 0);
+	ASSERT_EQUALS(11, stat.month);
+	ASSERT_EQUALS(14, stat.day);
+	ASSERT_EQUALS(23, stat.year);
+	stat.day = 1;
+	ASSERT_EQUALS(1, _flex_reproducible_date(&stat));
+	ASSERT_EQUALS(14, stat.day);
+
+	fresh_disk(TEST_IMAGE, DISKIMAGE_RAW, 35, 1, 1);
+	ASSERT_EC(0, write_whole(TEST_FILE("NEW.TXT"), data, 10));
+	ASSERT_EC(0, _flex_open(&path, TEST_FILE("NEW.TXT"), FAM_READ));
+	ASSERT_EC(0, _flex_gs_fd(path, &stat));
+	ASSERT_EC(0, _flex_gs_sir(path, &sir));
+	_flex_close(path);
+	ASSERT_EQUALS(14, stat.day);
+	ASSERT_EQUALS(11, sir.month);
+	ASSERT_EQUALS(14, sir.day);
+	ASSERT_EQUALS(23, sir.year);
+	remove(TEST_IMAGE);
+
+	/* A value that isn't a number of seconds is not used. */
+	free(swap_env("SOURCE_DATE_EPOCH", "soon"));
+	stat.day = 1;
+	ASSERT_EQUALS(0, _flex_reproducible_date(&stat));
+	ASSERT_EQUALS(1, stat.day);
+
+	restore_env("SOURCE_DATE_EPOCH", old_sde);
+	restore_env("TZ", old_tz);
+}
+
 static void test_raw_track0(void)
 {
 	static u_char padded[35 * 18 * 256];
@@ -1749,6 +1968,9 @@ int main(void)
 	RUN(test_write_protected_image);
 	RUN(test_read_handmade_disk);
 	RUN(test_random_map_count);
+	RUN(test_random_create);
+	RUN(test_random_map_full);
+	RUN(test_dates);
 	RUN(test_raw_track0);
 	RUN(test_damaged_chains);
 	RUN(test_missing_sectors);

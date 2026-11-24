@@ -1,6 +1,7 @@
 /********************************************************************
  * libflexdisk.c - Sectors, geometry and the SIR
  ********************************************************************/
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -19,19 +20,75 @@ void _fx_put2(u_char *p, u_int value)
 	p[1] = (u_char)value;
 }
 
-void _fx_today(u_char *date)
+/* Whether SOURCE_DATE_EPOCH is set to a time, which *when is set to. */
+static int source_date_epoch(time_t *when)
 {
-	time_t now = GetSafeTimestamp();
-	struct tm *local = localtime(&now);
+	char *value = getenv("SOURCE_DATE_EPOCH");
+	char *end;
+	long long seconds;
 
-	if (local == NULL)
+	if (value == NULL || *value == '\0')
+	{
+		return 0;
+	}
+	seconds = strtoll(value, &end, 10);
+	if (*end != '\0' || seconds < 0)
+	{
+		return 0;
+	}
+	*when = (time_t)seconds;
+	return 1;
+}
+
+void _fx_date(time_t when, u_char *date)
+{
+	struct tm *parts;
+
+	/* SOURCE_DATE_EPOCH is read in UTC, so the date doesn't depend on the
+	   time zone of the machine making the disk. */
+	if (source_date_epoch(&when))
+	{
+		parts = gmtime(&when);
+	}
+	else
+	{
+		parts = localtime(&when);
+	}
+	if (parts == NULL)
 	{
 		memset(date, 0, 3);
 		return;
 	}
-	date[0] = (u_char)(local->tm_mon + 1);
-	date[1] = (u_char)local->tm_mday;
-	date[2] = (u_char)(local->tm_year % 100);
+	date[0] = (u_char)(parts->tm_mon + 1);
+	date[1] = (u_char)parts->tm_mday;
+	date[2] = (u_char)(parts->tm_year % 100);
+}
+
+void _fx_today(u_char *date)
+{
+	_fx_date(time(NULL), date);
+}
+
+int _flex_reproducible_date(flex_file_stat *stat)
+{
+	time_t when;
+
+	if (!source_date_epoch(&when))
+	{
+		return 0;
+	}
+	_flex_stat_date(stat, when);
+	return 1;
+}
+
+void _flex_stat_date(flex_file_stat *stat, time_t when)
+{
+	u_char date[3];
+
+	_fx_date(when, date);
+	stat->month = date[0];
+	stat->day = date[1];
+	stat->year = date[2];
 }
 
 /* Sectors on side 0 of a track, when the image has sides. */

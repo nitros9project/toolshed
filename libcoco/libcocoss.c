@@ -224,8 +224,21 @@ error_code _coco_ss_fd(coco_path_id path, coco_file_stat * statbuf)
 		break;
 
 	case FLEX:
+	{
+		flex_file_stat stat;
+
 		ec = flex_set_attributes(path->path.flex, statbuf->attributes);
+		if (ec == 0)
+		{
+			ec = _flex_gs_fd(path->path.flex, &stat);
+		}
+		if (ec == 0)
+		{
+			_flex_stat_date(&stat, statbuf->last_modified_time);
+			ec = _flex_ss_fd(path->path.flex, &stat);
+		}
 		break;
+	}
 
 	case CECB:
 		fprintf(stderr,

@@ -2,10 +2,13 @@
 
 #include <string.h>
 #include <unistd.h>
+#include <utime.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 
 #include "tinytest.h"
+#include "flexpath.h"
+#include "imagedamage.h"
 #include "toolshed.h"
 #include "commandrun.h"
 
@@ -19,6 +22,14 @@
 #define NATIVE_TEXT "flexcmd_text.txt"
 #define NATIVE_DIR "flexcmd_dir"
 #define CAPTURE " > " OUTPUT_FILE " 2>&1"
+#define TEST_DSAVE "flexcmd_dsave.dmk"
+
+/* Dates from the source, in UTC, whatever the machine running the tests has
+   set.  SDE uses SOURCE_DATE_EPOCH: 1700000000 is 11/14/23 in UTC, and
+   11/15/23 at UTC+14, which it must not depend on. */
+#define SOURCE_DATES "env -u SOURCE_DATE_EPOCH TZ=UTC " FLEXCMD
+#define SDE "env SOURCE_DATE_EPOCH=1700000000 TZ=\"<+14>-14\" " FLEXCMD
+#define HOST_TIME 423576000	/* 12:00 on 06/04/83, UTC */
 
 static char output[16384];
 static u_char data[65536];
@@ -110,6 +121,129 @@ static void clean_up(void)
 	remove(NATIVE_TEXT);
 	remove(NATIVE_DIR "/" NATIVE_FILE);
 	rmdir(NATIVE_DIR);
+	remove(TEST_DSAVE);
+}
+
+/* Make a random file, as ERRORS.SYS is, of a pattern, with a date and
+   protection. */
+static void make_random_file(const char *pathlist, u_int size)
+{
+	flex_path_id path;
+	flex_file_stat stat;
+	u_int i, count = size;
+
+	for (i = 0; i < size; i++)
+	{
+		data[i] = (u_char)(i * 11 + 5);
+	}
+	ASSERT_EC(0, _flex_create(&path, pathlist, FAM_WRITE));
+	ASSERT_EC(0, _flex_ss_random(path));
+	run_status = _flex_write(path, data, &count);
+	ASSERT_EQUALS(0, run_status);
+	ASSERT_EC(0, _flex_gs_fd(path, &stat));
+	stat.attributes = FLEX_ATTR_DELETE;
+	stat.month = 10;
+	stat.day = 3;
+	stat.year = 80;
+	ASSERT_EC(0, _flex_ss_fd(path, &stat));
+	ASSERT_EC(0, _flex_close(path));
+}
+
+static void get_stat(const char *pathlist, flex_file_stat *stat)
+{
+	flex_path_id path;
+
+	memset(stat, 0, sizeof(*stat));
+	ASSERT_EC(0, _flex_open(&path, pathlist, FAM_READ));
+	ASSERT_EC(0, _flex_gs_fd(path, stat));
+	_flex_close(path);
+}
+
+static void set_host_time(const char *pathname)
+{
+	struct utimbuf times;
+
+	times.actime = HOST_TIME;
+	times.modtime = HOST_TIME;
+	run_status = utime(pathname, &times);
+	ASSERT_EQUALS(0, run_status);
+}
+
+#define ASSERT_DATE(month_, day_, year_, stat) \
+	{ \
+		ASSERT_EQUALS(month_, (stat).month); \
+		ASSERT_EQUALS(day_, (stat).day); \
+		ASSERT_EQUALS(year_, (stat).year); \
+	}
+
+/* A copy from one FLEX disk to another keeps the file as it was: random,
+   protected and dated.  Other copies take the date of their source.  With
+   SOURCE_DATE_EPOCH set, every copy has that date instead. */
+static void test_copy_keeps_random_and_dates(void)
+{
+	flex_file_stat stat;
+	long size;
+
+	clean_up();
+	ASSERT_RUN(0, FLEXCMD "dskinit " TEST_IMAGE);
+	ASSERT_RUN(0, FLEXCMD "dskinit -d " TEST_DMK);
+	make_random_file(TEST_IMAGE ",ERRORS.SYS", 1764);
+
+	ASSERT_RUN(0, SOURCE_DATES "copy " TEST_IMAGE ",ERRORS.SYS " TEST_DMK ",ERRORS.SYS");
+	get_stat(TEST_DMK ",ERRORS.SYS", &stat);
+	ASSERT_EQUALS(1, stat.random);
+	ASSERT_EQUALS(9, stat.sectors);
+	ASSERT_EQUALS(1764, stat.file_size);
+	ASSERT_EQUALS(FLEX_ATTR_DELETE, stat.attributes);
+	ASSERT_DATE(10, 3, 80, stat);
+	ASSERT_RUN(0, FLEXCMD "copy " TEST_DMK ",ERRORS.SYS " NATIVE_OTHER);
+	size = file_size(NATIVE_OTHER, back, sizeof(back));
+	ASSERT_EQUALS(1764, size);
+	ASSERT_MEM_EQUALS(data, back, 1764);
+	ASSERT_RUN(0, FLEXCMD "dir " TEST_DMK CAPTURE);
+	read_output();
+	ASSERT("the copy is listed as random", strstr(output, "\nERRORS   SYS      9  .D.. R  10/03/80") != NULL);
+
+	/* A copy over a file there is still made random, and never left half made. */
+	ASSERT_RUN(EOS_FAE, SOURCE_DATES "copy " TEST_IMAGE ",ERRORS.SYS " TEST_DMK ",ERRORS.SYS" QUIET);
+	ASSERT_RUN(EOS_FNA, SOURCE_DATES "copy -r " TEST_IMAGE ",ERRORS.SYS " TEST_DMK ",ERRORS.SYS" QUIET);
+	ASSERT_RUN(0, FLEXCMD "attr -x " TEST_DMK ",ERRORS.SYS");
+	ASSERT_RUN(0, SDE "copy -r " TEST_IMAGE ",ERRORS.SYS " TEST_DMK ",ERRORS.SYS");
+	get_stat(TEST_DMK ",ERRORS.SYS", &stat);
+	ASSERT_EQUALS(1, stat.random);
+	ASSERT_DATE(11, 14, 23, stat);
+
+	/* dsave copies a disk with copy, so keeps them too. */
+	ASSERT_RUN(0, FLEXCMD "dskinit -d " TEST_DSAVE);
+	ASSERT_RUN(0, SOURCE_DATES "dsave -e -x../cflex/cflex " TEST_IMAGE ", " TEST_DSAVE "," QUIET);
+	get_stat(TEST_DSAVE ",ERRORS.SYS", &stat);
+	ASSERT_EQUALS(1, stat.random);
+	ASSERT_DATE(10, 3, 80, stat);
+
+	/* A host file's date is its modification time, -l or not. */
+	write_native(NATIVE_FILE, 300);
+	set_host_time(NATIVE_FILE);
+	ASSERT_RUN(0, SOURCE_DATES "copy " NATIVE_FILE " " TEST_DMK ",HOST.BIN");
+	get_stat(TEST_DMK ",HOST.BIN", &stat);
+	ASSERT_EQUALS(0, stat.random);
+	ASSERT_DATE(6, 4, 83, stat);
+	ASSERT_RUN(0, SOURCE_DATES "copy -l " NATIVE_FILE " " TEST_DMK ",HOST.TXT");
+	get_stat(TEST_DMK ",HOST.TXT", &stat);
+	ASSERT_DATE(6, 4, 83, stat);
+	ASSERT_RUN(0, SDE "copy -r " NATIVE_FILE " " TEST_DMK ",HOST.BIN");
+	get_stat(TEST_DMK ",HOST.BIN", &stat);
+	ASSERT_DATE(11, 14, 23, stat);
+	ASSERT_RUN(0, SDE "copy -l -r " NATIVE_FILE " " TEST_DMK ",HOST.TXT");
+	get_stat(TEST_DMK ",HOST.TXT", &stat);
+	ASSERT_DATE(11, 14, 23, stat);
+
+	/* A disk made with SOURCE_DATE_EPOCH is dated in UTC. */
+	remove(TEST_IMAGE);
+	ASSERT_RUN(0, SDE "dskinit " TEST_IMAGE);
+	ASSERT_RUN(0, FLEXCMD "dir " TEST_IMAGE CAPTURE);
+	read_output();
+	ASSERT("the volume is dated in UTC", strstr(output, "Created: 11/14/23") != NULL);
+	clean_up();
 }
 
 static void test_help(void)
@@ -456,6 +590,7 @@ int main(void)
 	RUN(test_kill_and_rename);
 	RUN(test_free_reports_damage);
 	RUN(test_dsave);
+	RUN(test_copy_keeps_random_and_dates);
 	RUN(test_gen);
 	RUN(test_other_tools);
 	return TEST_REPORT();

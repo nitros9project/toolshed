@@ -5,6 +5,11 @@
  * time, and are numbered with their record number, from 1, as FLEX numbers
  * those of a sequential file.  Sectors cut from a file go to the end of
  * the free chain.
+ *
+ * A random file being made starts with its two map sectors, numbered 0, as
+ * FLEX makes them.  Its map is a list of runs of its data sectors, each a
+ * track, sector and count, from offset 4 of the first map sector and on
+ * into the second.
  ********************************************************************/
 #include <string.h>
 
@@ -64,14 +69,76 @@ static error_code link_last(flex_path_id path, u_int track, u_int sector)
 	return ec;
 }
 
+#define FX_MAP_ENTRY_SIZE	3
+#define FX_MAP_ENTRIES		((FLEX_SECTOR_SIZE - FLEX_DATA_OFFSET) / FX_MAP_ENTRY_SIZE)
+
+/* Start a random file with its map sectors, before its first data sector. */
+static error_code add_random_map(flex_path_id path)
+{
+	u_char buffer[FLEX_SECTOR_SIZE];
+	u_int previous_track = 0, previous_sector = 0;
+	u_int i;
+	error_code ec = 0;
+
+	for (i = 0; i < FLEX_RANDOM_MAP_SECTORS && ec == 0; i++)
+	{
+		u_int track, sector;
+
+		ec = _fx_allocate(path, &track, &sector);
+		if (ec == 0)
+		{
+			memset(buffer, 0, sizeof(buffer));
+			ec = _fx_write_sector(path, track, sector, buffer);
+		}
+		if (ec == 0 && i > 0)
+		{
+			ec = _fx_read_sector(path, previous_track, previous_sector, buffer);
+			if (ec == 0)
+			{
+				buffer[0] = (u_char)track;
+				buffer[1] = (u_char)sector;
+				ec = _fx_write_sector(path, previous_track, previous_sector, buffer);
+			}
+		}
+		if (ec != 0)
+		{
+			break;
+		}
+		if (i == 0)
+		{
+			path->entry.start_track = (u_char)track;
+			path->entry.start_sector = (u_char)sector;
+		}
+		path->entry.end_track = (u_char)track;
+		path->entry.end_sector = (u_char)sector;
+		_fx_put2(path->entry.sectors, i + 1);
+		path->entry_dirty = 1;
+		previous_track = track;
+		previous_sector = sector;
+	}
+	if (ec == 0)
+	{
+		path->entry.random = FLEX_RANDOM_MAP_SECTORS;
+	}
+	return ec;
+}
+
 error_code _fx_extend(flex_path_id path, u_int data_sectors)
 {
 	u_char buffer[FLEX_SECTOR_SIZE];
 	error_code ec = 0;
 
-	if (data_sectors > path->data_sectors && path->entry.random)
+	if (data_sectors > path->data_sectors && path->entry.random && !path->making_random)
 	{
 		return EOS_FNA;
+	}
+	if (data_sectors > path->data_sectors && path->making_random && !path->entry.random)
+	{
+		ec = add_random_map(path);
+		if (ec != 0)
+		{
+			return ec;
+		}
 	}
 
 	while (path->data_sectors < data_sectors)
@@ -88,7 +155,7 @@ error_code _fx_extend(flex_path_id path, u_int data_sectors)
 		memset(buffer, 0, sizeof(buffer));
 		_fx_put2(&buffer[2], path->data_sectors + 1);
 		ec = _fx_write_sector(path, track, sector, buffer);
-		if (ec == 0 && path->data_sectors > 0)
+		if (ec == 0 && (path->data_sectors > 0 || path->entry.random))
 		{
 			ec = link_last(path, track, sector);
 		}
@@ -99,8 +166,11 @@ error_code _fx_extend(flex_path_id path, u_int data_sectors)
 
 		if (path->data_sectors == 0)
 		{
-			path->entry.start_track = (u_char)track;
-			path->entry.start_sector = (u_char)sector;
+			if (!path->entry.random)
+			{
+				path->entry.start_track = (u_char)track;
+				path->entry.start_sector = (u_char)sector;
+			}
 			path->data_track = track;
 			path->data_sector = sector;
 		}
@@ -275,6 +345,91 @@ error_code _flex_ss_fd(flex_path_id path, const flex_file_stat *stat)
 	if (ec == 0)
 	{
 		path->entry_dirty = 0;
+	}
+	return ec;
+}
+
+error_code _flex_ss_random(flex_path_id path)
+{
+	error_code ec = writable(path);
+
+	if (ec != 0)
+	{
+		return ec;
+	}
+	if (_flex_entry_sectors(&path->entry) != 0 || path->entry.random)
+	{
+		return EOS_BMODE;
+	}
+	path->making_random = 1;
+	return 0;
+}
+
+/* Record the runs of a random file's data sectors in its map. */
+error_code _fx_write_random_map(flex_path_id path)
+{
+	u_char map[FLEX_RANDOM_MAP_SECTORS][FLEX_SECTOR_SIZE];
+	u_char buffer[FLEX_SECTOR_SIZE];
+	u_int map_track[FLEX_RANDOM_MAP_SECTORS] = {0}, map_sector[FLEX_RANDOM_MAP_SECTORS] = {0};
+	u_int run_track = 0, run_sector = 0, run_count = 0, runs = 0;
+	u_int track = path->data_track, sector = path->data_sector;
+	u_int i;
+	error_code ec = 0;
+
+	map_track[0] = path->entry.start_track;
+	map_sector[0] = path->entry.start_sector;
+	for (i = 0; i < FLEX_RANDOM_MAP_SECTORS && ec == 0; i++)
+	{
+		ec = _fx_read_sector(path, map_track[i], map_sector[i], map[i]);
+		memset(&map[i][2], 0, FLEX_SECTOR_SIZE - 2);
+		if (i + 1 < FLEX_RANDOM_MAP_SECTORS)
+		{
+			map_track[i + 1] = map[i][0];
+			map_sector[i + 1] = map[i][1];
+		}
+	}
+
+	/* A run is of sectors one after another on a track, as many as a
+	   count of one byte holds. */
+	for (i = 0; i <= path->data_sectors && ec == 0; i++)
+	{
+		int continues = i < path->data_sectors && run_count > 0 && run_count < 255 &&
+			track == run_track && sector == run_sector + run_count;
+
+		if (i == path->data_sectors || !continues)
+		{
+			if (run_count > 0)
+			{
+				u_char *entry;
+
+				if (runs >= FLEX_RANDOM_MAP_SECTORS * FX_MAP_ENTRIES)
+				{
+					return EOS_DF;
+				}
+				entry = &map[runs / FX_MAP_ENTRIES][FLEX_DATA_OFFSET + (runs % FX_MAP_ENTRIES) * FX_MAP_ENTRY_SIZE];
+				entry[0] = (u_char)run_track;
+				entry[1] = (u_char)run_sector;
+				entry[2] = (u_char)run_count;
+				runs++;
+			}
+			if (i == path->data_sectors)
+			{
+				break;
+			}
+			run_track = track;
+			run_sector = sector;
+			run_count = 0;
+		}
+		run_count++;
+
+		ec = _fx_read_sector(path, track, sector, buffer);
+		track = buffer[0];
+		sector = buffer[1];
+	}
+
+	for (i = 0; i < FLEX_RANDOM_MAP_SECTORS && ec == 0; i++)
+	{
+		ec = _fx_write_sector(path, map_track[i], map_sector[i], map[i]);
 	}
 	return ec;
 }

@@ -286,10 +286,18 @@ error_code _flex_create(flex_path_id *path, const char *pathlist, int mode)
 error_code _flex_close(flex_path_id path)
 {
 	error_code ec = 0;
+	error_code map_ec = 0;
 
 	if (!path->israw && (path->mode & FAM_WRITE))
 	{
 		ec = _fx_flush_buffer(path);
+
+		/* A map that can't be written still leaves the file and the free
+		   chain whole, so the file can be deleted. */
+		if (ec == 0 && path->making_random && path->entry.random)
+		{
+			map_ec = _fx_write_random_map(path);
+		}
 
 		/* FLEX deletes a file left with no sectors when it is closed. */
 		if (ec == 0 && _flex_entry_sectors(&path->entry) == 0)
@@ -307,5 +315,5 @@ error_code _flex_close(flex_path_id path)
 	{
 		ec = _fx_flush(path);
 	}
-	return _fx_close_image(path, ec);
+	return _fx_close_image(path, ec != 0 ? ec : map_ec);
 }
