@@ -84,20 +84,29 @@ static void write_lsns(format_output *out, void *buffer, u_int size)
 /* Make a new image of the whole disk, and a path to reach its LSNs. */
 static error_code open_new_image(struct _os9_path_id *image, char *pathname, diskimage_format format,
 				 int tracks, int sectorsPerTrack, int sectorsTrack0, int heads,
-				 int sectorSize, int density, int interleave, const u_int firstSector[2])
+				 int sectorSize, int density, int interleave, const u_int firstSector[2],
+				 int track0SingleDensity)
 {
 	diskimage_geometry geometry;
+	u_int flags = 0;
 	error_code ec;
 
-	/* These formats only record double density here. */
-	if (density == 0 && (format == DISKIMAGE_DMK || format == DISKIMAGE_SDF))
+	/* Only DMK and SDF images record density. */
+	if (format == DISKIMAGE_DMK || format == DISKIMAGE_SDF)
 	{
-		return EOS_IA;
+		if (track0SingleDensity)
+		{
+			flags |= DISKIMAGE_CREATE_FM_TRACK0;
+		}
+		if (density == 0)
+		{
+			flags |= DISKIMAGE_CREATE_SINGLE_DENSITY;
+		}
 	}
 
 	ec = _diskimage_create_ex(pathname, format, heads, tracks, sectorSize, sectorsPerTrack,
 				  sectorsTrack0 == sectorsPerTrack ? 0 : sectorsTrack0, interleave,
-				  firstSector, 0xE5, 0);
+				  firstSector, 0xE5, flags);
 	if (ec != 0)
 	{
 		return ec;
@@ -139,7 +148,7 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 
 	return _os9_format_image(pathname, DISKIMAGE_RAW, os968k, tracks, sectorsPerTrack, sectorsTrack0,
 				 heads, sectorSize, clusterSize, diskName, sectorAllocationSize, tpi,
-				 density, formatEntire, isDragon, isHDD, interleave, first_sector, totalSectors, totalBytes);
+				 density, formatEntire, isDragon, isHDD, interleave, first_sector, 0, totalSectors, totalBytes);
 }
 
 
@@ -149,7 +158,7 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 			     int *clusterSize, char *diskName,
 			     int sectorAllocationSize, int tpi, int density,
 			     int formatEntire, int isDragon, int isHDD, int interleave,
-			     const u_int firstSector[2],
+			     const u_int firstSector[2], int track0SingleDensity,
 			     unsigned int *totalSectors, unsigned int *totalBytes)
 {
 	error_code ec = 0;
@@ -194,7 +203,7 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 	else
 	{
 		ec = open_new_image(&image, pathname, format, tracks, sectorsPerTrack, sectorsTrack0, heads,
-				    sectorSize, density, interleave, firstSector);
+				    sectorSize, density, interleave, firstSector, track0SingleDensity);
 
 		if (ec != 0)
 		{

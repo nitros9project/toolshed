@@ -1704,7 +1704,7 @@ static error_code make_os9_image(const os9_layout *layout)
 	remove(OS9_IMAGE);
 	ec = _os9_format_image(OS9_IMAGE, layout->attributes ? DISKIMAGE_RAW : layout->format, 0, layout->tracks,
 			       layout->sectors_per_track, layout->sectors_per_track, layout->heads, 256,
-			       &cluster_size, "Test", 8, 48, 1, 1, 0, 0, 3, one_based, &total_sectors, &total_bytes);
+			       &cluster_size, "Test", 8, 48, 1, 1, 0, 0, 3, one_based, 0, &total_sectors, &total_bytes);
 	if (ec == 0 && layout->attributes)
 	{
 		image_add_jvc_attributes(OS9_IMAGE, layout->sectors_per_track, layout->heads);
@@ -1974,7 +1974,7 @@ void test_os9_bad_lsn0_on_tracks()
 
 	/* An LSN size that isn't the size of the disk's sectors */
 	ASSERT_EC(0, _os9_format_image(OS9_IMAGE, DISKIMAGE_DMK, 0, 35, 9, 9, 1, 512, &cluster_size, "Test", 8, 48, 1, 1,
-				       0, 0, 3, one_based, &total_sectors, &total_bytes));
+				       0, 0, 3, one_based, 0, &total_sectors, &total_bytes));
 	ASSERT_EC(0, _diskimage_open(&disk, OS9_IMAGE, FAM_READ | FAM_WRITE));
 	size = sizeof(sector);
 	ASSERT_EC(0, _diskimage_read_sector(disk, 0, 0, 1, sector, &size));

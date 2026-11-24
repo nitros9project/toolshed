@@ -31,6 +31,7 @@ static char const *const helpMessage[] = {
 	"     -9   = 96 tpi\n",
 	"     -sa  = sector allocation size (SAS)\n",
 	"     -sd  = single density\n",
+	"     -sd0 = single density on track 0 only, the rest double (Dragon Beta)\n",
 	"     -dd  = double density (default)\n",
 	"     -ss  = single sided (default)\n",
 	"     -ds  = double sided\n",
@@ -71,6 +72,7 @@ int os9format(int argc, char **argv)
 	u_int sideFirstSector[2];
 	int side;
 	int os968k = 0;		/* assume OS-9/6809 LSN0 */
+	int track0SingleDensity = 0;	/* track 0 side 0 is FM */
 	int formatEntire = 0;	/* format entire disk image */
 	int isDragon = 0;	/* format disk as Dragon, with reserved boot sectors at begining */
 	int isHDD = 0;		/* Is this image for a hard drive */
@@ -200,7 +202,16 @@ int os9format(int argc, char **argv)
 						break;
 
 					case 'd':
-						density = 0;
+						if (*(p + 2) == '0')
+						{
+							/* Track 0 alone is single density, as a Dragon Beta
+							   disk has it; the disk itself stays double. */
+							track0SingleDensity = 1;
+						}
+						else
+						{
+							density = 0;
+						}
 						break;
 
 					case 's':
@@ -364,7 +375,7 @@ int os9format(int argc, char **argv)
 						  diskName, sectorAllocationSize,
 						  tpi, density, formatEntire,
 						  isDragon, isHDD, interleave,
-						  sideFirstSector,
+						  sideFirstSector, track0SingleDensity,
 						  &totalSectors, &totalBytes);
 
 			if (ec == EOS_FAE)
