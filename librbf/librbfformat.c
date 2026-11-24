@@ -81,6 +81,26 @@ static void write_lsns(format_output *out, void *buffer, u_int size)
 }
 
 
+/* Close an image the format gave up on, then remove it: a half-written one is
+ * of no use, a non-raw one could not be replaced by a second attempt at the
+ * same pathname, and Windows will not delete a file that is still open. */
+static error_code discard_image(const char *pathname, format_output *out, error_code ec)
+{
+	if (out->image != NULL)
+	{
+		_diskimage_close(out->image->disk);
+	}
+	else
+	{
+		_native_close(out->native);
+	}
+
+	remove(pathname);
+
+	return ec;
+}
+
+
 /* Make a new image of the whole disk, and a path to reach its LSNs. */
 static error_code open_new_image(struct _os9_path_id *image, char *pathname, diskimage_format format,
 				 int tracks, int sectorsPerTrack, int sectorsTrack0, int heads,
@@ -96,7 +116,7 @@ static error_code open_new_image(struct _os9_path_id *image, char *pathname, dis
 	{
 		if (track0SingleDensity)
 		{
-			flags |= DISKIMAGE_CREATE_FM_TRACK0;
+			flags |= DISKIMAGE_CREATE_FM_TRACK0_SIDE0;
 		}
 		if (density == 0)
 		{
@@ -238,13 +258,13 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 	{
 		fprintf(stderr, "Disk too large\n");
 
-		return (1);
+		return discard_image(pathname, &out, 1);
 	}
 	else if (int3(s0.dd_tot) < 4)
 	{
 		fprintf(stderr, "Too few sectors\n");
 
-		return (1);
+		return discard_image(pathname, &out, 1);
 	}
 
 	sectorsLeft = int3(s0.dd_tot);
@@ -416,7 +436,7 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 		bitmap = (u_char *) malloc(bitmapSize);
 		if (bitmap == NULL)
 		{
-			return (1);
+			return discard_image(pathname, &out, 1);
 		}
 
 		/* Clear out bitmap sectors (assume all space available) */
@@ -510,7 +530,7 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 
 		if (allocedSectors == NULL)
 		{
-			return (1);
+			return discard_image(pathname, &out, 1);
 		}
 
 		memset(allocedSectors, 0, totalBytes);
@@ -583,14 +603,21 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 		}
 	}
 
+	ec = out.ec != 0 ? out.ec : ec;
+
+	if (ec != 0)
+	{
+		return discard_image(pathname, &out, ec);
+	}
+
 	if (out.image != NULL)
 	{
 		ec = _diskimage_close(image.disk);
-
-		return out.ec != 0 ? out.ec : ec;
+	}
+	else
+	{
+		_native_close(out.native);
 	}
 
-	_native_close(out.native);
-
-	return (ec);
+	return ec;
 }

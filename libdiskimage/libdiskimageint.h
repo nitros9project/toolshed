@@ -116,6 +116,7 @@ typedef struct
 	u_char fill;
 	int index_mark;		/* tracks of a DMK or SDF image start with an index mark */
 	int fm_track0;		/* both sides of track 0 are single density, of sectors_track0 */
+	int fm_track0_side0;	/* side 0 of track 0 alone is, of sectors_track0 */
 	int span_sides;		/* side 1 sector numbers follow side 0's */
 	int fm_all;		/* every track is single density */
 } di_layout;

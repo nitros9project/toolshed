@@ -1248,6 +1248,7 @@ static void test_create_jvc(void)
 {
 	diskimage_id disk;
 	diskimage_geometry g;
+	u_int zero[2] = { 0, 0 };
 	long size;
 
 	/* All defaults: no header, so it reads back as raw. */
@@ -1285,6 +1286,141 @@ static void test_create_jvc(void)
 	ASSERT_EQUALS(9, g.sectors_per_track);
 	check_created(18, 512, 0x44);
 	remove(TEST_IMAGE);
+
+	/* First sector differs: four bytes, the fourth holding it. */
+	ASSERT_CALL(0, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_JVC, 1, 2, 256, 18, 0, 1,
+					    zero, 0x55, 0));
+	size = read_image();
+	ASSERT_EQUALS(4 + 2 * 18 * 256, size);
+	ASSERT_EQUALS(18, image[0]);
+	ASSERT_EQUALS(1, image[1]);
+	ASSERT_EQUALS(1, image[2]);
+	ASSERT_EQUALS(0, image[3]);
+	check_created(36, 256, 0x55);
+	remove(TEST_IMAGE);
+}
+
+/* Count the sectors a created DMK track's table lists, and its density. */
+static int dmk_track_sectors(int track, int *double_density)
+{
+	int length = image[2] | (image[3] << 8);
+	int base = 16 + track * length;
+	int count = 0;
+	int i;
+
+	*double_density = 0;
+
+	for (i = 0; i < 128; i += 2)
+	{
+		int entry = image[base + i] | (image[base + i + 1] << 8);
+
+		if (entry != 0)
+		{
+			if (count == 0)
+			{
+				*double_density = (entry & 0x8000) != 0;
+			}
+			count++;
+		}
+	}
+
+	return count;
+}
+
+static void test_create_fm_track0_side0(void)
+{
+	u_int first[2] = { 1, 1 };
+	int double_density;
+
+	/* Side 0 of track 0 alone is single density, with sectors_track0 sectors;
+	   side 1 keeps sectors_per_track and double density.  OS-9 describes a
+	   short track 0 as side 0 only, and the Dragon Beta driver records FM on
+	   cylinder 0 side 0 for the same reason. */
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_DMK, 2, 3, 256, 16, 10, 1,
+					    first, 0xE5, DISKIMAGE_CREATE_FM_TRACK0_SIDE0));
+	ASSERT_EQUALS(DISKIMAGE_DMK, identify());
+	read_image();
+	ASSERT_EQUALS(10, dmk_track_sectors(0, &double_density));
+	ASSERT_EQUALS(0, double_density);
+	ASSERT_EQUALS(16, dmk_track_sectors(1, &double_density));
+	ASSERT_EQUALS(1, double_density);
+	remove(TEST_IMAGE);
+}
+
+static void test_create_numbering_refusals(void)
+{
+	u_int zero[2] = { 0, 0 };
+	u_int over[2] = { 250, 250 };
+	u_int late[2] = { 246, 246 };
+	u_int apart[2] = { 1, 19 };
+
+	/* A raw or VDK image has nowhere to record a number, and takes the layout
+	   anyway: the number is the format's to choose, not a reason to refuse. */
+	ASSERT_CALL(0, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_RAW, 1, 2, 256, 18, 0, 1,
+					    zero, 0xE5, 0));
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_VDK, 1, 2, 256, 18, 0, 1,
+					    zero, 0xE5, 0));
+	remove(TEST_IMAGE);
+
+	/* JVC records a number but has room for only one, so a disk asked for with a
+	   value per side would not be the disk asked for: refused, not written. */
+	ASSERT_CALL(EOS_SECT, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_JVC, 2, 2, 256, 18, 0, 1,
+						   apart, 0xE5, 0));
+
+	/* A number for each side needs two sides.  A single sided disk has nowhere
+	   for the second number, so it is refused in every container. */
+	ASSERT_CALL(EOS_SECT, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_DMK, 1, 2, 256, 18, 0, 1,
+						   apart, 0xE5, 0));
+	ASSERT_CALL(EOS_SECT, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_SDF, 1, 2, 256, 18, 0, 1,
+						   apart, 0xE5, 0));
+	ASSERT_CALL(EOS_SECT, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_RAW, 1, 2, 256, 18, 0, 1,
+						   apart, 0xE5, 0));
+	ASSERT_CALL(EOS_SECT, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_VDK, 1, 2, 256, 18, 0, 1,
+						   apart, 0xE5, 0));
+	ASSERT_CALL(EOS_SECT, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_JVC, 1, 2, 256, 18, 0, 1,
+						   apart, 0xE5, 0));
+
+	/* A track's numbers must fit in a byte. */
+	ASSERT_CALL(EOS_SECT, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_DMK, 1, 2, 256, 18, 0, 1,
+						  over, 0xE5, 0));
+
+	/* Track 0 fits at 246 to 255, but every track after it holds 16 sectors
+	   and would need 246 to 261. */
+	ASSERT_CALL(EOS_SECT, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_DMK, 1, 3, 256, 16, 10, 1,
+						  late, 0xE5, 0));}
+
+
+static void test_create_numbering_at_the_limit(void)
+{
+	u_int fits[2] = { 240, 19 };
+	u_int track0_only[2] = { 243, 243 };
+	u_int side1_over[2] = { 240, 241 };
+	diskimage_id disk;
+	u_char buffer[256];
+	u_int size = sizeof(buffer);
+
+	/* 240 is the last start a sixteen sector track can take: 240 to 255.  The
+	   sides number independently, so side 1 starts at 19. */
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_DMK, 2, 3, 256, 16, 10, 1,
+					    fits, 0xE5, 0));
+	ASSERT_CALL(0, _diskimage_open(&disk, TEST_IMAGE, FAM_READ | FAM_WRITE));
+	ASSERT_CALL(0, _diskimage_read_sector(disk, 0, 1, 19, buffer, &size));
+	ASSERT_EQUALS(0xE5, buffer[0]);
+	_diskimage_close(disk);
+	remove(TEST_IMAGE);
+
+	/* 243 fits track 0's ten sectors, 243 to 252, but not the sixteen of the
+	   tracks after it, which would need 243 to 258. */
+	ASSERT_CALL(EOS_SECT, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_DMK, 1, 3, 256, 16, 10, 1,
+						  track0_only, 0xE5, 0));
+
+	/* Each side is checked against its own start: side 0 is fine at 240 and
+	   side 1 overruns from 241. */
+	ASSERT_CALL(EOS_SECT, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_DMK, 2, 3, 256, 16, 10, 1,
+						  side1_over, 0xE5, 0));
 }
 
 static void check_create_tracked(diskimage_format format)
@@ -1360,7 +1496,6 @@ static void check_create_short_track0(diskimage_format format)
 	_diskimage_close(disk);
 	remove(TEST_IMAGE);
 }
-
 
 static void test_create_dmk_short_track0(void)
 {
@@ -2219,6 +2354,164 @@ static void test_create_keeps_existing_file(void)
 	remove(TEST_IMAGE);
 }
 
+/* What a single density track has to look like to work on media.  A formatter
+   chooses its own gaps and they vary between systems, so a track we create is
+   measured against these ranges rather than compared with a fixture.
+ *
+ *   item           we write  sensible     why
+ *   capacity       3125      exactly      a 200 ms revolution at 125 kbit/s
+ *   gap 1          16        16 to 64     IBM 5.25" FM is 16; below that the
+ *                                         read oscillator may not settle after
+ *                                         a step, above it gap 4 loses margin
+ *   sync zeros     6         exactly      the IBM FM sync preamble
+ *   ID field       7         exactly      $FE, cyl, side, sector, size, CRC
+ *   gap 2          11        11 to 32     IBM FM is 11: one byte plus sync
+ *   data mark      1         $FB          fixed
+ *   data           256       sector size  fixed
+ *   gap 3          10        8 to 32      IBM FM is 10; spending more of the
+ *                                         spare on it is what starved gap 4
+ *   gap 4          119       at least 62  under 2 % of a revolution is not
+ *                                         reliable on real media
+ *   sector numbers 0..n-1    each once    an ID is one byte
+ *   track end      3125      exactly      the writer fills the track
+ *
+ * The upper bounds are judgement: a gap beyond about 32 bytes is legal but
+ * spends margin that gap 4 needs.
+ */
+#define FM_TRACK_BYTES	3125			/* 200 ms of 125 kbit/s */
+#define FM_SYNC_ZEROS	6			/* the IBM FM sync preamble */
+#define FM_ID_FIELD	7			/* $FE, cyl, side, sector, size, two CRC */
+#define FM_GAP1_MIN	16			/* IBM 5.25" gap 1 */
+#define FM_GAP1_MAX	64
+#define FM_GAP2_MIN	11			/* IBM FM gap 2 */
+#define FM_GAP2_MAX	32
+#define FM_GAP3_MIN	8
+#define FM_GAP3_MAX	32
+#define FM_GAP4_MIN	(FM_TRACK_BYTES / 50)	/* 2 %, the floor for real media */
+
+/* A logical byte of the single density track 0 of a created DMK.  Single
+   density stores every byte twice, so the track is 128 bytes of table then
+   6250 bytes of data from offset 16. */
+static int fm_track_byte(u_int offset)
+{
+	return image[16 + 128 + 2 * (long)offset];
+}
+
+/* Read a created single density track back and check it is shaped sanely,
+   rather than that it matches any particular formatter's choices. */
+static void check_fm_track(u_int sectors, u_int sector_size)
+{
+	u_int first[2] = { 0, 0 };
+	u_int pos = 0, run, gap3 = 0, i, n;
+	int seen[256];
+
+	memset(seen, 0, sizeof(seen));
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _diskimage_create_ex(TEST_IMAGE, DISKIMAGE_DMK, 1, 1, sector_size, sectors,
+					    sectors, 1, first, 0xE5, DISKIMAGE_CREATE_FM_TRACK0_SIDE0));
+	read_image();
+
+	/* Gap 1, then the sync zeros the first ID follows. */
+	while (pos < FM_TRACK_BYTES && fm_track_byte(pos) == 0xFF)
+	{
+		pos++;
+	}
+	ASSERT("gap 1 is a length that can work", pos >= FM_GAP1_MIN && pos <= FM_GAP1_MAX);
+	run = 0;
+	while (pos < FM_TRACK_BYTES && fm_track_byte(pos) == 0x00)
+	{
+		pos++;
+		run++;
+	}
+	ASSERT_EQUALS(FM_SYNC_ZEROS, run);
+
+	for (n = 0; n < sectors; n++)
+	{
+		u_char id[5], field[257];
+		unsigned short crc;
+
+		/* The ID field and its CRC. */
+		ASSERT_EQUALS(0xFE, fm_track_byte(pos));
+		for (i = 0; i < 5; i++)
+		{
+			id[i] = (u_char)fm_track_byte(pos + i);
+		}
+		crc = crc16(0xFFFF, id, 5);
+		ASSERT_EQUALS(crc >> 8, fm_track_byte(pos + 5));
+		ASSERT_EQUALS(crc & 0xFF, fm_track_byte(pos + 6));
+		ASSERT("the sector number is one that was asked for", id[3] < sectors && !seen[id[3]]);
+		seen[id[3]] = 1;
+		pos += FM_ID_FIELD;
+
+		/* Gap 2, then the sync zeros before the data mark. */
+		run = 0;
+		while (pos < FM_TRACK_BYTES && fm_track_byte(pos) == 0xFF)
+		{
+			pos++;
+			run++;
+		}
+		ASSERT("gap 2 is a length that can work", run >= FM_GAP2_MIN && run <= FM_GAP2_MAX);
+		run = 0;
+		while (pos < FM_TRACK_BYTES && fm_track_byte(pos) == 0x00)
+		{
+			pos++;
+			run++;
+		}
+		ASSERT_EQUALS(FM_SYNC_ZEROS, run);
+
+		/* The data mark, the data and its CRC. */
+		ASSERT_EQUALS(0xFB, fm_track_byte(pos));
+		field[0] = 0xFB;
+		pos++;
+		for (i = 0; i < sector_size; i++)
+		{
+			field[i + 1] = (u_char)fm_track_byte(pos + i);
+		}
+		crc = crc16(0xFFFF, field, (int)sector_size + 1);
+		ASSERT_EQUALS(crc >> 8, fm_track_byte(pos + sector_size));
+		ASSERT_EQUALS(crc & 0xFF, fm_track_byte(pos + sector_size + 1));
+		pos += sector_size + 2;
+
+		/* Gap 3, or on the last sector its gap 3 and the gap 4 beyond it. */
+		run = 0;
+		while (pos < FM_TRACK_BYTES && fm_track_byte(pos) == 0xFF)
+		{
+			pos++;
+			run++;
+		}
+
+		if (n + 1 < sectors)
+		{
+			ASSERT("gap 3 is a length that can work", run >= FM_GAP3_MIN && run <= FM_GAP3_MAX);
+			if (n == 0)
+			{
+				gap3 = run;
+			}
+			run = 0;
+			while (pos < FM_TRACK_BYTES && fm_track_byte(pos) == 0x00)
+			{
+				pos++;
+				run++;
+			}
+			ASSERT_EQUALS(FM_SYNC_ZEROS, run);
+		}
+		else
+		{
+			ASSERT("gap 4 leaves room for the drives to differ", run >= gap3 + FM_GAP4_MIN);
+		}
+	}
+
+	ASSERT("the track is filled to its end", pos == FM_TRACK_BYTES);
+
+	remove(TEST_IMAGE);
+}
+
+static void test_fm_track_layout(void)
+{
+	check_fm_track(10, 256);
+	check_fm_track(9, 256);
+}
+
 static void test_create_rejects(void)
 {
 	remove(TEST_IMAGE);
@@ -2239,7 +2532,8 @@ static void test_create_rejects(void)
 
 	/* JVC: uniform tracks, and a header length that can be found. */
 	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_JVC, 1, 35, 256, 18, 10, 1, 0xFF));
-	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_JVC, 1, 35, 256, 256, 0, 1, 0xFF));
+	/* 256 sectors cannot be numbered in a byte, which is found first. */
+	ASSERT_CALL(EOS_SECT, _diskimage_create(TEST_IMAGE, DISKIMAGE_JVC, 1, 35, 256, 256, 0, 1, 0xFF));
 	ASSERT_CALL(EOS_IA, _diskimage_create(TEST_IMAGE, DISKIMAGE_JVC, 1, 1, 128, 3, 0, 1, 0xFF));
 
 	/* DMK and SDF limits */
@@ -2448,6 +2742,10 @@ int main(void)
 	RUN(test_create_raw);
 	RUN(test_create_raw_short_track0);
 	RUN(test_create_jvc);
+	RUN(test_create_fm_track0_side0);
+	RUN(test_create_numbering_refusals);
+	RUN(test_create_numbering_at_the_limit);
+	RUN(test_fm_track_layout);
 	RUN(test_create_dmk);
 	RUN(test_create_sdf);
 	RUN(test_create_dmk_short_track0);

@@ -72,10 +72,11 @@
 #define SDF_MAX_CYLINDERS	80
 #define SDF_MAX_SECTORS		31
 #define JVC_MAX_SECTORS		255
-#define JVC_HEADER_MAX		3
+#define JVC_HEADER_MAX		4
 #define JVC_DEFAULT_SPT		18
 #define JVC_DEFAULT_SIDES	1
 #define JVC_DEFAULT_SIZE_CODE	1
+#define JVC_DEFAULT_FIRST_SECTOR	1
 #define VDK_MAX_CYLINDERS	255
 #define VDK_HEADER_SIZE		12
 #define VDK_VERSION		0x10
@@ -148,9 +149,14 @@ static u_char *put_fm_bytes(u_char *p, u_char byte, int count)
 
 
 /* Whether a track is recorded in single density. */
-static int fm_track(const di_layout *layout, u_int cylinder)
+static int fm_track(const di_layout *layout, u_int cylinder, u_int side)
 {
-	return layout->fm_all || (layout->fm_track0 && cylinder == 0);
+	if (layout->fm_all || (layout->fm_track0 && cylinder == 0))
+	{
+		return 1;
+	}
+
+	return layout->fm_track0_side0 && cylinder == 0 && side == 0;
 }
 
 
@@ -273,7 +279,7 @@ int di_format_track(const di_layout *layout, u_int cylinder, u_int side, u_char 
 	unsigned short crc;
 	u_int i;
 
-	*double_density = !fm_track(layout, cylinder);
+	*double_density = !fm_track(layout, cylinder, side);
 	if (!*double_density)
 	{
 		return fm_format_track(layout, cylinder, side, raw, id_pos, data_pos);
@@ -391,7 +397,12 @@ static error_code create_jvc(FILE *fd, const di_layout *layout, long long sector
 	header[0] = (u_char)layout->sectors_per_track;
 	header[1] = (u_char)layout->sides;
 	header[2] = (u_char)layout->size_code;
-	if (layout->size_code != JVC_DEFAULT_SIZE_CODE)
+	header[3] = (u_char)layout->first_sector[0];
+	if (layout->first_sector[0] != JVC_DEFAULT_FIRST_SECTOR)
+	{
+		header_size = 4;
+	}
+	else if (layout->size_code != JVC_DEFAULT_SIZE_CODE)
 	{
 		header_size = 3;
 	}
@@ -423,6 +434,31 @@ static error_code create_vdk(FILE *fd, const di_layout *layout, long long sector
 /* Check what a format can represent. */
 static error_code check_layout(diskimage_format format, const di_layout *layout, long long total)
 {
+	u_int side, cylinder;
+
+	/* A number for each side describes a double sided disk.  A disk with one
+	   side has nowhere for the second number to apply, so it would not be the
+	   disk that was asked for. */
+	if (layout->sides == 1 && layout->first_sector[0] != layout->first_sector[1])
+	{
+		return EOS_SECT;
+	}
+
+	/* A sector number is one byte, so a track's numbers must not run past 255.
+	   Track 0 can be short, so every cylinder is checked, not just the first. */
+	for (side = 0; side < 2; side++)
+	{
+		for (cylinder = 0; cylinder < layout->cylinders; cylinder++)
+		{
+			int base = track_id_base(layout, cylinder, side);
+
+			if (base + (int)track_sectors(layout, cylinder, side) > 255)
+			{
+				return EOS_SECT;
+			}
+		}
+	}
+
 	switch (format)
 	{
 	case DISKIMAGE_RAW:
@@ -436,6 +472,14 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 		break;
 
 	case DISKIMAGE_JVC:
+		/* The header holds one first sector number, so a disk asked for a number
+		   per side would express numbering the request did not ask for: not the
+		   disk that was requested. */
+		if (layout->first_sector[0] != layout->first_sector[1])
+		{
+			return EOS_SECT;
+		}
+
 		/* Sector data must be a multiple of 256 bytes for a reader to
 		   find the end of the header. */
 		if (layout->sectors_per_track > JVC_MAX_SECTORS ||
@@ -462,11 +506,12 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 	{
 		u_int max_cylinders = format == DISKIMAGE_DMK ? DMK_MAX_CYLINDERS : SDF_MAX_CYLINDERS;
 		u_int max_sectors = format == DISKIMAGE_DMK ? DMK_MAX_SECTORS : SDF_MAX_SECTORS;
-		int track0_gap = fm_track(layout, 0) ? fm_gap3(layout->sectors_track0, layout) :
+		int track0_gap = fm_track(layout, 0, 0) ? fm_gap3(layout->sectors_track0, layout) :
 						       mfm_gap3(layout->sectors_track0, layout);
 		int track_gap = layout->fm_all ? fm_gap3(layout->sectors_per_track, layout) :
 						 mfm_gap3(layout->sectors_per_track, layout);
-		u_int track0_interleave_limit = layout->fm_track0 ? layout->sectors_track0 : layout->sectors_per_track;
+		u_int track0_interleave_limit = (layout->fm_track0 || layout->fm_track0_side0) ?
+			layout->sectors_track0 : layout->sectors_per_track;
 
 		if (layout->cylinders > max_cylinders ||
 		    (layout->interleave > 1 && layout->interleave >= layout->sectors_per_track) ||
@@ -486,7 +531,8 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 	}
 
 	/* Only DMK and SDF images record density. */
-	if ((layout->fm_track0 || layout->fm_all) && format != DISKIMAGE_DMK && format != DISKIMAGE_SDF)
+	if ((layout->fm_track0 || layout->fm_track0_side0 || layout->fm_all) &&
+	    format != DISKIMAGE_DMK && format != DISKIMAGE_SDF)
 	{
 		return EOS_IA;
 	}
@@ -506,8 +552,8 @@ static error_code create_image(const char *pathname, diskimage_format format, u_
 	error_code ec;
 
 	if (pathname == NULL || (sides != 1 && sides != 2) || tracks == 0 || sectors_per_track == 0 ||
-	    (flags & ~(DISKIMAGE_CREATE_INDEX_MARK | DISKIMAGE_CREATE_FM_TRACK0 | DISKIMAGE_CREATE_SPAN_SIDES |
-		       DISKIMAGE_CREATE_SINGLE_DENSITY)) != 0)
+	    (flags & ~(DISKIMAGE_CREATE_INDEX_MARK | DISKIMAGE_CREATE_FM_TRACK0 | DISKIMAGE_CREATE_FM_TRACK0_SIDE0 |
+		       DISKIMAGE_CREATE_SPAN_SIDES | DISKIMAGE_CREATE_SINGLE_DENSITY)) != 0)
 	{
 		return EOS_IA;
 	}
@@ -523,6 +569,7 @@ static error_code create_image(const char *pathname, diskimage_format format, u_
 	layout.fill = fill;
 	layout.index_mark = (flags & DISKIMAGE_CREATE_INDEX_MARK) != 0;
 	layout.fm_track0 = (flags & DISKIMAGE_CREATE_FM_TRACK0) != 0;
+	layout.fm_track0_side0 = (flags & DISKIMAGE_CREATE_FM_TRACK0_SIDE0) != 0;
 	layout.span_sides = (flags & DISKIMAGE_CREATE_SPAN_SIDES) != 0;
 	layout.fm_all = (flags & DISKIMAGE_CREATE_SINGLE_DENSITY) != 0;
 	for (layout.size_code = 0; layout.size_code < 4; layout.size_code++)

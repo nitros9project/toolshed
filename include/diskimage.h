@@ -193,6 +193,11 @@ error_code _diskimage_create_index_mark(const char *pathname, diskimage_format f
 #define DISKIMAGE_CREATE_FM_TRACK0	0x02
 	/* Both sides of track 0 are single density, each with sectors_track0
 	   sectors.  Only DMK and SDF images can record this. */
+#define DISKIMAGE_CREATE_FM_TRACK0_SIDE0	0x10
+	/* Side 0 of track 0 alone is single density, with sectors_track0 sectors;
+	   side 1 of track 0 keeps sectors_per_track.  This is what OS-9 records
+	   for a short track 0, whose pd_t0s describes side 0 only.  Only DMK and
+	   SDF images can record this. */
 #define DISKIMAGE_CREATE_SPAN_SIDES	0x04
 	/* Sector numbers on side 1 follow those of side 0 on the same track,
 	   as FLEX numbers them: 19 to 36 after 1 to 18.  Raw, JVC and VDK images
