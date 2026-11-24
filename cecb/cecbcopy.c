@@ -553,22 +553,26 @@ static error_code CopyCECBFile(char *srcfile, char *dstfile, int eolTranslate,
 		}
 		else /* detokenize */
 		{
-			if (buffer[0] == 0xff)
+			/* Skip past the disk flag and file size, leaving
+			   buffer where malloc put it so it can be freed. */
+			u_char *program = buffer;
+			u_int program_size = buffer_size;
+
+			if (program_size >= 3 && program[0] == 0xff)
 			{
-				/* skip past disk flag and file size */
-				buffer += 3;
-				buffer_size -= 3;
+				program += 3;
+				program_size -= 3;
 			}
 
 			if (cecb_suggest_mc10 || (src_path_type == CECB && path->path.cecb->tape_type == C10))
 			{
-				ec = _cecb_detoken(buffer, buffer_size,
+				ec = _cecb_detoken(program, program_size,
 							(char **) &xx_tokenize_buffer,
 							&xx_tokenize_size);
 			}
 			else
 			{
-				ec = _decb_detoken(buffer, buffer_size,
+				ec = _decb_detoken(program, program_size,
 						   (char **) &xx_tokenize_buffer,
 						   &xx_tokenize_size);
 			}
@@ -626,7 +630,7 @@ static error_code CopyCECBFile(char *srcfile, char *dstfile, int eolTranslate,
 		cecb_file_stat dest_file_stat;
 		ec = _cecb_gs_fd(destpath->path.cecb, &dest_file_stat);
 		
-		if (dest_file_stat.file_type == 0 && buffer[0] == 0xff)
+		if (dest_file_stat.file_type == 0 && buffer_size >= 3 && buffer[0] == 0xff)
 		{
 			fprintf(stderr, "cecb copy: skipping first 3 bytes of tokenized BASIC file: %.8s\n",
 			destpath->path.cecb->filename);

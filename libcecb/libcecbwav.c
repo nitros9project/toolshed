@@ -10,10 +10,34 @@
 
 #define PI 3.1415926
 
+static int read_float_sample(cecb_path_id path, double *value);
 static void build_sinusoidal_bufer_8(unsigned char *buffer, int length, int mc10);
 static void build_sinusoidal_bufer_16(short *buffer, int length, int mc10);
 static void build_sinusoidal_buffer_24(uint8_t *buffer, int length, int mc10);
 static void build_sinusoidal_buffer_32(uint8_t *buffer, int length, int mc10);
+
+/*
+ * skip_chunk()
+ *
+ * Move past a chunk we don't use. A chunk with an odd length is
+ * followed by a pad byte. Returns non-zero if the file ends first.
+ */
+
+static int skip_chunk(cecb_path_id path, unsigned int chunk_length)
+{
+	long here = ftell(path->fd), end;
+
+	if (here < 0 || fseek(path->fd, 0, SEEK_END) != 0)
+		return -1;
+
+	end = ftell(path->fd);
+	chunk_length += chunk_length & 1;
+
+	if (end < here || (unsigned long) (end - here) < chunk_length)
+		return -1;
+
+	return fseek(path->fd, here + (long) chunk_length, SEEK_SET);
+}
 
 /*
  * _cecb_parse_riff()
@@ -55,7 +79,9 @@ error_code _cecb_parse_riff(cecb_path_id path)
 			unsigned short fmt_channel_count, fmt_block_align;
 			unsigned int fmt_bytes_per_second;
 
-			if (chunk_length != 16)
+			/* Float files often carry an 18 byte fmt chunk
+			   (a zero extension size), skipped below. */
+			if (chunk_length < 16)
 				return EOS_WT;
 
 			if (fread_le_short(&(path->wav_audioFormat), path->fd) != 2)
@@ -75,6 +101,9 @@ error_code _cecb_parse_riff(cecb_path_id path)
 				return EOS_WT;
 
 			if (fmt_channel_count != 1)
+				return EOS_WT;
+
+			if (skip_chunk(path, chunk_length - 16) != 0)
 				return EOS_WT;
 
 			if (path->wav_bits_per_sample == 8 && path->wav_audioFormat == 1)
@@ -115,21 +144,8 @@ error_code _cecb_parse_riff(cecb_path_id path)
 
 			found = 1;
 		}
-		else
-		{
-			char *buffer;
-
-			buffer = malloc(chunk_length);
-
-			if (buffer == NULL)
-				return EOS_MF;
-
-			if (fread(buffer, 1, chunk_length, path->fd) !=
-			    chunk_length)
-				return EOS_WT;
-
-			free(buffer);
-		}
+		else if (skip_chunk(path, chunk_length) != 0)
+			return EOS_WT;
 	}
 
 	if (found == 0)
@@ -153,6 +169,8 @@ error_code _cecb_parse_riff(cecb_path_id path)
 
 			found = 1;
 		}
+		else if (skip_chunk(path, chunk_length) != 0)
+			return EOS_WT;
 	}
 
 	if (found == 0)
@@ -364,13 +382,75 @@ long next_zero_crossing(cecb_path_id path)
 			}
 		}
 	}
+	else if (path->wav_audioFormat == 3)
+	{
+		while (path->wav_current_sample < path->wav_total_samples)
+		{
+			double d;
+
+			path->wav_ss1.d_value = path->wav_ss2.d_value;
+			if (read_float_sample(path, &d) != 0)
+				return end_of_samples(path);
+			path->wav_ss2.d_value = d;
+			(path->wav_current_sample)++;
+
+			// Crossing from low to high
+			if(path->wav_ss1.d_value < path->wav_zero_low.d_value &&
+			   path->wav_ss2.d_value >= path->wav_zero_low.d_value)
+			{
+				return path->wav_current_sample;
+			}
+
+			// Crossing from high to low
+			if(path->wav_ss1.d_value > path->wav_zero_high.d_value &&
+			   path->wav_ss2.d_value <= path->wav_zero_high.d_value)
+			{
+				return path->wav_current_sample;
+			}
+		}
+	}
 	else
 	{
 		fprintf( stderr, "Should never get here: %d, %d\n", path->wav_bits_per_sample, path->wav_audioFormat);
 		exit(-1);
 	}
-	
+
 	return LONG_MAX;
+}
+
+/*
+ * read_float_sample()
+ *
+ * Read one little-endian IEEE float sample (32 or 64 bits).
+ * Returns non-zero at the end of the file.
+ */
+
+static int read_float_sample(cecb_path_id path, double *value)
+{
+	unsigned char b[8];
+	int i, size = path->wav_bits_per_sample / 8;
+	uint64_t bits = 0;
+
+	if (fread(b, 1, size, path->fd) != (size_t) size)
+		return -1;
+
+	for (i = size - 1; i >= 0; i--)
+		bits = (bits << 8) | b[i];
+
+	if (size == 4)
+	{
+		uint32_t bits32 = (uint32_t) bits;
+		float f;
+
+		memcpy(&f, &bits32, sizeof(f));
+		*value = f;
+	}
+	else
+	{
+		memcpy(value, &bits, sizeof(*value));
+	}
+
+	return 0;
 }
 
 /*
@@ -609,7 +689,7 @@ error_code create_sinusoidal_write_buffers(cecb_path_id path)
 	else
 	{
 		fprintf(stderr, "WAV writing in this format unsupported. %d, %d\n", path->wav_bits_per_sample, path->wav_audioFormat);
-		exit(-1);
+		return EOS_WT;
 	}
 
 	return 0;
