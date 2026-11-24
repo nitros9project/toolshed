@@ -39,14 +39,33 @@
 
 #define FM_GAP_BYTE		0xFF
 #define FM_TRACK_SIZE		(DI_MFM_TRACK_SIZE / 2)	/* bytes in a single density track */
-#define FM_GAP1			26
+#define FM_GAP1			16	/* IBM 5.25" gap 1, as a real Dragon Beta disk has */
 #define FM_GAP2			11
-#define FM_GAP3			27
+#define FM_GAP3			10	/* what is left over becomes gap 4 */
 #define FM_GAP3_MIN		8
 #define FM_GAP4A		40
 #define FM_SYNC_ZEROS		6
 #define FM_INDEX_START		(FM_GAP4A + FM_SYNC_ZEROS + 1)	/* the gap, zeros and $FC index mark */
 #define FM_SECTOR_OVERHEAD	(FM_SYNC_ZEROS + MFM_ID_FIELD + FM_GAP2 + FM_SYNC_ZEROS + 1 + 2)
+
+/* The space left after the last sector is gap 4, and it is what absorbs the
+   difference between the drive that wrote the disk and the one reading it.
+   Gap 3 is kept at its IBM length so that gap 4 gets the remainder rather than
+   the other way round: a track with no gap 4 is safe in an image but not on
+   media.
+
+   A 300 rpm track holds 3,125 bytes, the revolution being 200 ms, and OS-9 for
+   the 6809 uses 256-byte sectors (dd_lsnsize is 1), so these are the layouts
+   that arise:
+
+	format      leader  gap 3  per sector  gap 4  margin
+	10 x 256    16      10     299         119    3.8 %
+	 9 x 256    16      10     299         418    13.4 %
+
+   Under 2 % of a revolution is not reliable on physical media: a decent drive
+   and diskette hold within 2.5 % of their speed, and the drive that wrote the
+   disk may not be the one reading it.  Ten sectors is what FLEX and a Dragon
+   Beta disk use, and it leaves 3.8 %. */
 
 #define DMK_MAX_CYLINDERS	255
 #define DMK_MAX_SECTORS		64
