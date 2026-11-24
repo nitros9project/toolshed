@@ -1015,7 +1015,8 @@ static error_code open_image(os9_path_id path)
 
 	path->raw_image = geometry.format == DISKIMAGE_RAW;
 	path->sides = geometry.sides > 1 ? geometry.sides : 1;
-	path->first_sector = geometry.first_sector == 0 && !path->raw_image ? 0 : 1;
+	path->first_sector[0] = geometry.first_sector[0];
+	path->first_sector[1] = geometry.first_sector[1];
 
 	return 0;
 }
@@ -1045,7 +1046,7 @@ static error_code load_lsn0(os9_path_id path)
 
 	/* 2. LSN0 is the first sector of the disk, whatever its layout. */
 
-	ec = _diskimage_read_sector(path->disk, 0, 0, path->first_sector, sector, &size);
+	ec = _diskimage_read_sector(path->disk, 0, 0, path->first_sector[0], sector, &size);
 
 	if (ec == EOS_CRC)
 	{

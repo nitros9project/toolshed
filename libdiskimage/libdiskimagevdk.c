@@ -58,7 +58,8 @@ void di_vdk_load(diskimage_id disk, const u_char *header, long long file_size)
 	disk->write_protected = (header[DI_VDK_FLAGS_OFFSET] & DI_VDK_FLAG_WRITE_PROTECT) != 0;
 	disk->sector_size = VDK_SECTOR_SIZE;
 	disk->sectors_per_track = sectors_per_track(header, file_size);
-	disk->first_sector = 1;
+	disk->first_sector[0] = 1;
+	disk->first_sector[1] = 1;
 	disk->data_start = header[2] | (header[3] << 8);
 	disk->total_sectors = (u_int)((file_size - disk->data_start) / VDK_SECTOR_SIZE);
 }

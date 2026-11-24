@@ -78,7 +78,7 @@ typedef struct
 	u_int sides;
 	u_int sectors_per_track;	/* most logical sectors on any track */
 	u_int sector_size;		/* largest logical sector, in bytes */
-	u_int first_sector;		/* lowest sector number in use */
+	u_int first_sector[2];		/* lowest sector number in use, per side */
 	u_int sectors_track0;		/* logical sectors on side 0 of track 0 */
 	u_int total_sectors;		/* logical sectors in the image */
 	int uniform;			/* every track has the same sectors */
@@ -193,6 +193,11 @@ error_code _diskimage_create_index_mark(const char *pathname, diskimage_format f
 #define DISKIMAGE_CREATE_FM_TRACK0	0x02
 	/* Both sides of track 0 are single density, each with sectors_track0
 	   sectors.  Only DMK and SDF images can record this. */
+#define DISKIMAGE_CREATE_FM_TRACK0_SIDE0	0x10
+	/* Side 0 of track 0 alone is single density, with sectors_track0 sectors;
+	   side 1 of track 0 keeps sectors_per_track.  This is what OS-9 records
+	   for a short track 0, whose pd_t0s describes side 0 only.  Only DMK and
+	   SDF images can record this. */
 #define DISKIMAGE_CREATE_SPAN_SIDES	0x04
 	/* Sector numbers on side 1 follow those of side 0 on the same track,
 	   as FLEX numbers them: 19 to 36 after 1 to 18.  Raw, JVC and VDK images
@@ -201,10 +206,12 @@ error_code _diskimage_create_index_mark(const char *pathname, diskimage_format f
 	/* Every track is single density.  Only DMK and SDF images can record
 	   this. */
 
-/* As _diskimage_create, with flags. */
+/* As _diskimage_create, with flags.  first_sector says how each side's sectors
+   are numbered: 1 on a CoCo or Dragon disk, 0 on OS-9/68K and on machines with
+   a short track 0, and the two sides can differ. */
 error_code _diskimage_create_ex(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
 				u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
-				u_int interleave, u_char fill, u_int flags);
+				u_int interleave, const u_int first_sector[2], u_char fill, u_int flags);
 
 /* Open an existing image.  mode is FAM_READ and/or FAM_WRITE, optionally with
    DISKIMAGE_IGNORE_WRITE_PROTECT, which allows writes to a DMK, SDF or VDK

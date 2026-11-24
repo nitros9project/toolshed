@@ -73,7 +73,7 @@ struct _diskimage_path
 	long long data_start;
 	u_int sector_size;
 	u_int sectors_per_track;
-	u_int first_sector;
+	u_int first_sector[2];	/* number of a track's first sector, per side */
 
 	/* Raw images with a short track 0 keep its unused slots in the file,
 	   so a logical index past them is raw_missing short of its file slot. */
@@ -112,9 +112,11 @@ typedef struct
 	u_int sectors_per_track;
 	u_int sectors_track0;
 	u_int interleave;
+	u_int first_sector[2];	/* number given to the first sector of a track, per side */
 	u_char fill;
 	int index_mark;		/* tracks of a DMK or SDF image start with an index mark */
 	int fm_track0;		/* both sides of track 0 are single density, of sectors_track0 */
+	int fm_track0_side0;	/* side 0 of track 0 alone is, of sectors_track0 */
 	int span_sides;		/* side 1 sector numbers follow side 0's */
 	int fm_all;		/* every track is single density */
 } di_layout;

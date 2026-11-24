@@ -4,6 +4,13 @@
 *.c10
 *.wav
 filldisk.dsk
+
+# Images the test suite writes into the tree root
+/test.dsk
+/test_alloc.dsk
+/test_os9.dmk
+/test_real_clusters.dmk
+/test_real_os9.dmk
 AGENTS.md
 CLAUDE.md
 

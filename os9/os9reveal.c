@@ -788,9 +788,9 @@ static int container_target(long long byteoff, const diskimage_byte_region *r,
 		long long track = (long long)r->sector.cylinder * path->sides + r->sector.side;
 		unsigned int index;
 
-		if (r->sector.size != path->bps || r->sector.sector < path->first_sector)
+		if (r->sector.size != path->bps || r->sector.sector < path->first_sector[r->sector.side])
 			return (-1);
-		index = r->sector.sector - path->first_sector;
+		index = r->sector.sector - path->first_sector[r->sector.side];
 		if (index >= (track == 0 ? path->t0s : path->spt))
 			return (-1);
 		lsn = track == 0 ? index : path->t0s + (track - 1) * path->spt + index;

@@ -1119,7 +1119,7 @@ void test_os9_reveal_container_data()
 	};
 	char arguments[192], output[4096], expected[4096], pathlist[80];
 	os9_path_id path;
-	unsigned int bps, root, total, targets[5], spt, t0s, sides;
+	unsigned int bps, root, total, targets[5], spt, t0s, sides, first[2];
 	size_t i, j;
 	int status;
 
@@ -1137,6 +1137,8 @@ void test_os9_reveal_container_data()
 		spt = path->spt;
 		t0s = path->t0s;
 		sides = path->sides;
+		first[0] = path->first_sector[0];
+		first[1] = path->first_sector[1];
 		ASSERT_EC(0, _os9_close(path));
 		targets[0] = 0;
 		targets[1] = 1;
@@ -1147,7 +1149,7 @@ void test_os9_reveal_container_data()
 		{
 			unsigned int lsn = targets[j];
 			unsigned int track = lsn < t0s ? 0 : (lsn - t0s) / spt + 1;
-			unsigned int sector = lsn < t0s ? lsn + 1 : (lsn - t0s) % spt + 1;
+			unsigned int sector = (lsn < t0s ? lsn : (lsn - t0s) % spt) + first[track % sides];
 			long offset = -1;
 			char *description;
 
@@ -1871,6 +1873,355 @@ void test_os9_list_read_error()
 	remove("test_list_bad.dmk");
 }
 
+/* Run "os9 format" and give back its exit status, keeping its output. */
+static int format_command(const char *arguments, char *output, size_t capacity)
+{
+	/* WEXITSTATUS takes the address of its argument on macOS, so it cannot be
+	   given a call. */
+	int status = real_os9_command(arguments, output, capacity);
+
+	return WEXITSTATUS(status);
+}
+
+/* The numbering an image records, as os9 reads it back. */
+static void recorded_numbering(const char *image, unsigned int first[2])
+{
+	char pathlist[80];
+	os9_path_id path;
+
+	snprintf(pathlist, sizeof(pathlist), "%s,@", image);
+	ASSERT_EC(0, _os9_open(&path, pathlist, FAM_READ));
+	first[0] = path->first_sector[0];
+	first[1] = path->first_sector[1];
+	ASSERT_EC(0, _os9_close(path));
+}
+
+/* The total sectors an image records, or 0 if it cannot be opened. */
+static unsigned int recorded_total(const char *image)
+{
+	char pathlist[80];
+	os9_path_id path;
+	unsigned int total = 0;
+
+	snprintf(pathlist, sizeof(pathlist), "%s,@", image);
+	if (_os9_open(&path, pathlist, FAM_READ) == 0)
+	{
+		total = int3(path->lsn0->dd_tot);
+		_os9_close(path);
+	}
+
+	return total;
+}
+
+static int image_exists(const char *image)
+{
+	FILE *fp = fopen(image, "rb");
+
+	if (fp == NULL)
+	{
+		return 0;
+	}
+
+	fclose(fp);
+
+	return 1;
+}
+
+void test_os9_format_first_sector()
+{
+	char output[4096];
+	unsigned int first[2];
+	int status;
+
+	/* Numbered from 1 unless asked, and from 0 when asked. */
+	remove("test_fs.dmk");
+	status = format_command("format -q -t35 -st18 test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	recorded_numbering("test_fs.dmk", first);
+	ASSERT_EQUALS(1, first[0]);
+	ASSERT_EQUALS(1, first[1]);
+
+	remove("test_fs.dmk");
+	status = format_command("format -q -t35 -st18 -I0 test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	recorded_numbering("test_fs.dmk", first);
+	ASSERT_EQUALS(0, first[0]);
+	ASSERT_EQUALS(0, first[1]);
+
+	/* A number for each side. */
+	remove("test_fs.dmk");
+	status = format_command("format -q -ds -t35 -st18 -I1,19 test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	recorded_numbering("test_fs.dmk", first);
+	ASSERT_EQUALS(1, first[0]);
+	ASSERT_EQUALS(19, first[1]);
+
+	/* A number for each side needs two sides, whichever container is asked for.
+	   The single value still describes a single sided disk. */
+	remove("test_fs.dmk");
+	status = format_command("format -q -t35 -st18 -I1,19 test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	ASSERT("the refusal names the sides", strstr(output, "Invalid initial sector values requested for single sided disk") != NULL);
+	ASSERT_EQUALS(0, image_exists("test_fs.dmk"));
+
+	remove("test_fs.dsk");
+	status = format_command("format -q -t35 -st18 -I1,19 test_fs.dsk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	ASSERT_EQUALS(0, image_exists("test_fs.dsk"));
+
+	remove("test_fs.dsk");
+	status = format_command("format -q -t35 -st18 -I1 test_fs.dsk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	remove("test_fs.dsk");
+
+	/* 240 is the last start a sixteen sector track allows. */
+	remove("test_fs.dmk");
+	status = format_command("format -q -t35 -st16 -I240 test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+
+	remove("test_fs.dmk");
+	status = format_command("format -q -t35 -st16 -I241 test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	ASSERT("the refusal names the limit", strstr(output, "past 255") != NULL);
+	ASSERT_EQUALS(0, image_exists("test_fs.dmk"));
+
+	/* Track 0 holds ten sectors and fits from 246; the tracks after it hold
+	   sixteen and do not, so the whole disk is checked, not just track 0. */
+	status = format_command("format -q -t80 -st16 -sz10 -I246 test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	ASSERT("the refusal names the limit", strstr(output, "past 255") != NULL);
+	status = format_command("format -q -ds -t80 -st16 -sz10 -I246,0 test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	ASSERT_EQUALS(0, image_exists("test_fs.dmk"));
+
+	/* A number that is not a number is refused, not read as zero. */
+	status = format_command("format -q -t35 -st18 -I300 test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	ASSERT("the refusal names the option", strstr(output, "-I wants") != NULL);
+	status = format_command("format -q -t35 -st18 -Ix test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	status = format_command("format -q -t35 -st18 -I-1 test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	status = format_command("format -q -t35 -st18 -I1,x test_fs.dmk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	ASSERT_EQUALS(0, image_exists("test_fs.dmk"));
+}
+
+void test_os9_format_numbering_defaults()
+{
+	char output[4096];
+	unsigned int first[2];
+	FILE *fp;
+	u_char header[4];
+	size_t got;
+	int status;
+
+	/* -k asks for a track numbered from 0, which a DMK records. */
+	remove("test_kn.dmk");
+	status = format_command("format -q -k -t35 -st18 test_kn.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	recorded_numbering("test_kn.dmk", first);
+	ASSERT_EQUALS(0, first[0]);
+
+	/* Raw and VDK number their own sectors, so they keep 1 and still work. */
+	remove("test_kn.dsk");
+	status = format_command("format -q -k test_kn.dsk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	recorded_numbering("test_kn.dsk", first);
+	ASSERT_EQUALS(1, first[0]);
+
+	remove("test_kn.vdk");
+	status = format_command("format -q -k test_kn.vdk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	recorded_numbering("test_kn.vdk", first);
+	ASSERT_EQUALS(1, first[0]);
+
+	/* Asking outright for a number they cannot hold warns, and goes on. */
+	remove("test_kn.vdk");
+	status = format_command("format -q -I0 test_kn.vdk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("the dropped number is reported",
+	       strstr(output, "does not include a mechanism to express physical sector numbers") != NULL);
+	ASSERT("the report is a warning", strstr(output, "Warning:") != NULL);
+
+	/* A number for each side is dropped the same way, with the same words. */
+	remove("test_kn.vdk");
+	status = format_command("format -q -ds -I0,5 test_kn.vdk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("per-side numbering is reported",
+	       strstr(output, "does not include a mechanism to express physical sector numbers") != NULL);
+
+	/* JVC holds one number, in header byte 3, so nothing is dropped. */
+	remove("test_kn.jvc");
+	status = format_command("format -q -I0 test_kn.jvc", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("nothing was dropped", strstr(output, "does not include a mechanism") == NULL);
+	fp = fopen("test_kn.jvc", "rb");
+	ASSERT("the image was made", fp != NULL);
+	if (fp != NULL)
+	{
+		got = fread(header, 1, sizeof(header), fp);
+		ASSERT_EQUALS(sizeof(header), got);
+		fclose(fp);
+		ASSERT_EQUALS(0, header[3]);
+	}
+
+	/* It records a number but has room for only one, so a value per side is
+	   refused rather than written as a disk that was not asked for. */
+	remove("test_kn.jvc");
+	status = format_command("format -q -ds -I0,19 test_kn.jvc", output, sizeof(output));
+	ASSERT_EQUALS(EOS_SECT, status);
+	ASSERT("the refusal names the reason", strstr(output, "records one initial sector number") != NULL);
+	ASSERT_EQUALS(0, image_exists("test_kn.jvc"));
+
+	/* A raw image takes the same arguments, records nothing and says so: the
+	   same command has to make the same disk whatever the output format. */
+	remove("test_kn.dsk");
+	status = format_command("format -q -ds -I1,19 test_kn.dsk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("per-side numbering is reported",
+	       strstr(output, "does not include a mechanism to express physical sector numbers") != NULL);
+	ASSERT_EQUALS(1, image_exists("test_kn.dsk"));
+
+	remove("test_kn.dmk");
+	remove("test_kn.dsk");
+	remove("test_kn.vdk");
+	remove("test_kn.jvc");
+}
+
+void test_os9_format_error_paths()
+{
+	char output[4096];
+	const char *containers[] = { "dmk", "sdf", "dsk", "vdk", "jvc" };
+	char name[32];
+	FILE *fp;
+	long size;
+	size_t i;
+	int status;
+
+	/* A layout the format cannot hold is refused by the library, and the
+	   refusal arrives as two lines: the layout, then the code. */
+	remove("test_err.dmk");
+	status = format_command("format -q -sd -t35 -st18 test_err.dmk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_IA, status);
+	ASSERT("the layout is named",
+	       strstr(output, "can't have this layout in this format") != NULL);
+	ASSERT("the code is reported", strstr(output, "error 187 formatting") != NULL);
+	ASSERT_EQUALS(0, image_exists("test_err.dmk"));
+
+	/* An image that is already there is kept, not overwritten. */
+	remove("test_err.dmk");
+	status = format_command("format -q -t2 -st18 test_err.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	size = -1;
+	fp = fopen("test_err.dmk", "rb");
+	ASSERT("the first image was made", fp != NULL);
+	if (fp != NULL)
+	{
+		ASSERT_EQUALS(0, fseek(fp, 0, SEEK_END));
+		size = ftell(fp);
+		fclose(fp);
+	}
+	status = format_command("format -q -t2 -st18 test_err.dmk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_FAE, status);
+	ASSERT("the reason is given",
+	       strstr(output, "exists, and only a raw image replaces one") != NULL);
+	fp = fopen("test_err.dmk", "rb");
+	ASSERT("the image is still there", fp != NULL);
+	if (fp != NULL)
+	{
+		ASSERT_EQUALS(0, fseek(fp, 0, SEEK_END));
+		ASSERT_EQUALS(size, ftell(fp));
+		fclose(fp);
+	}
+	remove("test_err.dmk");
+
+	/* The shapes of -I that are not one or two numbers: an empty first field,
+	   a missing second field, trailing junk, and no number at all. */
+	{
+		const char *shapes[] = { "-I,5", "-I1,", "-I1x", "-I" };
+		char arguments[64];
+		size_t s;
+
+		for (s = 0; s < sizeof(shapes) / sizeof(shapes[0]); s++)
+		{
+			snprintf(arguments, sizeof(arguments), "format -q -t2 -st18 %s test_err.dmk",
+				 shapes[s]);
+			remove("test_err.dmk");
+			status = format_command(arguments, output, sizeof(output));
+			ASSERT_EQUALS(EOS_SECT, status);
+			ASSERT("the shape is named as the problem",
+			       strstr(output, "-I wants a sector number") != NULL);
+			ASSERT_EQUALS(0, image_exists("test_err.dmk"));
+		}
+	}
+
+	/* A container that records the number has nothing to report: no warning and
+	   no dropped request. */
+	remove("test_err.dmk");
+	status = format_command("format -q -t2 -st18 -I0 test_err.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	ASSERT("nothing was dropped",
+	       strstr(output, "does not include a mechanism") == NULL);
+	ASSERT("nothing was warned about", strstr(output, "Warning:") == NULL);
+	remove("test_err.dmk");
+
+	/* A number for each side needs two sides in every container: the refusal is
+	   the same whichever holds the disk. */
+	for (i = 0; i < sizeof(containers) / sizeof(containers[0]); i++)
+	{
+		char arguments[64];
+
+		snprintf(name, sizeof(name), "test_err.%s", containers[i]);
+		remove(name);
+		snprintf(arguments, sizeof(arguments), "format -q -t35 -st18 -I0,19 %s", name);
+		status = format_command(arguments, output, sizeof(output));
+		ASSERT_EQUALS(EOS_SECT, status);
+		ASSERT("the sides are named as the problem",
+		       strstr(output, "Invalid initial sector values requested for single sided disk") != NULL);
+		ASSERT_EQUALS(0, image_exists(name));
+	}
+}
+
+void test_os9_format_single_density()
+{
+	char output[4096];
+	unsigned int total;
+	int status;
+
+	/* Every track single density. */
+	remove("test_sd.dmk");
+	status = format_command("format -q -sd -t35 -st10 test_sd.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	total = recorded_total("test_sd.dmk");
+	ASSERT_EQUALS(35 * 10, total);
+
+	/* Track 0 side 0 alone, the shape OS-9 and the Dragon Beta record. */
+	remove("test_sd.dmk");
+	status = format_command("format -q -e -t80 -st16 -sz10 -sd0 test_sd.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	total = recorded_total("test_sd.dmk");
+	ASSERT_EQUALS((80 * 16) - 16 + 10, total);
+
+	/* A short track 0 is one track and not one per side, so the disk stays
+	   usable: dcheck walks the numbering of every sector. */
+	remove("test_sd.dmk");
+	status = format_command("format -q -e -ds -t80 -st16 -sz10 -sd0 test_sd.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+	total = recorded_total("test_sd.dmk");
+	ASSERT_EQUALS((80 * 16 * 2) - 16 + 10, total);
+	status = format_command("dcheck test_sd.dmk", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+
+	/* More sectors than a single density track holds is refused. */
+	remove("test_sd.dmk");
+	status = format_command("format -q -sd -t35 -st18 test_sd.dmk", output, sizeof(output));
+	ASSERT_EQUALS(EOS_IA, status);
+	ASSERT_EQUALS(0, image_exists("test_sd.dmk"));
+
+	remove("test_sd.dmk");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -1892,6 +2243,10 @@ int main()
 	RUN(test_os9_command_format_formats);
 	RUN(test_os9_commands_on_images_with_tracks);
 	RUN(test_os9_reveal_container_data);
+	RUN(test_os9_format_first_sector);
+	RUN(test_os9_format_numbering_defaults);
+	RUN(test_os9_format_error_paths);
+	RUN(test_os9_format_single_density);
 	RUN(test_os9_reveal_container_fields);
 	RUN(test_os9_gen_on_images_with_tracks);
 	RUN(test_os9_raw_extend_of_quick_format);

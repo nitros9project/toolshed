@@ -81,22 +81,52 @@ static void write_lsns(format_output *out, void *buffer, u_int size)
 }
 
 
+/* Close an image the format gave up on, then remove it: a half-written one is
+ * of no use, a non-raw one could not be replaced by a second attempt at the
+ * same pathname, and Windows will not delete a file that is still open. */
+static error_code discard_image(const char *pathname, format_output *out, error_code ec)
+{
+	if (out->image != NULL)
+	{
+		_diskimage_close(out->image->disk);
+	}
+	else
+	{
+		_native_close(out->native);
+	}
+
+	remove(pathname);
+
+	return ec;
+}
+
+
 /* Make a new image of the whole disk, and a path to reach its LSNs. */
 static error_code open_new_image(struct _os9_path_id *image, char *pathname, diskimage_format format,
 				 int tracks, int sectorsPerTrack, int sectorsTrack0, int heads,
-				 int sectorSize, int density, int interleave)
+				 int sectorSize, int density, int interleave, const u_int firstSector[2],
+				 int track0SingleDensity)
 {
 	diskimage_geometry geometry;
+	u_int flags = 0;
 	error_code ec;
 
-	/* These formats only record double density here. */
-	if (density == 0 && (format == DISKIMAGE_DMK || format == DISKIMAGE_SDF))
+	/* Only DMK and SDF images record density. */
+	if (format == DISKIMAGE_DMK || format == DISKIMAGE_SDF)
 	{
-		return EOS_IA;
+		if (track0SingleDensity)
+		{
+			flags |= DISKIMAGE_CREATE_FM_TRACK0_SIDE0;
+		}
+		if (density == 0)
+		{
+			flags |= DISKIMAGE_CREATE_SINGLE_DENSITY;
+		}
 	}
 
-	ec = _diskimage_create(pathname, format, heads, tracks, sectorSize, sectorsPerTrack,
-			       sectorsTrack0 == sectorsPerTrack ? 0 : sectorsTrack0, interleave, 0xE5);
+	ec = _diskimage_create_ex(pathname, format, heads, tracks, sectorSize, sectorsPerTrack,
+				  sectorsTrack0 == sectorsPerTrack ? 0 : sectorsTrack0, interleave,
+				  firstSector, 0xE5, flags);
 	if (ec != 0)
 	{
 		return ec;
@@ -109,7 +139,8 @@ static error_code open_new_image(struct _os9_path_id *image, char *pathname, dis
 	image->spt = sectorsPerTrack;
 	image->t0s = sectorsTrack0;
 	image->sides = heads;
-	image->first_sector = 1;
+	image->first_sector[0] = firstSector[0];
+	image->first_sector[1] = firstSector[1];
 
 	ec = _diskimage_open(&image->disk, pathname, FAM_READ | FAM_WRITE);
 	if (ec != 0)
@@ -133,9 +164,11 @@ error_code _os9_format(char *pathname, int os968k, int tracks,
 		       int formatEntire, int isDragon, int isHDD, int interleave,
 		       unsigned int *totalSectors, unsigned int *totalBytes)
 {
+	static const u_int first_sector[2] = { 1, 1 };
+
 	return _os9_format_image(pathname, DISKIMAGE_RAW, os968k, tracks, sectorsPerTrack, sectorsTrack0,
 				 heads, sectorSize, clusterSize, diskName, sectorAllocationSize, tpi,
-				 density, formatEntire, isDragon, isHDD, interleave, totalSectors, totalBytes);
+				 density, formatEntire, isDragon, isHDD, interleave, first_sector, 0, totalSectors, totalBytes);
 }
 
 
@@ -145,6 +178,7 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 			     int *clusterSize, char *diskName,
 			     int sectorAllocationSize, int tpi, int density,
 			     int formatEntire, int isDragon, int isHDD, int interleave,
+			     const u_int firstSector[2], int track0SingleDensity,
 			     unsigned int *totalSectors, unsigned int *totalBytes)
 {
 	error_code ec = 0;
@@ -189,7 +223,7 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 	else
 	{
 		ec = open_new_image(&image, pathname, format, tracks, sectorsPerTrack, sectorsTrack0, heads,
-				    sectorSize, density, interleave);
+				    sectorSize, density, interleave, firstSector, track0SingleDensity);
 
 		if (ec != 0)
 		{
@@ -224,13 +258,13 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 	{
 		fprintf(stderr, "Disk too large\n");
 
-		return (1);
+		return discard_image(pathname, &out, 1);
 	}
 	else if (int3(s0.dd_tot) < 4)
 	{
 		fprintf(stderr, "Too few sectors\n");
 
-		return (1);
+		return discard_image(pathname, &out, 1);
 	}
 
 	sectorsLeft = int3(s0.dd_tot);
@@ -402,7 +436,7 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 		bitmap = (u_char *) malloc(bitmapSize);
 		if (bitmap == NULL)
 		{
-			return (1);
+			return discard_image(pathname, &out, 1);
 		}
 
 		/* Clear out bitmap sectors (assume all space available) */
@@ -496,7 +530,7 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 
 		if (allocedSectors == NULL)
 		{
-			return (1);
+			return discard_image(pathname, &out, 1);
 		}
 
 		memset(allocedSectors, 0, totalBytes);
@@ -569,14 +603,21 @@ error_code _os9_format_image(char *pathname, diskimage_format format, int os968k
 		}
 	}
 
+	ec = out.ec != 0 ? out.ec : ec;
+
+	if (ec != 0)
+	{
+		return discard_image(pathname, &out, ec);
+	}
+
 	if (out.image != NULL)
 	{
 		ec = _diskimage_close(image.disk);
-
-		return out.ec != 0 ? out.ec : ec;
+	}
+	else
+	{
+		_native_close(out.native);
 	}
 
-	_native_close(out.native);
-
-	return (ec);
+	return ec;
 }

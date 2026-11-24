@@ -60,7 +60,8 @@ static void linear_byte(diskimage_id disk, long long offset, diskimage_byte_info
 	}
 	region->sector.cylinder = (u_int)(track / disk->sides);
 	region->sector.side = (u_int)(track % disk->sides);
-	region->sector.sector = disk->first_sector + (u_int)(slot % disk->sectors_per_track);
+	region->sector.sector = disk->first_sector[region->sector.side] +
+		(u_int)(slot % disk->sectors_per_track);
 	region->sector.size = disk->sector_size;
 	region->logical = 1;
 	if (attribute)

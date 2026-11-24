@@ -15,6 +15,9 @@
 #define OS9_MAME_DMK "../../../unittest/testdata/os9 mame.dmk"
 #define DMK_SPT 18
 
+/* These images number their sectors from 1 on both sides. */
+static const u_int one_based[2] = { 1, 1 };
+
 static void copy_file(const char *from, const char *to)
 {
 	char buffer[4096];
@@ -1701,7 +1704,7 @@ static error_code make_os9_image(const os9_layout *layout)
 	remove(OS9_IMAGE);
 	ec = _os9_format_image(OS9_IMAGE, layout->attributes ? DISKIMAGE_RAW : layout->format, 0, layout->tracks,
 			       layout->sectors_per_track, layout->sectors_per_track, layout->heads, 256,
-			       &cluster_size, "Test", 8, 48, 1, 1, 0, 0, 3, &total_sectors, &total_bytes);
+			       &cluster_size, "Test", 8, 48, 1, 1, 0, 0, 3, one_based, 0, &total_sectors, &total_bytes);
 	if (ec == 0 && layout->attributes)
 	{
 		image_add_jvc_attributes(OS9_IMAGE, layout->sectors_per_track, layout->heads);
@@ -1944,6 +1947,110 @@ void test_os9_write_protect_all_formats()
 	check_os9_write_protect(DISKIMAGE_VDK);
 }
 
+/* A short track 0 is side 0 only; side 1 of track 0 keeps a full track. */
+void test_os9_format_short_track0_side1()
+{
+	unsigned int total_sectors, total_bytes;
+	int cluster_size = 0;
+	diskimage_id disk;
+	diskimage_sector_info info;
+	u_char buffer[256];
+	u_int size = sizeof(buffer);
+	u_int first[2] = { 0, 0 };
+	os9_path_id p;
+	u_char data[16] = { 0 }, back[16];
+	int data_lsn;
+
+	remove(OS9_IMAGE);
+	ASSERT_EC(0, _os9_format_image(OS9_IMAGE, DISKIMAGE_DMK, 0, 80, 16, 10, 2, 256,
+				       &cluster_size, "Test", 8, 48, 1, 1, 0, 0, 4,
+				       first, 1, &total_sectors, &total_bytes));
+
+	/* One short track, not one per side. */
+	ASSERT_EQUALS((80 * 16 * 2) - 16 + 10, total_sectors);
+
+	/* LSN 10 opens side 1 of track 0, which is a full track of 16. */
+	ASSERT_EC(0, _diskimage_open(&disk, OS9_IMAGE, FAM_READ));
+	ASSERT_EC(0, _diskimage_query_sector(disk, 10, &info));
+	ASSERT_EQUALS(0, info.cylinder);
+	ASSERT_EQUALS(1, info.side);
+	ASSERT_EQUALS(0, info.sector);
+	ASSERT_EC(0, _diskimage_query_sector(disk, 25, &info));
+	ASSERT_EQUALS(0, info.cylinder);
+	ASSERT_EQUALS(1, info.side);
+	ASSERT_EQUALS(15, info.sector);
+	ASSERT_EC(0, _diskimage_query_sector(disk, 26, &info));
+	ASSERT_EQUALS(1, info.cylinder);
+	ASSERT_EQUALS(0, info.side);
+	_diskimage_close(disk);
+
+	/* The disk is usable: a file goes on and comes back. */
+	os9_write_file(OS9_IMAGE ",FILE", data, sizeof(data), &data_lsn);
+	ASSERT_EC(0, _os9_open(&p, OS9_IMAGE ",FILE", FAM_READ));
+	ASSERT_EC(0, _os9_read(p, back, &size));
+	ASSERT_EC(0, _os9_close(p));
+	ASSERT_EQUALS(sizeof(data), size);
+
+	remove(OS9_IMAGE);
+}
+
+/* Every track single density, as -sd asks for. */
+void test_os9_format_all_single_density()
+{
+	unsigned int total_sectors, total_bytes;
+	int cluster_size = 0;
+	u_int first[2] = { 0, 0 };
+	os9_path_id p;
+	u_char data[16] = { 0 }, back[16];
+	u_int size = sizeof(back);
+	int data_lsn;
+
+	remove(OS9_IMAGE);
+	ASSERT_EC(0, _os9_format_image(OS9_IMAGE, DISKIMAGE_DMK, 0, 35, 10, 10, 1, 256,
+				       &cluster_size, "Test", 8, 48, 0, 1, 0, 0, 3,
+				       first, 0, &total_sectors, &total_bytes));
+	ASSERT_EQUALS(35 * 10, total_sectors);
+
+	os9_write_file(OS9_IMAGE ",FILE", data, sizeof(data), &data_lsn);
+	ASSERT_EC(0, _os9_open(&p, OS9_IMAGE ",FILE", FAM_READ));
+	ASSERT_EC(0, _os9_read(p, back, &size));
+	ASSERT_EC(0, _os9_close(p));
+	ASSERT_EQUALS(sizeof(data), size);
+
+	remove(OS9_IMAGE);
+}
+
+/* A format that gives up after making the image leaves no file behind. */
+void test_os9_format_discards_a_failed_image()
+{
+	unsigned int total_sectors, total_bytes;
+	int cluster_size = 0;
+	u_int first[2] = { 1, 1 };
+	FILE *fd;
+
+	remove(OS9_IMAGE);
+
+	/* One sector on one track is fewer than a disk can hold, and the image is
+	   already made by the time that is noticed. */
+	ASSERT_EC(1, _os9_format_image(OS9_IMAGE, DISKIMAGE_DMK, 0, 1, 1, 1, 1, 256,
+				       &cluster_size, "Test", 8, 48, 1, 1, 0, 0, 1,
+				       first, 0, &total_sectors, &total_bytes));
+
+	fd = fopen(OS9_IMAGE, "rb");
+	ASSERT_EQUALS(1, fd == NULL);
+	if (fd != NULL)
+	{
+		fclose(fd);
+	}
+
+	/* And the pathname is free for a second attempt, which a leftover image
+	   would have refused: a non-raw format will not replace one. */
+	ASSERT_EC(0, _os9_format_image(OS9_IMAGE, DISKIMAGE_DMK, 0, 2, 18, 18, 1, 256,
+				       &cluster_size, "Test", 8, 48, 1, 1, 0, 0, 1,
+				       first, 0, &total_sectors, &total_bytes));
+	remove(OS9_IMAGE);
+}
+
 /* Patch LSN0 of an image, and see it fail rather than go wrong. */
 void test_os9_bad_lsn0_on_tracks()
 {
@@ -1971,7 +2078,7 @@ void test_os9_bad_lsn0_on_tracks()
 
 	/* An LSN size that isn't the size of the disk's sectors */
 	ASSERT_EC(0, _os9_format_image(OS9_IMAGE, DISKIMAGE_DMK, 0, 35, 9, 9, 1, 512, &cluster_size, "Test", 8, 48, 1, 1,
-				       0, 0, 3, &total_sectors, &total_bytes));
+				       0, 0, 3, one_based, 0, &total_sectors, &total_bytes));
 	ASSERT_EC(0, _diskimage_open(&disk, OS9_IMAGE, FAM_READ | FAM_WRITE));
 	size = sizeof(sector);
 	ASSERT_EC(0, _diskimage_read_sector(disk, 0, 0, 1, sector, &size));
@@ -3020,6 +3127,9 @@ int main()
 	RUN(test_os9_damage_all_formats);
 	RUN(test_os9_round_trip_all_formats);
 	RUN(test_os9_write_protect_all_formats);
+	RUN(test_os9_format_short_track0_side1);
+	RUN(test_os9_format_all_single_density);
+	RUN(test_os9_format_discards_a_failed_image);
 	RUN(test_os9_bad_lsn0_on_tracks);
 
 	RUN(test_real_os9_is_recognized);

@@ -262,11 +262,13 @@ static error_code locate(diskimage_id disk, u_int cylinder, u_int side, u_int se
 	else if (disk->linear)
 	{
 		if (cylinder >= disk->cylinders || side >= disk->sides ||
-		    sector < disk->first_sector || sector - disk->first_sector >= disk->sectors_per_track)
+		    sector < disk->first_sector[side] ||
+		    sector - disk->first_sector[side] >= disk->sectors_per_track)
 		{
 			return EOS_SECT;
 		}
-		*index = ((long long)cylinder * disk->sides + side) * disk->sectors_per_track + (sector - disk->first_sector);
+		*index = ((long long)cylinder * disk->sides + side) * disk->sectors_per_track +
+			(sector - disk->first_sector[side]);
 	}
 	else
 	{

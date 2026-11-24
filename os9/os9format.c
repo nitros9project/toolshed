@@ -31,6 +31,7 @@ static char const *const helpMessage[] = {
 	"     -9   = 96 tpi\n",
 	"     -sa  = sector allocation size (SAS)\n",
 	"     -sd  = single density\n",
+	"     -sd0 = single density on track 0 only, the rest double (Dragon Beta)\n",
 	"     -dd  = double density (default)\n",
 	"     -ss  = single sided (default)\n",
 	"     -ds  = double sided\n",
@@ -38,6 +39,8 @@ static char const *const helpMessage[] = {
 	"     -stX = sectors per track (default = 18)\n",
 	"     -szX = sectors for track 0 (default = 18)\n",
 	"     -iX  = interleave (default = 3)\n",
+	"     -In[,m] = a track's first sector number, or one for each side of a\n",
+	"               double sided disk (default 1, or 0 for -k and a short track 0)\n",
 	"     -dr  = format a Dragon disk\n",
 	" Hard Drive Options:\n",
 	"     -lX  = number of logical sectors (floppy options ignored)\n",
@@ -46,6 +49,27 @@ static char const *const helpMessage[] = {
 
 #define DEF_SECTORS_TRACK	18
 #define DEF_INTERLEAVE		 3
+
+/* Read a sector number from text, up to end (or the end of the string). */
+static int read_sector_number(const char *text, const char *end, int *value)
+{
+	char *tail;
+	long number = strtol(text, &tail, 10);
+
+	if (tail == text || number < 0 || number > 255)
+	{
+		return 0;
+	}
+
+	if (end != NULL ? tail != end : *tail != '\0')
+	{
+		return 0;
+	}
+
+	*value = (int)number;
+
+	return 1;
+}
 
 int os9format(int argc, char **argv)
 {
@@ -65,7 +89,12 @@ int os9format(int argc, char **argv)
 	int clusterSize = 0;	/* assume no cluster size */
 	int sectorAllocationSize = 8;	/* default */
 	int interleave = DEF_INTERLEAVE;
+	int firstSector[2] = { -1, -1 };	/* -1 = not given, see the defaults below */
+	int perSideNumber = 0;		/* -I was given a number for each side */
+	u_int sideFirstSector[2];
+	int side;
 	int os968k = 0;		/* assume OS-9/6809 LSN0 */
+	int track0SingleDensity = 0;	/* track 0 side 0 is FM */
 	int formatEntire = 0;	/* format entire disk image */
 	int isDragon = 0;	/* format disk as Dragon, with reserved boot sectors at begining */
 	int isHDD = 0;		/* Is this image for a hard drive */
@@ -195,7 +224,16 @@ int os9format(int argc, char **argv)
 						break;
 
 					case 'd':
-						density = 0;
+						if (*(p + 2) == '0')
+						{
+							/* Track 0 alone is single density, as a Dragon Beta
+							   disk has it; the disk itself stays double. */
+							track0SingleDensity = 1;
+						}
+						else
+						{
+							density = 0;
+						}
 						break;
 
 					case 's':
@@ -225,6 +263,33 @@ int os9format(int argc, char **argv)
 					while (*(p + 1) != '\0')
 						p++;
 					break;
+
+				case 'I':	/* first sector numbers, one per side */
+				{
+					char *comma = strchr(p + 1, ',');
+
+					if (!read_sector_number(p + 1, comma, &firstSector[0]) ||
+					    (comma != NULL &&
+					     !read_sector_number(comma + 1, NULL, &firstSector[1])))
+					{
+						fprintf(stderr,
+							"%s: -I wants a sector number from 0 to 255, or two separated by a comma\n",
+							argv[0]);
+
+						return (EOS_SECT);
+					}
+					if (comma == NULL)
+					{
+						firstSector[1] = firstSector[0];
+					}
+					else
+					{
+						perSideNumber = 1;
+					}
+					while (*(p + 1) != '\0')
+						p++;
+					break;
+				}
 
 				case 't':	/* tracks */
 					tracks = atoi(p + 1);
@@ -264,6 +329,12 @@ int os9format(int argc, char **argv)
 			}
 		}
 	}
+
+	/* Native OS-9/68K machines number a track's sectors from 0, as do machines whose
+	 * track 0 is short (MM/1, GIMIX, Dragon Beta); the CoCo, Dragon 64 and Dragon
+	 * Alpha number from 1.  -I overrides this for 68K machines that differ (BBC
+	 * second processor, Atari, Amiga, Macintosh).  Only some formats record the
+	 * number, so the default is worked out per image, below. */
 
 	/* match sectors on track 0 only if it's unset. */
 	if (sectorsTrack0 == 0)
@@ -324,6 +395,76 @@ int os9format(int argc, char **argv)
 				disk_format = DISKIMAGE_RAW;
 			}
 
+			/* Only DMK, SDF and JVC record a track's first sector number.  The
+			 * others number their sectors themselves, so a number they cannot
+			 * hold is dropped rather than refused. */
+			{
+				int records_number = disk_format == DISKIMAGE_DMK ||
+						     disk_format == DISKIMAGE_SDF ||
+						     disk_format == DISKIMAGE_JVC;
+				int defaultFirstSector =
+					(os968k || (sectorsTrack0 != 0 && sectorsTrack0 != sectorsPerTrack)) ? 0 : 1;
+
+				/* A number for each side is a double sided disk's parameter: with
+				 * one side the second number is for a side the disk does not have,
+				 * so the disk asked for cannot be made whatever holds it. */
+				if (perSideNumber && heads == 1)
+				{
+					fprintf(stderr,
+						"%s: Invalid initial sector values requested for single sided disk\n",
+						argv[0]);
+
+					return (EOS_SECT);
+				}
+
+				for (side = 0; side < 2; side++)
+				{
+					int asked = firstSector[side] >= 0 ? firstSector[side] :
+									   defaultFirstSector;
+
+					/* Track 0 is the only short one, so a track's worth of
+					 * numbers is sectors per track, on either side. */
+					if ((u_int)asked + (u_int)sectorsPerTrack - 1 > 255)
+					{
+						fprintf(stderr,
+							"%s: '%s' would number a track's sectors past 255\n",
+							argv[0], argv[i]);
+
+						return (EOS_SECT);
+					}
+
+					sideFirstSector[side] = records_number ? (u_int)asked : 1;
+				}
+
+				/* A container that means nothing by a sector number leaves it to
+				 * whatever reads the image, which is not ours to predict, so the
+				 * disk is still made and the request is reported.  A container that
+				 * does record one, but has room for only one while two were asked
+				 * for, would write a disk that is not the disk asked for, so that is
+				 * refused. */
+				if (firstSector[0] >= 0 || firstSector[1] >= 0)
+				{
+					int apart = firstSector[0] >= 0 && firstSector[1] >= 0 &&
+						    firstSector[0] != firstSector[1];
+
+					if (apart && disk_format == DISKIMAGE_JVC)
+					{
+						fprintf(stderr,
+							"%s: '%s' records one initial sector number and cannot record %d and %d\n",
+							argv[0], argv[i], firstSector[0], firstSector[1]);
+
+						return (EOS_SECT);
+					}
+
+					if (!records_number)
+					{
+						fprintf(stderr,
+							"%s: Warning: '%s' does not include a mechanism to express physical sector numbers\n",
+							argv[0], argv[i]);
+					}
+				}
+			}
+
 			ec =
 				_os9_format_image(argv[i], disk_format, os968k, tracks,
 						  sectorsPerTrack, sectorsTrack0,
@@ -331,6 +472,7 @@ int os9format(int argc, char **argv)
 						  diskName, sectorAllocationSize,
 						  tpi, density, formatEntire,
 						  isDragon, isHDD, interleave,
+						  sideFirstSector, track0SingleDensity,
 						  &totalSectors, &totalBytes);
 
 			if (ec == EOS_FAE)

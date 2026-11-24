@@ -210,7 +210,8 @@ static error_code load_raw(diskimage_id disk, long long file_size)
 	disk->sides = 1;
 	disk->sector_size = DI_RAW_SECTOR_SIZE;
 	disk->sectors_per_track = DI_RAW_SECTORS_PER_TRACK;
-	disk->first_sector = 1;
+	disk->first_sector[0] = 1;
+	disk->first_sector[1] = 1;
 	disk->raw_track0 = DI_RAW_SECTORS_PER_TRACK;
 
 	if (slots > 0)
@@ -373,8 +374,10 @@ static void table_geometry(diskimage_id disk, diskimage_geometry *geometry)
 {
 	u_int track_count = 0;
 	u_int i;
+	int seen[2] = { 0, 0 };
 
-	geometry->first_sector = disk->total_sectors ? 255 : 0;
+	geometry->first_sector[0] = disk->total_sectors ? 255 : 0;
+	geometry->first_sector[1] = geometry->first_sector[0];
 	for (i = 0; i < disk->total_sectors; i++)
 	{
 		const di_sector *entry = &disk->table[i];
@@ -392,9 +395,10 @@ static void table_geometry(diskimage_id disk, diskimage_geometry *geometry)
 		{
 			geometry->sector_size = entry->size;
 		}
-		if (entry->id < geometry->first_sector)
+		if (entry->side < 2 && (!seen[entry->side] || entry->id < geometry->first_sector[entry->side]))
 		{
-			geometry->first_sector = entry->id;
+			geometry->first_sector[entry->side] = entry->id;
+			seen[entry->side] = 1;
 		}
 		if (entry->cylinder == 0 && entry->side == 0)
 		{
@@ -404,6 +408,12 @@ static void table_geometry(diskimage_id disk, diskimage_geometry *geometry)
 
 	geometry->uniform = disk->total_sectors > 0 &&
 		disk->total_sectors == disk->cylinders * disk->sides * geometry->sectors_per_track;
+
+	/* A side with no sectors of its own is numbered the way side 0 is. */
+	if (!seen[1])
+	{
+		geometry->first_sector[1] = geometry->first_sector[0];
+	}
 	for (i = 0; i < disk->total_sectors && geometry->uniform; i++)
 	{
 		const di_sector *entry = &disk->table[i];
@@ -445,7 +455,8 @@ error_code _diskimage_query_geometry(diskimage_id disk, diskimage_geometry *geom
 	{
 		geometry->sectors_per_track = disk->sectors_per_track;
 		geometry->sector_size = disk->sector_size;
-		geometry->first_sector = disk->first_sector;
+		geometry->first_sector[0] = disk->first_sector[0];
+		geometry->first_sector[1] = disk->first_sector[1];
 		geometry->sectors_track0 = disk->sectors_per_track - disk->raw_missing;
 		if (geometry->sectors_track0 > disk->total_sectors)
 		{
@@ -480,7 +491,7 @@ error_code _diskimage_query_sector(diskimage_id disk, u_int index, diskimage_sec
 
 		info->cylinder = track / disk->sides;
 		info->side = track % disk->sides;
-		info->sector = disk->first_sector + (u_int)(slot % spt);
+		info->sector = disk->first_sector[info->side] + (u_int)(slot % spt);
 		info->size = disk->sector_size;
 		info->flags = 0;
 	}

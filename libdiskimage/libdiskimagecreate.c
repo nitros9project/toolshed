@@ -39,24 +39,44 @@
 
 #define FM_GAP_BYTE		0xFF
 #define FM_TRACK_SIZE		(DI_MFM_TRACK_SIZE / 2)	/* bytes in a single density track */
-#define FM_GAP1			26
+#define FM_GAP1			16	/* IBM 5.25" gap 1, as a real Dragon Beta disk has */
 #define FM_GAP2			11
-#define FM_GAP3			27
+#define FM_GAP3			10	/* what is left over becomes gap 4 */
 #define FM_GAP3_MIN		8
 #define FM_GAP4A		40
 #define FM_SYNC_ZEROS		6
 #define FM_INDEX_START		(FM_GAP4A + FM_SYNC_ZEROS + 1)	/* the gap, zeros and $FC index mark */
 #define FM_SECTOR_OVERHEAD	(FM_SYNC_ZEROS + MFM_ID_FIELD + FM_GAP2 + FM_SYNC_ZEROS + 1 + 2)
 
+/* The space left after the last sector is gap 4, and it is what absorbs the
+   difference between the drive that wrote the disk and the one reading it.
+   Gap 3 is kept at its IBM length so that gap 4 gets the remainder rather than
+   the other way round: a track with no gap 4 is safe in an image but not on
+   media.
+
+   A 300 rpm track holds 3,125 bytes, the revolution being 200 ms, and OS-9 for
+   the 6809 uses 256-byte sectors (dd_lsnsize is 1), so these are the layouts
+   that arise:
+
+	format      leader  gap 3  per sector  gap 4  margin
+	10 x 256    16      10     299         119    3.8 %
+	 9 x 256    16      10     299         418    13.4 %
+
+   Under 2 % of a revolution is not reliable on physical media: a decent drive
+   and diskette hold within 2.5 % of their speed, and the drive that wrote the
+   disk may not be the one reading it.  Ten sectors is what FLEX and a Dragon
+   Beta disk use, and it leaves 3.8 %. */
+
 #define DMK_MAX_CYLINDERS	255
 #define DMK_MAX_SECTORS		64
 #define SDF_MAX_CYLINDERS	80
 #define SDF_MAX_SECTORS		31
 #define JVC_MAX_SECTORS		255
-#define JVC_HEADER_MAX		3
+#define JVC_HEADER_MAX		4
 #define JVC_DEFAULT_SPT		18
 #define JVC_DEFAULT_SIDES	1
 #define JVC_DEFAULT_SIZE_CODE	1
+#define JVC_DEFAULT_FIRST_SECTOR	1
 #define VDK_MAX_CYLINDERS	255
 #define VDK_HEADER_SIZE		12
 #define VDK_VERSION		0x10
@@ -129,9 +149,14 @@ static u_char *put_fm_bytes(u_char *p, u_char byte, int count)
 
 
 /* Whether a track is recorded in single density. */
-static int fm_track(const di_layout *layout, u_int cylinder)
+static int fm_track(const di_layout *layout, u_int cylinder, u_int side)
 {
-	return layout->fm_all || (layout->fm_track0 && cylinder == 0);
+	if (layout->fm_all || (layout->fm_track0 && cylinder == 0))
+	{
+		return 1;
+	}
+
+	return layout->fm_track0_side0 && cylinder == 0 && side == 0;
 }
 
 
@@ -147,9 +172,11 @@ static u_int track_sectors(const di_layout *layout, u_int cylinder, u_int side)
 
 
 /* The number of a track's first sector, less one. */
-static u_int track_id_base(const di_layout *layout, u_int cylinder, u_int side)
+static int track_id_base(const di_layout *layout, u_int cylinder, u_int side)
 {
-	return (layout->span_sides && side == 1) ? track_sectors(layout, cylinder, 0) : 0;
+	int base = (int)layout->first_sector[side] - 1;
+
+	return (layout->span_sides && side == 1) ? base + (int)track_sectors(layout, cylinder, 0) : base;
 }
 
 
@@ -177,7 +204,7 @@ static void sector_order(u_int sectors, u_int interleave, u_char *order)
 static int fm_format_track(const di_layout *layout, u_int cylinder, u_int side, u_char *raw, int *id_pos, int *data_pos)
 {
 	u_int sectors = track_sectors(layout, cylinder, side);
-	u_int base = track_id_base(layout, cylinder, side);
+	int base = track_id_base(layout, cylinder, side);
 	int gap3 = fm_gap3(sectors, layout);
 	u_char field[1 + DI_MAX_SECTOR_SIZE];
 	u_char order[DI_MAX_TRACK_IDS];
@@ -244,7 +271,7 @@ int di_format_track(const di_layout *layout, u_int cylinder, u_int side, u_char 
 		    int *double_density)
 {
 	u_int sectors = track_sectors(layout, cylinder, side);
-	u_int base = track_id_base(layout, cylinder, side);
+	int base = track_id_base(layout, cylinder, side);
 	int gap3 = mfm_gap3(sectors, layout);
 	u_char field[1 + DI_MAX_SECTOR_SIZE];
 	u_char order[DI_MAX_TRACK_IDS];
@@ -252,7 +279,7 @@ int di_format_track(const di_layout *layout, u_int cylinder, u_int side, u_char 
 	unsigned short crc;
 	u_int i;
 
-	*double_density = !fm_track(layout, cylinder);
+	*double_density = !fm_track(layout, cylinder, side);
 	if (!*double_density)
 	{
 		return fm_format_track(layout, cylinder, side, raw, id_pos, data_pos);
@@ -370,7 +397,12 @@ static error_code create_jvc(FILE *fd, const di_layout *layout, long long sector
 	header[0] = (u_char)layout->sectors_per_track;
 	header[1] = (u_char)layout->sides;
 	header[2] = (u_char)layout->size_code;
-	if (layout->size_code != JVC_DEFAULT_SIZE_CODE)
+	header[3] = (u_char)layout->first_sector[0];
+	if (layout->first_sector[0] != JVC_DEFAULT_FIRST_SECTOR)
+	{
+		header_size = 4;
+	}
+	else if (layout->size_code != JVC_DEFAULT_SIZE_CODE)
 	{
 		header_size = 3;
 	}
@@ -402,6 +434,31 @@ static error_code create_vdk(FILE *fd, const di_layout *layout, long long sector
 /* Check what a format can represent. */
 static error_code check_layout(diskimage_format format, const di_layout *layout, long long total)
 {
+	u_int side, cylinder;
+
+	/* A number for each side describes a double sided disk.  A disk with one
+	   side has nowhere for the second number to apply, so it would not be the
+	   disk that was asked for. */
+	if (layout->sides == 1 && layout->first_sector[0] != layout->first_sector[1])
+	{
+		return EOS_SECT;
+	}
+
+	/* A sector number is one byte, so a track's numbers must not run past 255.
+	   Track 0 can be short, so every cylinder is checked, not just the first. */
+	for (side = 0; side < 2; side++)
+	{
+		for (cylinder = 0; cylinder < layout->cylinders; cylinder++)
+		{
+			int base = track_id_base(layout, cylinder, side);
+
+			if (base + (int)track_sectors(layout, cylinder, side) > 255)
+			{
+				return EOS_SECT;
+			}
+		}
+	}
+
 	switch (format)
 	{
 	case DISKIMAGE_RAW:
@@ -415,6 +472,14 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 		break;
 
 	case DISKIMAGE_JVC:
+		/* The header holds one first sector number, so a disk asked for a number
+		   per side would express numbering the request did not ask for: not the
+		   disk that was requested. */
+		if (layout->first_sector[0] != layout->first_sector[1])
+		{
+			return EOS_SECT;
+		}
+
 		/* Sector data must be a multiple of 256 bytes for a reader to
 		   find the end of the header. */
 		if (layout->sectors_per_track > JVC_MAX_SECTORS ||
@@ -441,11 +506,12 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 	{
 		u_int max_cylinders = format == DISKIMAGE_DMK ? DMK_MAX_CYLINDERS : SDF_MAX_CYLINDERS;
 		u_int max_sectors = format == DISKIMAGE_DMK ? DMK_MAX_SECTORS : SDF_MAX_SECTORS;
-		int track0_gap = fm_track(layout, 0) ? fm_gap3(layout->sectors_track0, layout) :
+		int track0_gap = fm_track(layout, 0, 0) ? fm_gap3(layout->sectors_track0, layout) :
 						       mfm_gap3(layout->sectors_track0, layout);
 		int track_gap = layout->fm_all ? fm_gap3(layout->sectors_per_track, layout) :
 						 mfm_gap3(layout->sectors_per_track, layout);
-		u_int track0_interleave_limit = layout->fm_track0 ? layout->sectors_track0 : layout->sectors_per_track;
+		u_int track0_interleave_limit = (layout->fm_track0 || layout->fm_track0_side0) ?
+			layout->sectors_track0 : layout->sectors_per_track;
 
 		if (layout->cylinders > max_cylinders ||
 		    (layout->interleave > 1 && layout->interleave >= layout->sectors_per_track) ||
@@ -465,7 +531,8 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 	}
 
 	/* Only DMK and SDF images record density. */
-	if ((layout->fm_track0 || layout->fm_all) && format != DISKIMAGE_DMK && format != DISKIMAGE_SDF)
+	if ((layout->fm_track0 || layout->fm_track0_side0 || layout->fm_all) &&
+	    format != DISKIMAGE_DMK && format != DISKIMAGE_SDF)
 	{
 		return EOS_IA;
 	}
@@ -476,7 +543,7 @@ static error_code check_layout(diskimage_format format, const di_layout *layout,
 
 static error_code create_image(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
 			       u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
-			       u_int interleave, u_char fill, u_int flags)
+			       u_int interleave, const u_int first_sector[2], u_char fill, u_int flags)
 {
 	di_layout layout;
 	struct stat st;
@@ -485,8 +552,8 @@ static error_code create_image(const char *pathname, diskimage_format format, u_
 	error_code ec;
 
 	if (pathname == NULL || (sides != 1 && sides != 2) || tracks == 0 || sectors_per_track == 0 ||
-	    (flags & ~(DISKIMAGE_CREATE_INDEX_MARK | DISKIMAGE_CREATE_FM_TRACK0 | DISKIMAGE_CREATE_SPAN_SIDES |
-		       DISKIMAGE_CREATE_SINGLE_DENSITY)) != 0)
+	    (flags & ~(DISKIMAGE_CREATE_INDEX_MARK | DISKIMAGE_CREATE_FM_TRACK0 | DISKIMAGE_CREATE_FM_TRACK0_SIDE0 |
+		       DISKIMAGE_CREATE_SPAN_SIDES | DISKIMAGE_CREATE_SINGLE_DENSITY)) != 0)
 	{
 		return EOS_IA;
 	}
@@ -497,9 +564,12 @@ static error_code create_image(const char *pathname, diskimage_format format, u_
 	layout.sectors_per_track = sectors_per_track;
 	layout.sectors_track0 = sectors_track0 ? sectors_track0 : sectors_per_track;
 	layout.interleave = interleave ? interleave : 1;
+	layout.first_sector[0] = first_sector[0];
+	layout.first_sector[1] = first_sector[1];
 	layout.fill = fill;
 	layout.index_mark = (flags & DISKIMAGE_CREATE_INDEX_MARK) != 0;
 	layout.fm_track0 = (flags & DISKIMAGE_CREATE_FM_TRACK0) != 0;
+	layout.fm_track0_side0 = (flags & DISKIMAGE_CREATE_FM_TRACK0_SIDE0) != 0;
 	layout.span_sides = (flags & DISKIMAGE_CREATE_SPAN_SIDES) != 0;
 	layout.fm_all = (flags & DISKIMAGE_CREATE_SINGLE_DENSITY) != 0;
 	for (layout.size_code = 0; layout.size_code < 4; layout.size_code++)
@@ -572,8 +642,10 @@ error_code _diskimage_create(const char *pathname, diskimage_format format, u_in
 			     u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
 			     u_int interleave, u_char fill)
 {
+	static const u_int one_based[2] = { 1, 1 };
+
 	return create_image(pathname, format, sides, tracks, sector_size, sectors_per_track,
-			    sectors_track0, interleave, fill, 0);
+			    sectors_track0, interleave, one_based, fill, 0);
 }
 
 
@@ -581,15 +653,17 @@ error_code _diskimage_create_index_mark(const char *pathname, diskimage_format f
 					u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
 					u_int interleave, u_char fill)
 {
+	static const u_int one_based[2] = { 1, 1 };
+
 	return create_image(pathname, format, sides, tracks, sector_size, sectors_per_track,
-			    sectors_track0, interleave, fill, DISKIMAGE_CREATE_INDEX_MARK);
+			    sectors_track0, interleave, one_based, fill, DISKIMAGE_CREATE_INDEX_MARK);
 }
 
 
 error_code _diskimage_create_ex(const char *pathname, diskimage_format format, u_int sides, u_int tracks,
 				u_int sector_size, u_int sectors_per_track, u_int sectors_track0,
-				u_int interleave, u_char fill, u_int flags)
+				u_int interleave, const u_int first_sector[2], u_char fill, u_int flags)
 {
 	return create_image(pathname, format, sides, tracks, sector_size, sectors_per_track,
-			    sectors_track0, interleave, fill, flags);
+			    sectors_track0, interleave, first_sector, fill, flags);
 }
