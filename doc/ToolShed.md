@@ -2210,11 +2210,14 @@ A target of `<disk>,` or a host directory takes each file under its own name. A 
 
 FLEX text ends lines with a carriage return, records a run of spaces as $09 and a count, and is padded with nuls. With -l, a text file copied from a FLEX disk has its lines end the way the target's system ends them and its spaces expanded, and nul and $18 are dropped, as FLEX drops them when it reads text. Text copied to a FLEX disk has its lines end with a carriage return, a tab becomes the spaces to the next multiple of 8 columns, and runs of 2 to 127 spaces are compressed, as FLEX writes them. Between two FLEX disks, or two other places, -l does what it does in the other tools.
 
+A copy from one FLEX disk to another keeps the file as it was: a random file, such as ERRORS.SYS, is still random, with its two map sectors made again on the target, and it keeps its protection and date. A copy from the host has the date the host file was last changed, and a copy to the host is given the FLEX file's date. If SOURCE_DATE_EPOCH is set, every copy is dated from it instead, in UTC, as the other tools' copies are, so a disk made from the same files is the same each time.
+
 An existing file on the host that is or looks like a disk image is never replaced, even with -r. A file that doesn't fit is removed, and the error reported.
 
 #### Examples
 
     cflex copy prog.cmd disk.dsk,PROG.CMD
+    cflex copy old.dsk,ERRORS.SYS new.dmk,ERRORS.SYS
     cflex copy -l notes.txt readme.txt disk.dmk,
     cflex copy -l disk.dmk,README.TXT readme.txt
 
@@ -2287,7 +2290,7 @@ This works as dgndos dsave does, running `cflex copy` for each file. FLEX has no
 
 #### Description
 
-Without -f, the format comes from the disk's extension, and otherwise it is raw. An existing file is not replaced. Disks are laid out as NEWDISK lays them out: the directory fills the rest of track 0, and every sector of the other tracks is in the free chain, in order. The SIR has the date, from SOURCE_DATE_EPOCH if it is set. Track 0 is single density, with 10 sectors on each side, even on a double density disk. The boot sectors of track 0 are left empty, as the Color Computer doesn't use them. To make a disk that boots, use [gen](#gen_cflex) on a double density disk.
+Without -f, the format comes from the disk's extension, and otherwise it is raw. An existing file is not replaced. Disks are laid out as NEWDISK lays them out: the directory fills the rest of track 0, and every sector of the other tracks is in the free chain, in order. The SIR has the date, from SOURCE_DATE_EPOCH, in UTC, if it is set. Track 0 is single density, with 10 sectors on each side, even on a double density disk. The boot sectors of track 0 are left empty, as the Color Computer doesn't use them. To make a disk that boots, use [gen](#gen_cflex) on a double density disk.
 
 DMK and SDF images are recorded as a Color Computer floppy controller would format them, with track 0, or every track of a single density disk, in single density. A raw image keeps only track 0's sectors unless -p is given. VDK images hold only double density disks.
 

@@ -40,6 +40,11 @@ typedef struct
 
 error_code TSDSave(const ts_dsave_options *options, char *source, char *target);
 error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate, int rewrite, int owner, int owner_set, char *buffer, u_int buffer_size);
+
+/* Give a copied file the source's metadata, as TSCopyFile does once it has
+   copied the data: its attributes and dates, with the dates replaced by
+   SOURCE_DATE_EPOCH if that is set. */
+void TSSetCopiedMetadata(char *dstfile, coco_file_stat *fdesc);
 void NativeToCoCo(char *buffer, u_int size, char **newBuffer, u_int *newSize);
 void CoCoToNative(char *buffer, u_int size, char **newBuffer, u_int *newSize);
 EOL_Type DetermineEOLType(char *buffer, int size);

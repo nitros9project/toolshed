@@ -49,6 +49,8 @@
 extern "C" {
 #endif
 
+#include <time.h>
+
 #include <cocotypes.h>
 #include <diskimage.h>
 
@@ -139,6 +141,7 @@ typedef struct _flex_path_id
 	u_int		data_sector;
 	u_int		data_sectors;
 	u_int		filepos;
+	int		making_random;	/* _flex_ss_random: the map is written on close */
 
 	/* The sector holding filepos, or the last one before it */
 	int		buffer_valid;
@@ -260,6 +263,21 @@ error_code _flex_ss_size(flex_path_id path, u_int size);
 
 /* Only the attributes and the date can be changed. */
 error_code _flex_ss_fd(flex_path_id path, const flex_file_stat *stat);
+
+/* Make a file just created a random file, as FLEX's random files are: two
+   map sectors come before its data, and the map of its data, as runs of
+   sectors, is written when it is closed.  The file grows as it is written
+   until then.  EOS_BMODE if anything has been written.  A file whose data is
+   in more runs than two map sectors hold, 168, can't be closed: EOS_DF. */
+error_code _flex_ss_random(flex_path_id path);
+
+/* Set a stat's date from a time, in local time.  If SOURCE_DATE_EPOCH is set,
+   it is used instead, in UTC, as the date of every new file and disk. */
+void _flex_stat_date(flex_file_stat *stat, time_t when);
+
+/* If SOURCE_DATE_EPOCH is set, set stat's date from it, in UTC, and return 1.
+   Otherwise stat is left as it is, and the result is 0. */
+int _flex_reproducible_date(flex_file_stat *stat);
 
 /* Only a raw path can be used. */
 error_code _flex_ss_sector(flex_path_id path, u_int track, u_int sector, const void *buffer);

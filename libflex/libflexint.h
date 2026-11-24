@@ -35,6 +35,7 @@ void _fx_set_free_chain(flex_path_id path, u_int first_track, u_int first_sector
 error_code _fx_flush(flex_path_id path);
 u_int _fx_get2(const u_char *p);
 void _fx_put2(u_char *p, u_int value);
+void _fx_date(time_t when, u_char *date);
 void _fx_today(u_char *date);
 
 /* libflexdir.c */
@@ -59,6 +60,7 @@ error_code _fx_set_data_start(flex_path_id path);
 error_code _fx_flush_buffer(flex_path_id path);
 error_code _fx_truncate(flex_path_id path, u_int data_sectors);
 error_code _fx_extend(flex_path_id path, u_int data_sectors);
+error_code _fx_write_random_map(flex_path_id path);
 
 /* libflexopen.c */
 error_code _fx_open_image(flex_path_id *path, const char *pathlist, int mode);

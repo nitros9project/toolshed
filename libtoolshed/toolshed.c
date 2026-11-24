@@ -547,6 +547,16 @@ error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 		return ec;
 	}
 
+	TSSetCopiedMetadata(dstfile, &fdesc);
+
+	return ec;
+}
+
+
+void TSSetCopiedMetadata(char *dstfile, coco_file_stat *fdesc)
+{
+	coco_path_id metapath;
+
 	/* --- Intercept for Reproducible Builds --- */
 	{
 		char *sde_env = getenv("SOURCE_DATE_EPOCH");
@@ -556,23 +566,17 @@ error_code TSCopyFile(char *srcfile, char *dstfile, int eolTranslate,
 			time_t sde_val = (time_t)strtoll(sde_env, &endptr, 10);
 			if (*endptr == '\0' && sde_val >= 0)
 			{
-				fdesc.create_time = sde_val;
-				fdesc.last_modified_time = sde_val;
+				fdesc->create_time = sde_val;
+				fdesc->last_modified_time = sde_val;
 			}
 		}
 	}
 
+	if (_coco_open(&metapath, dstfile, FAM_READ | FAM_WRITE) == 0)
 	{
-		coco_path_id metapath;
-		if (_coco_open(&metapath, dstfile, FAM_READ | FAM_WRITE) == 0)
-		{
-			_coco_ss_fd(metapath, &fdesc);
-			_coco_close(metapath);
-		}
+		_coco_ss_fd(metapath, fdesc);
+		_coco_close(metapath);
 	}
-
-
-	return ec;
 }
 
 

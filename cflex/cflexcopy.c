@@ -4,6 +4,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <flexpath.h>
 #include <toolshed.h>
 #include <util.h>
 
@@ -19,6 +20,8 @@ static char const *const helpMessage[] = {
 	"Options:\n",
 	"     -l         translate text: line ends, and FLEX's space compression\n",
 	"     -r         rewrite if file exists\n",
+	"Between FLEX disks a random file stays random, with its protection\n",
+	"and date.  Copies are dated from SOURCE_DATE_EPOCH if it is set.\n",
 	NULL
 };
 
@@ -63,7 +66,7 @@ static char *get_filename(char *path)
 static error_code copy_translating_text(char *source, char *destination, int rewrite, int *handled)
 {
 	coco_path_id path, destpath;
-	coco_file_stat fstat;
+	coco_file_stat fstat, source_stat;
 	_path_type source_type, destination_type;
 	u_char *buffer = NULL, *result = NULL;
 	u_int size = 0, result_size = 0;
@@ -86,6 +89,8 @@ static error_code copy_translating_text(char *source, char *destination, int rew
 	{
 		return ec;
 	}
+	memset(&source_stat, 0, sizeof(source_stat));
+	_coco_gs_fd(path, &source_stat);
 	_coco_close(path);
 
 	if (ec == 0 && source_type == FLEX)
@@ -136,8 +141,122 @@ static error_code copy_translating_text(char *source, char *destination, int rew
 			ec = close_ec;
 		}
 	}
+	if (ec == 0)
+	{
+		TSSetCopiedMetadata(destination, &source_stat);
+	}
 
 	free(result);
+	return ec;
+}
+
+
+/* Read the whole of a file's data. */
+static error_code read_flex_file(flex_path_id path, u_int size, u_char **data)
+{
+	u_int got = size;
+	error_code ec;
+
+	*data = malloc(size ? size : 1);
+	if (*data == NULL)
+	{
+		return EOS_OM;
+	}
+	ec = _flex_read(path, *data, &got);
+	if (ec == EOS_EOF && size == 0)
+	{
+		ec = 0;
+	}
+	if (ec == 0 && got != size)
+	{
+		ec = EOS_READ;
+	}
+	return ec;
+}
+
+
+/* Copy a file from one FLEX disk to another as it is: a random file stays
+   random, and it keeps its protection and date.  As other copies do, the
+   date is SOURCE_DATE_EPOCH if that is set.  *handled says whether both ends
+   were FLEX files, which only this can copy. */
+static error_code copy_flex_file(char *source, char *destination, int rewrite, int *handled)
+{
+	flex_path_id in = NULL, out = NULL;
+	flex_file_stat stat;
+	_path_type source_type, destination_type;
+	u_char *data = NULL;
+	u_int size;
+	error_code ec, close_ec;
+
+	*handled = 0;
+	ec = _coco_identify_image(source, &source_type);
+	if (ec == 0)
+	{
+		ec = _coco_identify_image(destination, &destination_type);
+	}
+	if (ec != 0 || source_type != FLEX || destination_type != FLEX)
+	{
+		return 0;
+	}
+
+	ec = _flex_open(&in, source, FAM_READ);
+	if (ec == 0 && in->israw)
+	{
+		/* The whole disk, which isn't a file to copy here. */
+		_flex_close(in);
+		return 0;
+	}
+	*handled = 1;
+	if (ec != 0)
+	{
+		return ec;
+	}
+	ec = _flex_gs_fd(in, &stat);
+	size = stat.file_size;
+	if (ec == 0)
+	{
+		ec = read_flex_file(in, size, &data);
+	}
+	close_ec = _flex_close(in);
+	if (ec == 0)
+	{
+		ec = close_ec;
+	}
+
+	if (ec == 0)
+	{
+		ec = _flex_create(&out, destination, rewrite ? FAM_WRITE : FAM_WRITE | FAM_NOCREATE);
+	}
+	if (ec == 0 && stat.random)
+	{
+		ec = _flex_ss_random(out);
+	}
+	if (ec == 0 && size != 0)
+	{
+		u_int written = size;
+
+		ec = _flex_write(out, data, &written);
+	}
+	if (ec == 0)
+	{
+		_flex_reproducible_date(&stat);
+		ec = _flex_ss_fd(out, &stat);
+	}
+	if (out != NULL)
+	{
+		close_ec = _flex_close(out);
+		if (ec == 0)
+		{
+			ec = close_ec;
+		}
+		/* A copy that failed leaves nothing behind. */
+		if (ec != 0)
+		{
+			_coco_delete(destination);
+		}
+	}
+
+	free(data);
 	return ec;
 }
 
@@ -171,6 +290,10 @@ static error_code copy_file(char *source, char *target, int target_is_directory,
 
 	handled = 0;
 	ec = eol_translate ? copy_translating_text(source, destination, rewrite, &handled) : 0;
+	if (!handled)
+	{
+		ec = copy_flex_file(source, destination, rewrite, &handled);
+	}
 	if (!handled)
 	{
 		ec = TSCopyFile(source, destination, eol_translate, rewrite, 0, 0, buffer, sizeof(buffer));
