@@ -133,7 +133,7 @@ int os9format(int argc, char **argv)
 						fprintf(stderr,
 							"%s: cluster size must be a power of two\n",
 							argv[0]);
-						return 0;
+						return (EOS_IA);
 					}
 					while (*(p + 1) != '\0')
 						p++;
@@ -150,7 +150,7 @@ int os9format(int argc, char **argv)
 						fprintf(stderr,
 							"%s: unknown format '%s'\n",
 							argv[0], p + 1);
-						return (1);
+						return (EOS_IA);
 					}
 					while (*(p + 1) != '\0')
 						p++;
@@ -174,15 +174,15 @@ int os9format(int argc, char **argv)
 							fprintf(stderr,
 								"%s: bytes per sector must be a multiple of 256\n",
 								argv[0]);
-							return (0);
+							return (EOS_IA);
 						}
 						break;
 
 					default:
 						fprintf(stderr,
-							"%s: unknown option '%c'\n",
-							argv[0], *p);
-						return (0);
+							"%s: unknown option '%.2s'\n",
+							argv[0], p);
+						return (EOS_IA);
 					}
 					while (*(p + 1) != '\0')
 						p++;
@@ -205,9 +205,9 @@ int os9format(int argc, char **argv)
 
 					default:
 						fprintf(stderr,
-							"%s: unknown option '%c'\n",
-							argv[0], *p);
-						return (0);
+							"%s: unknown option '%.2s'\n",
+							argv[0], p);
+						return (EOS_IA);
 					}
 					while (*(p + 1) != '\0')
 						p++;
@@ -250,9 +250,9 @@ int os9format(int argc, char **argv)
 
 					default:
 						fprintf(stderr,
-							"%s: unknown option '%c'\n",
-							argv[0], *p);
-						return (0);
+							"%s: unknown option '%.2s'\n",
+							argv[0], p);
+						return (EOS_IA);
 					}
 					while (*(p + 1) != '\0')
 						p++;
@@ -324,7 +324,7 @@ int os9format(int argc, char **argv)
 					fprintf(stderr,
 						"%s: unknown option '%c'\n",
 						argv[0], *p);
-					return (0);
+					return (EOS_IA);
 				}
 			}
 		}

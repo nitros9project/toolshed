@@ -2225,6 +2225,48 @@ void test_os9_format_single_density()
 	remove("test_sd.dmk");
 }
 
+/* A command line format refuses exits with EOS_IA, not 0, says why, and
+   makes no image. */
+void test_os9_format_option_errors()
+{
+	static const struct
+	{
+		const char *option;
+		const char *message;
+	} refused[] = {
+		{"-c3", "cluster size must be a power of two"},
+		{"-c0", "cluster size must be a power of two"},
+		{"-bs300", "bytes per sector must be a multiple of 256"},
+		{"-bX", "unknown option 'bX'"},
+		{"-dX", "unknown option 'dX'"},
+		{"-sX", "unknown option 'sX'"},
+		{"-Z", "unknown option 'Z'"},
+		{"-fnosuch", "unknown format 'nosuch'"},
+	};
+	char command[64];
+	char output[512];
+	size_t i;
+	int status;
+	int length;
+
+	for (i = 0; i < sizeof(refused) / sizeof(refused[0]); i++)
+	{
+		remove("test_opt.dmk");
+		length = snprintf(command, sizeof(command), "format -q %s test_opt.dmk", refused[i].option);
+		ASSERT_EQUALS(1, length > 0 && (size_t) length < sizeof(command));
+		status = format_command(command, output, sizeof(output));
+		ASSERT_EQUALS(EOS_IA, status);
+		ASSERT_EQUALS(1, strstr(output, refused[i].message) != NULL);
+		ASSERT_EQUALS(0, image_exists("test_opt.dmk"));
+	}
+
+	/* Help is not an error. */
+	status = format_command("format -h", output, sizeof(output));
+	ASSERT_EQUALS(0, status);
+
+	remove("test_opt.dmk");
+}
+
 int main()
 {
 	remove("test.dsk");
@@ -2250,6 +2292,7 @@ int main()
 	RUN(test_os9_format_numbering_defaults);
 	RUN(test_os9_format_error_paths);
 	RUN(test_os9_format_single_density);
+	RUN(test_os9_format_option_errors);
 	RUN(test_os9_reveal_container_fields);
 	RUN(test_os9_gen_on_images_with_tracks);
 	RUN(test_os9_raw_extend_of_quick_format);
