@@ -29,7 +29,7 @@ static char const *const helpMessage[] = {
 	" Floppy Options:\n",
 	"     -4   = 48 tpi (default)\n",
 	"     -9   = 96 tpi\n",
-	"     -sa  = sector allocation size (SAS)\n",
+	"     -saX = sector allocation size (SAS, default = 8)\n",
 	"     -sd  = single density\n",
 	"     -sd0 = single density on track 0 only, the rest double (Dragon Beta)\n",
 	"     -dd  = double density (default)\n",

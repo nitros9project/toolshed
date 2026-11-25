@@ -66,6 +66,10 @@ int main(int argc, char *argv[])
 				case '?':
 					show_dgndos_help(helpMessage);
 					return (0);
+
+				default:
+					fprintf(stderr, "dgndos: unknown option '%c'\n", *p);
+					return (DGNDOS_USAGE_ERROR);
 				}
 			}
 		}

@@ -248,7 +248,11 @@ int dgndosreveal(int argc, char **argv)
 		if (strcmp(argv[i], "-b") == 0) byte_mode = 1;
 		else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-?") == 0)
 		{ show_help(helpMessage); return 0; }
-		else if (argv[i][0] == '-') return EOS_IA;
+		else if (argv[i][0] == '-')
+		{
+			fprintf(stderr, "%s: unknown option '%s'\n", argv[0], argv[i]);
+			return EOS_IA;
+		}
 		else if (image == NULL) image = argv[i];
 		else if (target == NULL) target = argv[i];
 		else return EOS_IA;

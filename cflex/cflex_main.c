@@ -67,6 +67,10 @@ int main(int argc, char *argv[])
 				case '?':
 					show_cflex_help(helpMessage);
 					return (0);
+
+				default:
+					fprintf(stderr, "cflex: unknown option '%c'\n", *p);
+					return (CFLEX_USAGE_ERROR);
 				}
 			}
 		}

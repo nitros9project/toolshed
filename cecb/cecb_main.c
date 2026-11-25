@@ -31,6 +31,7 @@ static char const *const helpMessage[] = {
 	"                 Use MC-10 WAV files and MicroColor BASIC tokens.\n",
 	"\n",
 	"     % is a decimal number between 0 and 1.\n",
+	"     A value can also be the next argument, as in -r 1.85.\n",
 	NULL
 };
 
@@ -70,72 +71,59 @@ int main(int argc, char *argv[])
 		{
 			for (p = &argv[i][1]; *p != '\0'; p++)
 			{
-				switch (*p)
+				char option = *p;
+				char *value;
+
+				switch (option)
 				{
 				case 'h':
 				case '?':
 					show_cecb_help(helpMessage);
 					return (0);
-					break;
-
-				case 'r':
-					if (strlen(argv[i]) == 2)
-					{
-						i++;
-						cecb_ratio =
-							strtod(argv[i], NULL);
-					}
-					else
-						cecb_ratio =
-							strtod(&(argv[i][2]),
-							       NULL);
-					break;
-
-				case 't':
-					if (strlen(argv[i]) == 2)
-					{
-						i++;
-						cecb_threshold =
-							strtod(argv[i], NULL);
-					}
-					else
-						cecb_threshold =
-							strtod(&(argv[i][2]),
-							       NULL);
-					break;
-
-				case 'n':
-					if (strlen(argv[i]) == 2)
-					{
-						i++;
-						cecb_zero_adjust =
-							strtod(argv[i], NULL);
-					}
-					else
-						cecb_zero_adjust =
-							strtod(&(argv[i][2]),
-							       NULL);
-					break;
-
-				case 's':
-					if (strlen(argv[i]) == 2)
-					{
-						i++;
-						cecb_start_sample =
-							strtol(argv[i], NULL,
-							       0);
-					}
-					else
-						cecb_start_sample =
-							strtol(&(argv[i][2]),
-							       NULL, 0);
-					break;
 
 				case 'z':
-					cecb_suggest_mc10 =
-						1;
+					cecb_suggest_mc10 = 1;
+					continue;
+
+				case 'r':
+				case 't':
+				case 'n':
+				case 's':
+					break;
+
+				default:
+					fprintf(stderr, "cecb: unknown option '%c'\n", option);
+					return (EOS_IA);
+				}
+
+				/* The value follows the letter, or is the next argument. */
+				value = p + 1;
+				if (*value == '\0')
+				{
+					if (i + 1 >= argc)
+					{
+						fprintf(stderr, "cecb: -%c needs a value\n", option);
+						return (EOS_IA);
+					}
+					value = argv[++i];
+				}
+
+				switch (option)
+				{
+				case 'r':
+					cecb_ratio = strtod(value, NULL);
+					break;
+				case 't':
+					cecb_threshold = strtod(value, NULL);
+					break;
+				case 'n':
+					cecb_zero_adjust = strtod(value, NULL);
+					break;
+				case 's':
+					cecb_start_sample = strtol(value, NULL, 0);
 					break;
 				}
+				break;
 			}
 		}
 		else
@@ -143,7 +131,6 @@ int main(int argc, char *argv[])
 			command = argv[i];
 			break;
 		}
-
 	}
 
 	if (command == NULL)

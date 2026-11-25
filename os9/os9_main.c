@@ -22,7 +22,6 @@ static char const *const helpMessage[] = {
 	"os9 from Toolshed " TOOLSHED_VERSION "\n",
 	"Syntax: os9 {[<opts>]} <command> {[<opts>]}\n",
 	"Usage:  OS-9 File Tools Executive\n",
-	"Options:\n",
 	NULL
 };
 
@@ -82,6 +81,10 @@ int main(int argc, char *argv[])
 				case '?':
 					show_os9_help(helpMessage);
 					return (0);
+
+				default:
+					fprintf(stderr, "os9: unknown option '%c'\n", *p);
+					return (EOS_IA);
 				}
 			}
 		}

@@ -13,7 +13,7 @@ static char const *const helpMessage[] = {
 	"Syntax: dskinit {[<opts>]} <disk> {[<...>]} {[<opts>]}\n",
 	"Usage:  Create a Dragon DOS image.\n",
 	"Options:\n",
-	"     -t<num>  = tracks, 21 to 80 (default 40)\n",
+	"     -t<num>  = tracks, 21 to 80 on two sides or 160 on one (default 40)\n",
 	"     -s<num>  = sides, 1 or 2 (default 1)\n",
 	"     -f<name> = image format: raw, jvc, vdk, dmk or sdf\n",
 	"                (default from the disk's extension, otherwise raw)\n",

@@ -23,6 +23,7 @@ static char const *const helpMessage[] = {
 	"     -h<num>  = create <num> HDB-DOS drives\n",
 	"     -n<name> = HDB-DOS disk name\n",
 	"     -s       = create a \"skitzo\" disk\n",
+	"     -?       = show this help\n",
 	NULL
 };
 
@@ -83,6 +84,13 @@ int decbdskini(int argc, char **argv)
 
 				case 'h':	/* HDB-DOS drives */
 					hdbdrives = atoi(p + 1);
+					if (hdbdrives < 1)
+					{
+						fprintf(stderr,
+							"%s: -h wants a number of HDB-DOS drives, 1 or more\n",
+							argv[0]);
+						return (EOS_IA);
+					}
 					tracks = 35;
 					while (*(p + 1) != '\0')
 						p++;
@@ -106,7 +114,7 @@ int decbdskini(int argc, char **argv)
 					fprintf(stderr,
 						"%s: unknown option '%c'\n",
 						argv[0], *p);
-					return (0);
+					return (EOS_IA);
 				}
 			}
 		}

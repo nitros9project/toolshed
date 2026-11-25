@@ -58,7 +58,7 @@ int os9modbust(int argc, char **argv)
 						"%s: unknown option '%c'\n",
 						argv[0], *p);
 
-					return 0;
+					return (EOS_IA);
 				}
 			}
 		}
