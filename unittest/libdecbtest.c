@@ -9,6 +9,7 @@
 #include "tinytest.h"
 #include <toolshed.h>
 #include "imagedamage.h"
+#include <unistd.h>
 
 
 #define DECB_DMK "test_decb.dmk"
@@ -80,6 +81,52 @@ void test_decb_dmk_read_write()
 	ec = _decb_open(&p, DECB_DMK ",FILE.TXT", FAM_READ);
 	ASSERT_EQUALS(EOS_PNNF, ec);
 	remove(DECB_DMK);
+}
+
+/* An open that does not find the file leaves the image closed.  Windows
+   cannot delete a file that is still open. */
+void test_decb_open_missing_file_closes_image()
+{
+	decb_path_id p;
+	error_code ec;
+	int before, after, removed;
+
+	remove(DECB_DMK);
+	ASSERT_EC(0, _decb_dskini_format(DECB_DMK, DISKIMAGE_DMK, 35, NULL, 1, 256, 0));
+
+	before = dup(0);
+	close(before);
+	ec = _decb_open(&p, DECB_DMK ",NOPE.TXT", FAM_READ);
+	ASSERT_EQUALS(EOS_PNNF, ec);
+	after = dup(0);
+	close(after);
+	ASSERT_EQUALS(before, after);
+
+	removed = remove(DECB_DMK);
+	ASSERT_EQUALS(0, removed);
+}
+
+/* A create refused by write protection leaves the image closed too. */
+void test_decb_create_write_protected_closes_image()
+{
+	decb_path_id p;
+	error_code ec;
+	int before, after, removed;
+
+	remove(DECB_DMK);
+	ASSERT_EC(0, _decb_dskini_format(DECB_DMK, DISKIMAGE_DMK, 35, NULL, 1, 256, 0));
+	ASSERT_EC(0, _diskimage_set_write_protect(DECB_DMK, 1));
+
+	before = dup(0);
+	close(before);
+	ec = _decb_create(&p, DECB_DMK ",NEW.TXT", FAM_WRITE, 0, 0);
+	ASSERT_EQUALS(EOS_WP, ec);
+	after = dup(0);
+	close(after);
+	ASSERT_EQUALS(before, after);
+
+	removed = remove(DECB_DMK);
+	ASSERT_EQUALS(0, removed);
 }
 
 void test_coco_identify_missing_image()
@@ -1631,6 +1678,8 @@ int main()
 	remove("test.dsk");
 	remove("filldisk.dsk");
 	RUN(test_decb_dmk_read_write);
+	RUN(test_decb_open_missing_file_closes_image);
+	RUN(test_decb_create_write_protected_closes_image);
 	RUN(test_coco_identify_missing_image);
 	RUN(test_decb_colon_needs_raw_image);
 	RUN(test_decb_only_needed_sectors_are_errors);
