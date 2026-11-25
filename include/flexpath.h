@@ -187,6 +187,13 @@ typedef struct
    FLEX disk. */
 error_code _flex_identify(const char *pathname, int *found);
 
+/* Report how a raw image of a FLEX disk lays out its sectors.  A raw image
+   has no tracks of its own, so FLEX's are taken from the SIR and the image's
+   size: track0_sectors on track 0, and track_sectors, counting both sides,
+   on every other.  found is 0, and the counts are left alone, if the file
+   is not a raw image of a FLEX disk. */
+error_code _flex_raw_layout(const char *pathname, int *found, u_int *track0_sectors, u_int *track_sectors);
+
 /* Make a new image of a blank disk, as NEWDISK does.  An existing file is
    not replaced.  tracks is 2 to 255, sides is 1 or 2.  A double density disk
    still has track 0 single density.  DMK and SDF images record that; a raw

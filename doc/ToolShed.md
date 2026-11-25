@@ -1855,6 +1855,11 @@ On a two sided image, a run of tracks is reported once if both sides match, and 
     Track 0, side 1, is 18 sectors (1-18), 256 bytes each.
     Tracks 1 to 34, both sides, are 18 sectors (1-18), 256 bytes each.
 
+A raw image has no tracks or sides of its own, so it is reported as tracks of 18 sectors. A raw image that holds only a FLEX filesystem is reported with FLEX's tracks instead, as its System Information Record and the image's size give them: track 0 single density unless it was padded, and the sectors of both sides numbered on, as FLEX numbers them.
+
+    Track 0 is 20 sectors (1-20), 256 bytes each.
+    Tracks 1 to 34 are 36 sectors (1-36), 256 bytes each.
+
 A file that is not a disk image is reported as such.
 
 If the image could hold an OS-9, Disk BASIC, Dragon DOS or FLEX filesystem, info names them. A disk can hold more than one, and Disk BASIC has nothing to identify it, so this is only what could be there.

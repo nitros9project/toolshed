@@ -13,12 +13,21 @@
 
 #include <toolshed.h>
 #include <diskimage.h>
+#include <flexpath.h>
 #include <util.h>
 
 /* A track holds at most 256 sectors, as a sector number is one byte, and the
    longest sentence about any one of them is under 80 bytes. */
 #define TRACK_TEXT_SIZE	32768
 #define MAX_TRACK_SECTORS	256
+
+/* A raw image has no tracks of its own.  Without a filesystem that says
+   otherwise, they are 18 sectors each. */
+typedef struct
+{
+	u_int track0_sectors;
+	u_int track_sectors;
+} raw_layout;
 
 static char const *const helpMessage[] = {
 	"Report the format and track layout of disk images\n",
@@ -169,14 +178,33 @@ static void append_conditions(char *text, const diskimage_sector_info *sectors, 
 
 /* Describe a track, moving *index past its sectors.  The text is empty if the
    track has none. */
-static error_code describe_track(diskimage_id disk, u_int total, u_int *index, u_int cylinder, u_int side, char *text)
+static error_code describe_track(diskimage_id disk, const raw_layout *layout, u_int total, u_int *index,
+				 u_int cylinder, u_int side, char *text)
 {
 	static diskimage_sector_info sectors[MAX_TRACK_SECTORS];
 	u_int count = 0;
 
 	text[0] = '\0';
 
-	while (*index < total && count < MAX_TRACK_SECTORS)
+	if (layout != NULL)
+	{
+		u_int wanted = cylinder == 0 ? layout->track0_sectors : layout->track_sectors;
+
+		/* The sectors are numbered from 1, carrying on across both sides
+		   as FLEX numbers them. */
+		while (*index < total && count < wanted && count < MAX_TRACK_SECTORS)
+		{
+			sectors[count].cylinder = cylinder;
+			sectors[count].side = side;
+			sectors[count].sector = count + 1;
+			sectors[count].size = 256;
+			sectors[count].flags = 0;
+			count++;
+			(*index)++;
+		}
+	}
+
+	while (layout == NULL && *index < total && count < MAX_TRACK_SECTORS)
 	{
 		diskimage_sector_info info;
 		error_code ec = _diskimage_query_sector(disk, *index, &info);
@@ -245,28 +273,40 @@ static void print_run(u_int first, u_int last, u_int sides, char text[2][TRACK_T
 }
 
 
-static error_code report_tracks(diskimage_id disk, const diskimage_geometry *geometry)
+static error_code report_tracks(diskimage_id disk, const diskimage_geometry *geometry, const raw_layout *layout)
 {
 	static char run[2][TRACK_TEXT_SIZE];
 	static char current[2][TRACK_TEXT_SIZE];
 	u_int index = 0;
 	u_int run_start = 0;
+	u_int cylinders = geometry->cylinders;
 	u_int cylinder;
 
-	if (geometry->cylinders == 0)
+	if (layout != NULL)
+	{
+		u_int total = geometry->total_sectors;
+
+		cylinders = total == 0 ? 0 : 1;
+		if (total > layout->track0_sectors)
+		{
+			cylinders += (total - layout->track0_sectors + layout->track_sectors - 1) / layout->track_sectors;
+		}
+	}
+
+	if (cylinders == 0)
 	{
 		printf("It has no tracks.\n");
 		return 0;
 	}
 
-	for (cylinder = 0; cylinder < geometry->cylinders; cylinder++)
+	for (cylinder = 0; cylinder < cylinders; cylinder++)
 	{
 		u_int side;
 
 		current[1][0] = '\0';
 		for (side = 0; side < geometry->sides; side++)
 		{
-			error_code ec = describe_track(disk, geometry->total_sectors, &index, cylinder, side, current[side]);
+			error_code ec = describe_track(disk, layout, geometry->total_sectors, &index, cylinder, side, current[side]);
 
 			if (ec != 0)
 			{
@@ -284,7 +324,7 @@ static error_code report_tracks(diskimage_id disk, const diskimage_geometry *geo
 			memcpy(run, current, sizeof(run));
 		}
 	}
-	print_run(run_start, geometry->cylinders - 1, geometry->sides, run);
+	print_run(run_start, cylinders - 1, geometry->sides, run);
 
 	return 0;
 }
@@ -315,6 +355,8 @@ static int report_file(const char *pathname)
 	diskimage_geometry geometry;
 	diskimage_id disk;
 	u_int filesystems;
+	raw_layout flex_layout;
+	const raw_layout *layout = NULL;
 	error_code ec = _diskimage_open(&disk, pathname, FAM_READ);
 
 	if (ec == EOS_WT)
@@ -342,8 +384,20 @@ static int report_file(const char *pathname)
 
 			_coco_filesystem_names(filesystems, names, sizeof(names));
 			printf("Possible filesystems: %s\n", names);
+
+			/* A raw FLEX disk's tracks are as long as its SIR says. */
+			if (geometry.format == DISKIMAGE_RAW && filesystems == COCO_FS_FLEX)
+			{
+				int found = 0;
+
+				if (_flex_raw_layout(pathname, &found, &flex_layout.track0_sectors,
+						     &flex_layout.track_sectors) == 0 && found)
+				{
+					layout = &flex_layout;
+				}
+			}
 		}
-		ec = report_tracks(disk, &geometry);
+		ec = report_tracks(disk, &geometry, layout);
 	}
 	_diskimage_close(disk);
 
