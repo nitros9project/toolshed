@@ -97,14 +97,6 @@ int main(int argc, char *argv[])
 }
 
 
-int dgndos_disk_pathlist(const char *disk, char *pathlist, size_t size)
-{
-	int length = snprintf(pathlist, size, "%s%s", disk, strchr(disk, ',') == NULL ? "," : "");
-
-	return (length < 0 || (size_t) length >= size) ? EOS_BPNAM : 0;
-}
-
-
 static int do_command(int argc, char **argv)
 {
 	struct cmdtbl *x = table;

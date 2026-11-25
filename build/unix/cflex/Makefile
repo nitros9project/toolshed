@@ -5,7 +5,7 @@ vpath %.c ../../../cflex
 
 CFLAGS	+= -I../../../include -Wall -MMD -MP
 
-SRCS = cflex_main.c cflexattr.c cflexcopy.c cflexdir.c cflexdskinit.c cflexdsave.c cflexfree.c \
+SRCS = cflex_main.c cflexutil.c cflexattr.c cflexcopy.c cflexdir.c cflexdskinit.c cflexdsave.c cflexfree.c \
 	cflexfstat.c cflexgen.c cflexkill.c cflexlist.c cflexrename.c
 
 OBJS = $(SRCS:.c=.o)
