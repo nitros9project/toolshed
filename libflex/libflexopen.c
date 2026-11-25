@@ -161,6 +161,33 @@ error_code _flex_identify(const char *pathname, int *found)
 	return 0;
 }
 
+error_code _flex_raw_layout(const char *pathname, int *found, u_int *track0_sectors, u_int *track_sectors)
+{
+	flex_path_id path;
+
+	*found = 0;
+
+	path = calloc(1, sizeof(*path));
+	if (path == NULL)
+	{
+		return EOS_OM;
+	}
+
+	if (_diskimage_open(&path->disk, pathname, FAM_READ) == 0)
+	{
+		if (_fx_load_geometry(path) == 0 && path->linear && believable(path))
+		{
+			*found = 1;
+			*track0_sectors = path->track0_slots;
+			*track_sectors = path->max_sector;
+		}
+		_diskimage_close(path->disk);
+	}
+
+	free(path);
+	return 0;
+}
+
 static error_code load_file(flex_path_id path)
 {
 	u_char name[11];

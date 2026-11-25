@@ -6,6 +6,7 @@
 #include "tinytest.h"
 #include "cocopath.h"
 #include "diskimage.h"
+#include "flexpath.h"
 #include "imagedamage.h"
 
 #define TEST_IMAGE "info_test.dsk"
@@ -443,6 +444,34 @@ static void test_possible_filesystems(void)
 	ASSERT("Dragon DOS is named", strstr(output, "Possible filesystems: Dragon DOS\n") != NULL);
 }
 
+/* A raw image has no tracks of its own, so a FLEX disk's come from its SIR,
+   with track 0 single density unless it was padded. */
+static void check_raw_flex(u_int sides, int double_density, int padded, const char *tracks)
+{
+	char expected[512];
+
+	remove(TEST_IMAGE);
+	ASSERT_CALL(0, _flex_dskinit(TEST_IMAGE, DISKIMAGE_RAW, 35, sides, double_density, padded, "TEST", 1));
+	ASSERT_CALL(0, run_info(TEST_IMAGE));
+	remove(TEST_IMAGE);
+
+	snprintf(expected, sizeof(expected), "%s is a raw disk image.\nPossible filesystems: FLEX\n%s", TEST_IMAGE, tracks);
+	ASSERT_STRING_EQUALS(expected, output);
+}
+
+static void test_raw_flex_layout(void)
+{
+	check_raw_flex(1, 0, 0, "Tracks 0 to 34 are 10 sectors (1-10), 256 bytes each.\n");
+	check_raw_flex(2, 0, 0, "Tracks 0 to 34 are 20 sectors (1-20), 256 bytes each.\n");
+	check_raw_flex(1, 1, 0,
+		"Track 0 is 10 sectors (1-10), 256 bytes each.\n"
+		"Tracks 1 to 34 are 18 sectors (1-18), 256 bytes each.\n");
+	check_raw_flex(2, 1, 0,
+		"Track 0 is 20 sectors (1-20), 256 bytes each.\n"
+		"Tracks 1 to 34 are 36 sectors (1-36), 256 bytes each.\n");
+	check_raw_flex(1, 1, 1, "Tracks 0 to 34 are 18 sectors (1-18), 256 bytes each.\n");
+}
+
 static int filesystems_status(const char *arguments)
 {
 	int status = run_info(arguments);
@@ -552,7 +581,7 @@ static void test_detection_on_bad_crc(void)
 
 int main(void)
 {
-	static const char *const tools[] = { "decb", "os9", "dgndos" };
+	static const char *const tools[] = { "decb", "os9", "dgndos", "cflex" };
 	size_t i;
 
 	for (i = 0; i < sizeof(tools) / sizeof(tools[0]); i++)
@@ -573,6 +602,7 @@ int main(void)
 		RUN(test_set_write_protect);
 
 		RUN(test_possible_filesystems);
+		RUN(test_raw_flex_layout);
 		RUN(test_filesystems_status);
 		RUN(test_detection_on_bad_crc);
 	}
