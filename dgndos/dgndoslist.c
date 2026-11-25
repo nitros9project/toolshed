@@ -51,7 +51,7 @@ static error_code do_list(char *file, int token_translation)
 	else if (ec == 0 && size != 0)
 	{
 		DECBToNative((char *) buffer, size, &translated, &translated_size);
-		fwrite(translated, translated_size, 1, stdout);
+		WriteNativeText(stdout, translated, translated_size);
 		free(translated);
 	}
 

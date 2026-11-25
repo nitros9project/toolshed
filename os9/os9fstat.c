@@ -121,8 +121,8 @@ static int do_fstat(char **argv, char *p)
 		       fdbuf.fd_dat[0] + 1900, fdbuf.fd_dat[3],
 		       fdbuf.fd_dat[4]);
 		printf("  Link count         : %d\n", fdbuf.fd_lnk);
-		printf("  File size          : %1$d ($%1$X)\n",
-		       int4(fdbuf.fd_siz));
+		printf("  File size          : %d ($%X)\n",
+		       int4(fdbuf.fd_siz), int4(fdbuf.fd_siz));
 		printf("  Creation date      : %02d/%02d/%4d\n",
 		       fdbuf.fd_creat[1], fdbuf.fd_creat[2],
 		       fdbuf.fd_creat[0] + 1900);
