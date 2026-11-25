@@ -26,6 +26,7 @@ error_code UnixToCoCoError(int ec);
 int CoCoToUnixError(error_code ec);
 void NativeToDECB(char *buffer, u_int size, char **newBuffer, u_int *newSize);
 void DECBToNative(char *buffer, u_int size, char **newBuffer, u_int *newSize);
+void WriteNativeText(FILE *fp, const char *buffer, u_int size);
 void CStringToDECBString(u_char *filename, u_char *ext, u_char *string);
 void DECBStringToCString(u_char *filename, u_char *ext, u_char *string);
 void OS9AttrToString(int attr_byte, char string[9]);

@@ -61,7 +61,22 @@ static char *ShellEscapePath(const char *source, const char *src_path_separator,
    the wait status, which would not survive being an exit status itself. */
 static error_code run_command(const char *command)
 {
+#ifdef WIN32
+	/* cmd.exe drops the first and last quotes of a command with more than
+	   two, so the whole command is quoted once more. */
+	char *quoted = malloc(strlen(command) + 3);
+	int status;
+
+	if (quoted == NULL)
+	{
+		return EOS_OM;
+	}
+	sprintf(quoted, "\"%s\"", command);
+	status = system(quoted);
+	free(quoted);
+#else
 	int status = system(command);
+#endif
 
 #ifndef WIN32
 	if (status != -1 && WIFEXITED(status))
@@ -292,8 +307,10 @@ error_code TSDSave(const ts_dsave_options *options, char *source, char *target)
 	char runner[1024];
 
 #ifdef WIN32
-	/* Use single quotes only if a Posix-like shell seems to be in use */
-	singlequotes = getenv("SHELL") != NULL;
+	/* Commands that are run go to cmd.exe, whatever shell started this one.
+	   Those only shown can use single quotes if a Posix-like shell seems to
+	   be in use. */
+	singlequotes = !options->execute && getenv("SHELL") != NULL;
 #else
 	singlequotes = 1;
 #endif

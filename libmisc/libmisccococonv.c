@@ -8,6 +8,10 @@
 #include <time.h>
 #include <string.h>
 #include <errno.h>
+#ifdef WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
 
 #include <cococonv.h>
 #include <cocopath.h>
@@ -501,6 +505,27 @@ void NativeToDECB(char *buffer, u_int size, char **newBuffer, u_int * newSize)
 
 
 	return;
+}
+
+
+/* Write text that DECBToNative made.  Its lines already end the native way,
+   so on Windows it goes out in binary mode, or each CR would be doubled. */
+void WriteNativeText(FILE *fp, const char *buffer, u_int size)
+{
+#ifdef WIN32
+	int mode;
+
+	fflush(fp);
+	mode = _setmode(_fileno(fp), _O_BINARY);
+	fwrite(buffer, size, 1, fp);
+	fflush(fp);
+	if (mode != -1)
+	{
+		_setmode(_fileno(fp), mode);
+	}
+#else
+	fwrite(buffer, size, 1, fp);
+#endif
 }
 
 

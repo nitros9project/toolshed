@@ -30,11 +30,14 @@ TEST_LIBS = \
 TESTS = librbftest libdecbtest libcecbtest libtoolshedtest libnativetest libmisctest os9commandtest \
 	decbcommandtest cecbcommandtest libsystest libdiskimagetest infocommandtest libdragondostest dgndoscommandtest libflextest cflexcommandtest commandaliastest
 
+# On Windows the programs end in .exe.
+TEST_PROGRAMS = $(addsuffix $(SUFEXE),$(TESTS))
+
 # Only the source and libraries are linked, not the headers the .d files add.
-$(TESTS): %: %.c $(TEST_LIBS)
+$(TEST_PROGRAMS): %$(SUFEXE): %.c $(TEST_LIBS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $< $(TEST_LIBS) $(LDLIBS) -o $@
 
-testall: $(TESTS)
+testall: $(TEST_PROGRAMS)
 ifeq (,$(NOTEST))
 	./librbftest
 	./libdecbtest
@@ -56,6 +59,6 @@ ifeq (,$(NOTEST))
 endif
 
 clean:
-	$(RM) *.o *.d *.dsk *.wav *.cas *.c10 $(TESTS)
+	$(RM) *.o *.d *.dsk *.wav *.cas *.c10 $(TEST_PROGRAMS)
 
 -include $(TESTS:=.d)

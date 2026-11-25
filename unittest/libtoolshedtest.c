@@ -3,6 +3,7 @@
  */
 
 #include "tinytest.h"
+#include "testposix.h"
 #include <toolshed.h>
 
 /* Workaround for nested test functions, needed because the tinytest
@@ -324,6 +325,7 @@ void test_dir_lists_other_filesystems()
 	got = fread(output, 1, sizeof(output) - 1, fp);
 	fclose(fp);
 	output[got] = 0;
+	test_text_output(output);
 	ASSERT("alone on the disk, nothing else is named", strstr(output, "Other possible") == NULL);
 
 	add_decb_track(FS_IMAGE);
@@ -334,6 +336,7 @@ void test_dir_lists_other_filesystems()
 	got = fread(output, 1, sizeof(output) - 1, fp);
 	fclose(fp);
 	output[got] = 0;
+	test_text_output(output);
 	ASSERT("os9 dir names Disk BASIC", strstr(output, "Other possible filesystems: Disk BASIC\n") != NULL);
 
 	status = system("../decb/decb dir " FS_IMAGE ", > test_fs_out.txt 2>&1");
@@ -342,6 +345,7 @@ void test_dir_lists_other_filesystems()
 	got = fread(output, 1, sizeof(output) - 1, fp);
 	fclose(fp);
 	output[got] = 0;
+	test_text_output(output);
 	ASSERT("decb dir names OS-9", strstr(output, "Other possible filesystems: OS-9\n") != NULL);
 
 	remove("test_fs_out.txt");

@@ -28,11 +28,7 @@ typedef struct _native_path_id
 } *native_path_id;
 
 
-#ifdef WIN32
-typedef struct _finddata_t  native_dir_entry;
-#else
 typedef struct dirent		native_dir_entry;
-#endif
 
 
 /* prototypes */

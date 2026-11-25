@@ -49,8 +49,10 @@ $ mingw-get install mingw-make
 
 Enter the unpackaged toolshed directory and run:
 ```
-$ make -C build/unix install CC=gcc
+$ make -C build/unix install CC=gcc WIN=1
 ```
+
+`WIN=1` is required on Windows. Without it the build is set up for Unix: it tries to build cocofuse, which needs FUSE, and looks for the programs without their `.exe` names. In an MSYS2 MinGW64 shell, the same `WIN=1` build also runs the unit tests, which need `sh` and `cmp` (`pacman -S diffutils`).
 
 ## Building on Linux
 

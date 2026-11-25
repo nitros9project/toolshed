@@ -15,9 +15,7 @@ extern "C" {
 #include <sys/stat.h>
 #include <cocotypes.h>
 #include <cococonv.h>
-#ifndef WIN32
 #include <dirent.h>
-#endif
 
 #include "nativepath.h"
 #include "os9path.h"
@@ -92,11 +90,7 @@ typedef struct coco_dir_entry
 	
 	union
 	{
-#ifdef WIN32
-		struct _finddata_t  native;
-#else
 		struct dirent		native;
-#endif
 		os9_dir_entry			os9;
 		decb_dir_entry			decb;
 		cecb_dir_entry			cecb;

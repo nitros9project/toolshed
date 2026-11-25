@@ -8,7 +8,7 @@
 
 #include "tinytest.h"
 #include <toolshed.h>
-#include <sys/wait.h>
+#include "testposix.h"
 #include "imagedamage.h"
 #include "commandrun.h"
 
@@ -412,6 +412,7 @@ void test_decb_command_copy_refuses_disk_images()
 			got = fread(message, 1, sizeof(message) - 1, fp);
 			fclose(fp);
 			message[got] = 0;
+			test_text_output(message);
 			ASSERT("it says why", strstr(message, "looks like a disk image") != NULL);
 
 			fp = fopen(targets[t], "rb");
@@ -458,6 +459,7 @@ void test_decb_command_dsave_executable()
 	got = fread(output, 1, sizeof(output) - 1, fp);
 	fclose(fp);
 	output[got] = 0;
+	test_text_output(output);
 	ASSERT("it shows the usual name", strncmp(output, "decb copy 'test_x_src/one.txt' 'test_x_dst/one.txt'", 44) == 0);
 	fp = fopen("test_x_dst/one.txt", "rb");
 	ASSERT("nothing was copied", fp == NULL);
@@ -469,6 +471,7 @@ void test_decb_command_dsave_executable()
 	got = fread(output, 1, sizeof(output) - 1, fp);
 	fclose(fp);
 	output[got] = 0;
+	test_text_output(output);
 	ASSERT("it shows the given name", strncmp(output, "'no/such/decb' copy ", 18) == 0);
 
 	/* An empty search path shows it is not the shell finding it. */
@@ -708,6 +711,7 @@ static int reveal_command(const char *arguments, char *output, size_t capacity)
 	if (fp == NULL) return -1;
 	count = fread(output, 1, capacity - 1, fp);
 	output[count] = 0;
+	test_text_output(output);
 	status = pclose(fp);
 	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }

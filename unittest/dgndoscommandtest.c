@@ -1,9 +1,8 @@
 /* Tests for the dgndos command. */
 
 #include <string.h>
-#include <unistd.h>
+#include "testposix.h"
 #include <sys/stat.h>
-#include <sys/wait.h>
 
 #include "tinytest.h"
 #include "toolshed.h"
@@ -51,6 +50,7 @@ static void read_output(void)
 		fclose(fp);
 	}
 	output[got] = '\0';
+	test_text_output(output);
 }
 
 static long file_size(const char *pathname, u_char *buffer, long size)

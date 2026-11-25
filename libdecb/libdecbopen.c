@@ -320,6 +320,8 @@ error_code _decb_create(decb_path_id * path, char *pathlist, int mode,
 
 		if (ec != 0)
 		{
+			_diskimage_close((*path)->disk);
+			term_pd(*path);
 			return ec;
 		}
 
@@ -338,6 +340,13 @@ error_code _decb_create(decb_path_id * path, char *pathlist, int mode,
 
 	ec = _decb_writedir(*path, &(*path)->dir_entry);
 
+	if (ec != 0)
+	{
+		/* The new granule stays out of the FAT on disk, so nothing is lost. */
+
+		_diskimage_close((*path)->disk);
+		term_pd(*path);
+	}
 
 	return ec;
 }
@@ -462,7 +471,13 @@ error_code _decb_open(decb_path_id * path, char *pathlist, int mode)
 	}
 
 
-	/* 9. Return status. */
+	/* 9. If the file was not found, release the image and the path. */
+
+	if (ec != 0)
+	{
+		_diskimage_close((*path)->disk);
+		term_pd(*path);
+	}
 
 	return (ec);
 }
