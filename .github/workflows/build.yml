@@ -61,8 +61,38 @@ jobs:
         archive: false
         if-no-files-found: error
 
+  windows:
+    name: Windows (x86_64)
+    runs-on: windows-latest
+
+    steps:
+    - name: Keep LF line endings
+      run: git config --global core.autocrlf false
+
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Set up MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          make
+          diffutils
+          zip
+          mingw-w64-x86_64-gcc
+
+    # Built natively, WIN=1 also builds and runs the unit tests.
+    - name: Build and test
+      shell: msys2 {0}
+      run: |
+        make -C build/unix WIN=1
+
+  # macOS runs only for pushes to main, not for pull requests or other branches.
   macos:
     name: macOS (${{ matrix.arch }})
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
