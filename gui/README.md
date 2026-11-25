@@ -36,3 +36,11 @@ Run the resulting application:
 
 See the [DiskShed README](wx/README.md) for platform prerequisites, detailed
 features, command-line image arguments, and adapter smoke-test utilities.
+
+## ToolShed Quick Look
+
+[`quicklook/`](quicklook/) contains a macOS Quick Look extension that shows
+the directory of a disk image when it is selected in the Finder and Space is
+pressed. It lists OS-9, Disk BASIC, Dragon DOS and FLEX disks with the same
+code as the command line tools, and builds with the Command Line Tools alone.
+See the [Quick Look README](quicklook/README.md).

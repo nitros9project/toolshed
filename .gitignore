@@ -49,6 +49,7 @@ build/unix/unittest/os9commandtest
 build/unix/unittest/test.dsk
 build/unix/unittest/test_alloc.dsk
 build/unix/unittest/empty_file
+gui/quicklook/build/
 
 # Language file for BBEdit
 compile_commands.json
