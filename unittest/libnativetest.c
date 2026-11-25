@@ -85,8 +85,13 @@ static void test_open_write_only_preserves_contents(void)
 	fd = mkstemp(filename);
 	ASSERT("mkstemp", fd >= 0);
 	written = write(fd, original, sizeof(original) - 1);
-	/* Opening for write must not require read permission. */
+	/* Opening for write must not require read permission.  Windows has no
+	   write-only files, so there it is only opened for write. */
+#ifdef _WIN32
+	perms_ec = 0;
+#else
 	perms_ec = fchmod(fd, S_IWUSR);
+#endif
 	close(fd);
 	if (written != sizeof(original) - 1 || perms_ec != 0)
 	{
@@ -242,6 +247,61 @@ static void test_rename_within_directory(void)
 	ASSERT_MEM_EQUALS(contents, buffer, count);
 }
 
+/* A native directory lists its files, says when there are no more, and
+   closes. */
+void test_readdir_lists_directory()
+{
+	const char *directory = "libnative-readdir";
+	native_path_id path = NULL;
+	native_dir_entry entry;
+	u_char name[256];
+	error_code makdir_ec, open_ec, eof_ec, read_ec;
+	int found_one = 0, found_two = 0, entries = 0;
+	FILE *file;
+
+	remove("libnative-readdir/one.txt");
+	remove("libnative-readdir/two.txt");
+	_native_delete_directory((char *) directory);
+	makdir_ec = _native_makdir((char *) directory);
+	ASSERT_EQUALS(0, makdir_ec);
+	file = fopen("libnative-readdir/one.txt", "wb");
+	ASSERT("one.txt", file != NULL);
+	fclose(file);
+	file = fopen("libnative-readdir/two.txt", "wb");
+	ASSERT("two.txt", file != NULL);
+	fclose(file);
+
+	open_ec = _native_open(&path, (char *) directory, FAM_DIR | FAM_READ);
+	if (open_ec == 0)
+	{
+		while ((read_ec = _native_readdir(path, &entry)) == 0 && entries < 10)
+		{
+			entries++;
+			_native_ncpy_name(entry, name, sizeof(name));
+			found_one |= strcmp((char *) name, "one.txt") == 0;
+			found_two |= strcmp((char *) name, "two.txt") == 0;
+		}
+		eof_ec = _native_gs_eof(path);
+		_native_close(path);
+	}
+	else
+	{
+		read_ec = eof_ec = -1;
+	}
+
+	remove("libnative-readdir/one.txt");
+	remove("libnative-readdir/two.txt");
+	_native_delete_directory((char *) directory);
+
+	ASSERT_EQUALS(0, open_ec);
+	ASSERT_EQUALS(EOS_EOF, read_ec);
+	ASSERT_EQUALS(EOS_EOF, eof_ec);
+	ASSERT("one.txt is listed", found_one);
+	ASSERT("two.txt is listed", found_two);
+	/* The two files, and . and .. */
+	ASSERT_EQUALS(4, entries);
+}
+
 int main(void)
 {
 	RUN(test_readln_counts_newline);
@@ -254,6 +314,7 @@ int main(void)
 	RUN(test_seek_reports_failure);
 	RUN(test_rename_missing_source_reports_failure);
 	RUN(test_rename_within_directory);
+	RUN(test_readdir_lists_directory);
 
 	return TEST_REPORT();
 }

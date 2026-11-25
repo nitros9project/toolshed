@@ -41,9 +41,7 @@ error_code _native_gs_eof(native_path_id path)
 
 	if (path->mode & FAM_DIR)
 	{
-#if defined(WIN32)
-#else
-		off_t offset;
+		long offset;
 
 		/* get offset */
 		offset = telldir(path->dirhandle);
@@ -58,7 +56,6 @@ error_code _native_gs_eof(native_path_id path)
 			/* restore the offset we had before we read the test entry */
 			seekdir(path->dirhandle, offset);
 		}
-#endif
 
 		return ec;
 	}

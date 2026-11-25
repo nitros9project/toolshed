@@ -48,17 +48,8 @@ error_code _native_read(native_path_id path, void *buffer, u_int * size)
 
 error_code _native_readdir(native_path_id path, native_dir_entry * dirent)
 {
-
-/*
-	On WIN32 dirent is:   struct _finddata_t
-	On *nix dirent is:    struct dirent
-*/
-
 	error_code ec = 0;
-
-#if defined(WIN32)
-	struct _finddata_t dp;
-#endif
+	native_dir_entry *e;
 
 	/* 1. Check the mode. */
 
@@ -70,28 +61,14 @@ error_code _native_readdir(native_path_id path, native_dir_entry * dirent)
 	}
 
 
-#if defined(WIN32)
-	if (path->dirhandle == 0)
-	{
-		path->dirhandle = (DIR *) _findfirst("*", dirent);
-	}
-	else
-	{
-		ec = _findnext((intptr_t) path->dirhandle, &dp);
-	}
-	if (ec == -1)
-#else
-	native_dir_entry *e = readdir(path->dirhandle);
+	e = readdir(path->dirhandle);
 
 	if (e == NULL)
-#endif
 	{
 		return EOS_EOF;
 	}
 
-#ifndef WIN32
 	memcpy(dirent, e, sizeof(native_dir_entry));
-#endif
 
 	return ec;
 }
@@ -100,13 +77,8 @@ error_code _native_ncpy_name(native_dir_entry e, u_char * name, size_t len)
 {
 	error_code ec = 0;
 
-#if defined(WIN32)
-	/* typedef struct _finddata_t  native_dir_entry; */
-	strncpy((char *) name, e.name, len);
-#else
 	/* Copy name from dir entry to suppilied buffer */
 	strncpy((char *) name, e.d_name, len);
-#endif
 
 	return ec;
 
