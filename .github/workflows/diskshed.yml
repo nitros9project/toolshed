@@ -33,8 +33,10 @@ jobs:
           VERSION="dev-${GITHUB_SHA::7}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+  # macOS does not run for pull requests.
   macos:
     name: macOS (${{ matrix.arch }})
+    if: github.event_name != 'pull_request'
     needs: version
     strategy:
       fail-fast: false
