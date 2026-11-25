@@ -131,7 +131,7 @@ int os9rdump(int argc, char **argv)
 					fprintf(stderr,
 						"rdump: unknown option -%c",
 						*p);
-					return (0);
+					return (EOS_IA);
 				}
 			}
 		}

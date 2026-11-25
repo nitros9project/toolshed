@@ -26,6 +26,7 @@ static char const *const helpMessage[] = {
 	"                  68: 35 track disk (default)\n",
 	"                  78: 40 track disk\n",
 	"                 156: 80 track disk\n",
+	"             1 to 192 are accepted\n",
 	NULL
 };
 
@@ -75,7 +76,14 @@ int main(int argc, char *argv[])
 				switch (*p)
 				{
 				case 'g':
+					/* A FAT entry from 0xC0 up marks a file's last
+					   granule, so granules are numbered 0 to 191. */
 					decb_granule_count = atoi(p + 1);
+					if (decb_granule_count < 1 || decb_granule_count > 192)
+					{
+						fprintf(stderr, "decb: -g wants a granule count from 1 to 192\n");
+						return (EOS_IA);
+					}
 					while (*(p + 1) != '\0') p++;
 					break;
 				
@@ -83,6 +91,10 @@ int main(int argc, char *argv[])
 				case '?':
 					show_decb_help(helpMessage);
 					return (0);
+
+				default:
+					fprintf(stderr, "decb: unknown option '%c'\n", *p);
+					return (EOS_IA);
 				}
 			}
 		}

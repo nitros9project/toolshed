@@ -24,7 +24,7 @@ static char const *const helpMessage[] = {
 	"Syntax: dumpblock [<opts>] <imagefile> [<opts>]\n",
 	"Usage:  Scan a CAS/WAV image and print a hex dump of each block.\n",
 	"Options:\n",
-	"     -h, ?       Show this help message\n",
+	"     -h, -?      Show this help message\n",
 	"     -a          dump output in assembler format (hex)\n",
 	"     -b          dump output in assembler format (binary)\n",
 	"     -e          dump output in C format\n",

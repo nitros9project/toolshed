@@ -36,8 +36,8 @@ static char const *const helpMessage[] = {
 	"            the results. This option causes dcheck to check only\n",
 	"            the file descriptors for accuracy\n",
 	"     -b    suppress listing of unused clusters (clusters allocated\n",
-	"            but not in file structure)\n"
-		"     -p    print pathlists of questionable clusters\n",
+	"            but not in file structure)\n",
+	"     -p    print pathlists of questionable clusters\n",
 	NULL
 };
 
@@ -99,7 +99,7 @@ int os9dcheck(int argc, char *argv[])
 					fprintf(stderr,
 						"%s: unknown option '%c'\n",
 						argv[0], *p);
-					return (0);
+					return (EOS_IA);
 				}
 			}
 		}

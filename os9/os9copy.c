@@ -138,6 +138,9 @@ int os9copy(int argc, char *argv[])
 							case 'r':
 								attrSetMask |= FAP_PREAD;
 								break;
+							default:
+								fprintf(stderr, "%s: unknown attribute in '%s'\n", argv[0], argv[i]);
+								return (EOS_IA);
 							}
 							break;
 						case 'n':
@@ -155,6 +158,9 @@ int os9copy(int argc, char *argv[])
 								case 'r':
 									attrResetMask |= FAP_PREAD;
 									break;
+								default:
+									fprintf(stderr, "%s: unknown attribute in '%s'\n", argv[0], argv[i]);
+									return (EOS_IA);
 								}
 								break;
 							case 'e':
@@ -172,8 +178,14 @@ int os9copy(int argc, char *argv[])
 							case 'd':
 								attrResetMask |= FAP_DIR;
 								break;
+							default:
+								fprintf(stderr, "%s: unknown attribute in '%s'\n", argv[0], argv[i]);
+								return (EOS_IA);
 							}
 							break;
+						default:
+							fprintf(stderr, "%s: unknown attribute in '%s'\n", argv[0], argv[i]);
+							return (EOS_IA);
 						}
 						p++;
 					}
@@ -189,7 +201,7 @@ int os9copy(int argc, char *argv[])
 					fprintf(stderr,
 						"%s: unknown option '%c'\n",
 						argv[0], *p);
-					return (0);
+					return (EOS_IA);
 				}
 			}
 		}

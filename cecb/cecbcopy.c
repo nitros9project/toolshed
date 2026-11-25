@@ -160,7 +160,7 @@ int cecbcopy(int argc, char *argv[])
 					fprintf(stderr,
 						"%s: unknown option '%c'\n",
 						argv[0], *p);
-					return (0);
+					return (EOS_IA);
 				}
 			}
 		}

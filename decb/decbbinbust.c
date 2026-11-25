@@ -25,6 +25,21 @@ int decbbinbust(int argc, char *argv[])
     coco_path_id in = NULL, out = NULL;
     error_code ec = 0;
     uint8_t hdr[5];
+    int i;
+
+    for (i = 1; i < argc; i++)
+    {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-?") == 0)
+        {
+            show_help(helpMessage);
+            return 0;
+        }
+        if (argv[i][0] == '-')
+        {
+            fprintf(stderr, "%s: unknown option '%s'\n", argv[0], argv[i]);
+            return EOS_IA;
+        }
+    }
 
     if (argc != 3)
     {

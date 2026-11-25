@@ -30,6 +30,7 @@ build/unix/os9/os9
 build/unix/tocgen/tocgen
 build/unix/unittest/cecbcommandtest
 build/unix/unittest/commandaliastest
+build/unix/unittest/commandoptiontest
 build/unix/unittest/decbcommandtest
 build/unix/unittest/dgndoscommandtest
 build/unix/unittest/cflexcommandtest

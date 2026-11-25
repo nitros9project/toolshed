@@ -18,7 +18,6 @@ static char const *const helpMessage[] = {
 	"Syntax: dsave {[<opts>]} {[<source>]} <target> {[<opts>]}\n",
 	"Usage: Copy the contents of a directory or device.\n",
 	"Options:\n",
-	"     -b=size    size of copy buffer in bytes or K-bytes\n",
 	"     -e         actually execute commands\n",
 	"     -l         perform end of line translation on copy\n",
 	"     -t         perform BASIC token translation\n",
@@ -52,6 +51,9 @@ int decbdsave(int argc, char *argv[])
 				switch (*p)
 				{
 				case 'b':
+					/* decb copy has no buffer size, so -b=size is
+					   left out of the help, and accepted and ignored
+					   for the scripts that give it. */
 					if (*(++p) == '=')
 					{
 						p++;

@@ -24,11 +24,51 @@ static char const *const helpMessage[] = {
 	"     -w        set write permission\n",
 	"     -r        set read permission\n",
 	"     -s        set single user permission\n",
-	"     -p[ewr]   set public permission\n",
-	"     -n[ewrs]  unset owner permissions\n",
-	"     -np[ewr]  unset public permissions\n",
+	"     -pe, -pw, -pr        set public execute, write or read permission\n",
+	"     -ne, -nw, -nr, -ns   unset execute, write, read or single user\n",
+	"     -npe, -npw, -npr     unset public execute, write or read\n",
+	"   Options combine, as in -ew -pr, or -ewpr.\n",
 	NULL
 };
+
+
+/* The permission bit for the letter after -n, or 0 if there is none.
+   -nd clears the directory bit, as copy -a=nd does. */
+static int owner_permission(char letter)
+{
+	switch (letter)
+	{
+	case 'e':
+		return FAP_EXEC;
+	case 'w':
+		return FAP_WRITE;
+	case 'r':
+		return FAP_READ;
+	case 's':
+		return FAP_SINGLE;
+	case 'd':
+		return FAP_DIR;
+	}
+
+	return 0;
+}
+
+
+/* The public permission bit for the letter after -p or -np, or 0. */
+static int public_permission(char letter)
+{
+	switch (letter)
+	{
+	case 'e':
+		return FAP_PEXEC;
+	case 'w':
+		return FAP_PWRITE;
+	case 'r':
+		return FAP_PREAD;
+	}
+
+	return 0;
+}
 
 
 int os9attr(int argc, char *argv[])
@@ -62,56 +102,40 @@ int os9attr(int argc, char *argv[])
 					attrSetMask |= FAP_READ;
 					break;
 				case 'n':
-					switch (*(p + 1))
+				{
+					/* -n<x> clears one owner permission, -np<x> one
+					   public permission.  The letters after -n are
+					   used here, so the loop doesn't read them again. */
+					int mask = *(p + 1) == 'p' ?
+						public_permission(*(p + 2)) :
+						owner_permission(*(p + 1));
+
+					if (mask == 0)
 					{
-					case 'p':
-						switch (*(p + 2))
-						{
-						case 'e':
-							attrResetMask |=
-								FAP_PEXEC;
-							break;
-						case 'w':
-							attrResetMask |=
-								FAP_PWRITE;
-							break;
-						case 'r':
-							attrResetMask |=
-								FAP_PREAD;
-							break;
-						}
-						break;
-					case 'e':
-						attrResetMask |= FAP_EXEC;
-						break;
-					case 'w':
-						attrResetMask |= FAP_WRITE;
-						break;
-					case 'r':
-						attrResetMask |= FAP_READ;
-						break;
-					case 's':
-						attrResetMask |= FAP_SINGLE;
-						break;
-					case 'd':
-						attrResetMask |= FAP_DIR;
-						break;
+						fprintf(stderr,
+							"%s: unknown option '%.*s'\n",
+							argv[0], *(p + 1) == 'p' ? 3 : 2, p);
+						return (EOS_IA);
 					}
+					attrResetMask |= mask;
+					p += *(p + 1) == 'p' ? 2 : 1;
 					break;
+				}
 				case 'p':
-					switch (*(p + 1))
+				{
+					int mask = public_permission(*(p + 1));
+
+					if (mask == 0)
 					{
-					case 'e':
-						attrSetMask |= FAP_PEXEC;
-						break;
-					case 'w':
-						attrSetMask |= FAP_PWRITE;
-						break;
-					case 'r':
-						attrSetMask |= FAP_PREAD;
-						break;
+						fprintf(stderr,
+							"%s: unknown option '%.2s'\n",
+							argv[0], p);
+						return (EOS_IA);
 					}
+					attrSetMask |= mask;
+					p++;
 					break;
+				}
 				case 's':
 					attrSetMask |= FAP_SINGLE;
 					break;
@@ -123,7 +147,7 @@ int os9attr(int argc, char *argv[])
 					fprintf(stderr,
 						"%s: unknown option '%c'\n",
 						argv[0], *p);
-					return (0);
+					return (EOS_IA);
 				}
 			}
 		}

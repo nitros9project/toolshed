@@ -28,7 +28,8 @@ TEST_LIBS = \
 
 
 TESTS = librbftest libdecbtest libcecbtest libtoolshedtest libnativetest libmisctest os9commandtest \
-	decbcommandtest cecbcommandtest libsystest libdiskimagetest infocommandtest libdragondostest dgndoscommandtest libflextest cflexcommandtest commandaliastest
+	decbcommandtest cecbcommandtest libsystest libdiskimagetest infocommandtest libdragondostest dgndoscommandtest libflextest cflexcommandtest commandaliastest \
+	commandoptiontest
 
 # On Windows the programs end in .exe.
 TEST_PROGRAMS = $(addsuffix $(SUFEXE),$(TESTS))
@@ -56,6 +57,7 @@ ifeq (,$(NOTEST))
 	./libflextest
 	./cflexcommandtest
 	./commandaliastest
+	./commandoptiontest
 endif
 
 clean:
