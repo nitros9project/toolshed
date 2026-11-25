@@ -9,7 +9,7 @@
 #include "tinytest.h"
 #include <toolshed.h>
 #include "imagedamage.h"
-#include <unistd.h>
+#include "testposix.h"
 
 
 #define DECB_DMK "test_decb.dmk"
@@ -262,6 +262,7 @@ void test_decb_dir_lists_names_without_fat()
 	got = fread(output, 1, sizeof(output) - 1, fp);
 	fclose(fp);
 	output[got] = '\0';
+	test_text_output(output);
 	ASSERT("the file is listed with no size", strstr(output, "FILE     TXT  0  B  ?\n") != NULL);
 
 	remove("test_decb_dir.txt");

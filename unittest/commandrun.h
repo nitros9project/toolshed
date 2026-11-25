@@ -3,6 +3,7 @@
  *
  * A command that loops forever would stop the tests rather than fail one, so
  * it runs in its own process group, which is killed once the time is up.
+ * On Windows it runs in a job object instead (see testposix.h).
  *
  * Include this after tinytest.h.
  */
@@ -12,9 +13,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include "testposix.h"
 
 #define COMMAND_TIMED_OUT	-2	/* it ran out of time and was killed */
 #define COMMAND_CRASHED		-1	/* a signal ended it, so it crashed */
@@ -23,6 +22,53 @@
 
 /* Run a shell command, with its output and errors going to output, for at
    most seconds.  The result is its exit status, or one of the above. */
+#ifdef _WIN32
+static inline int run_command_timed(const char *command, int seconds, char *output, size_t capacity)
+{
+	SECURITY_ATTRIBUTES inherit = { sizeof(inherit), NULL, TRUE };
+	HANDLE out;
+	int status;
+	FILE *fp;
+	size_t got = 0;
+
+	out = CreateFileA(COMMAND_OUTPUT, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit,
+			  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (out == INVALID_HANDLE_VALUE)
+	{
+		return COMMAND_CRASHED;
+	}
+	status = test_spawn(command, out, (DWORD) seconds * 1000);
+	CloseHandle(out);
+
+	if (status == TEST_SPAWN_TIMED_OUT)
+	{
+		status = COMMAND_TIMED_OUT;
+	}
+	else if (WIFSIGNALED(status))
+	{
+		status = COMMAND_CRASHED;
+	}
+	else
+	{
+		status = WEXITSTATUS(status);
+	}
+
+	if (output != NULL && capacity > 0)
+	{
+		fp = fopen(COMMAND_OUTPUT, "rb");
+		if (fp != NULL)
+		{
+			got = fread(output, 1, capacity - 1, fp);
+			fclose(fp);
+		}
+		output[got] = '\0';
+		test_text_output(output);
+	}
+	remove(COMMAND_OUTPUT);
+
+	return status;
+}
+#else
 static inline int run_command_timed(const char *command, int seconds, char *output, size_t capacity)
 {
 	pid_t pid;
@@ -97,5 +143,6 @@ static inline int run_command_timed(const char *command, int seconds, char *outp
 
 	return status;
 }
+#endif	/* _WIN32 */
 
 #endif	/* COMMANDRUN_H */

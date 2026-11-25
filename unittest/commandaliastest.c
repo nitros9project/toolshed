@@ -1,6 +1,7 @@
 /* Check the advertised short commands and executive help formatting. */
 #include <string.h>
 #include "tinytest.h"
+#include "testposix.h"
 
 #define OUTPUT_FILE "commandalias_output.txt"
 
@@ -23,6 +24,7 @@ static int run_command(const char *tool, const char *arguments,
 	}
 	count = fread(output, 1, size - 1, file);
 	output[count] = '\0';
+	test_text_output(output);
 	fclose(file);
 	remove(OUTPUT_FILE);
 	return result;

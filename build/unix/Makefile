@@ -29,6 +29,10 @@ DIRS		= libtoolshed libnative libcecb librbf libcoco libdecb libdiskimage libdra
 ifneq ($(WIN),)
 PACKAGENAME	= $(PACKAGENAME_WIN)
 MAKEPACKAGE = zip -9
+# Built on Windows (MSYS2), the tests can run; cross-compiled, they cannot.
+ifeq ($(OS),Windows_NT)
+DIRS		:= $(DIRS) unittest
+endif
 else
 PACKAGENAME	= $(PACKAGENAME_UNIX)
 MAKEPACKAGE = tar czvf

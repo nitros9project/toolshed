@@ -8,7 +8,7 @@
 
 #include "tinytest.h"
 #include <toolshed.h>
-#include <unistd.h>
+#include "testposix.h"
 #include <sys/stat.h>
 #include "commandrun.h"
 

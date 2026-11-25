@@ -1,7 +1,7 @@
 /* Tests for the info command. */
 
 #include <string.h>
-#include <sys/wait.h>
+#include "testposix.h"
 
 #include "tinytest.h"
 #include "cocopath.h"
@@ -68,6 +68,7 @@ static void read_file(const char *pathname, char *buffer, size_t size)
 		fclose(fp);
 	}
 	buffer[got] = '\0';
+	test_text_output(buffer);
 }
 
 /* Run info, keeping what it prints, and return its result. */

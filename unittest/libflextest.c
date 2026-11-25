@@ -5,6 +5,7 @@
 #include <time.h>
 
 #include "tinytest.h"
+#include "testposix.h"
 #include "diskimage.h"
 #include "imagedamage.h"
 #include "flexpath.h"
@@ -1396,7 +1397,7 @@ static void test_dates(void)
 	flex_file_stat stat;
 	flex_path_id path;
 	flex_sir sir;
-	char *old_tz = swap_env("TZ", "<+14>-14");
+	char *old_tz = swap_env("TZ", "XXX-14");
 	char *old_sde = swap_env("SOURCE_DATE_EPOCH", NULL);
 
 	/* 1700000000 is 22:13 on 11/14/23 in UTC, and 11/15/23 at UTC+14. */

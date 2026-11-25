@@ -1,10 +1,9 @@
 /* Tests for the cflex command. */
 
 #include <string.h>
-#include <unistd.h>
+#include "testposix.h"
 #include <utime.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 
 #include "tinytest.h"
 #include "flexpath.h"
@@ -28,7 +27,7 @@
    set.  SDE uses SOURCE_DATE_EPOCH: 1700000000 is 11/14/23 in UTC, and
    11/15/23 at UTC+14, which it must not depend on. */
 #define SOURCE_DATES "env -u SOURCE_DATE_EPOCH TZ=UTC " FLEXCMD
-#define SDE "env SOURCE_DATE_EPOCH=1700000000 TZ=\"<+14>-14\" " FLEXCMD
+#define SDE "env SOURCE_DATE_EPOCH=1700000000 TZ=XXX-14 " FLEXCMD
 #define HOST_TIME 423576000	/* 12:00 on 06/04/83, UTC */
 
 static char output[16384];
@@ -61,6 +60,7 @@ static void read_output(void)
 		fclose(fp);
 	}
 	output[got] = '\0';
+	test_text_output(output);
 }
 
 static long file_size(const char *pathname, u_char *buffer, long size)

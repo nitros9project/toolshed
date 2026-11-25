@@ -10,8 +10,7 @@
 #include <toolshed.h>
 #include <utime.h>
 #include <time.h>
-#include <unistd.h>
-#include <sys/wait.h>
+#include "testposix.h"
 #include "imagedamage.h"
 #include "commandrun.h"
 
@@ -506,6 +505,7 @@ void test_os9_command_copy_refuses_disk_images()
 			got = fread(message, 1, sizeof(message) - 1, fp);
 			fclose(fp);
 			message[got] = 0;
+			test_text_output(message);
 			ASSERT("it says why", strstr(message, "looks like a disk image") != NULL);
 
 			fp = fopen(targets[t], "rb");
@@ -582,6 +582,7 @@ void test_os9_command_dsave_executable()
 	got = fread(output, 1, sizeof(output) - 1, fp);
 	fclose(fp);
 	output[got] = 0;
+	test_text_output(output);
 	ASSERT("it shows the usual name", strncmp(output, "os9 copy 'test_x_src/one.txt' 'test_x_dst/one.txt'", 44) == 0);
 	fp = fopen("test_x_dst/one.txt", "rb");
 	ASSERT("nothing was copied", fp == NULL);
@@ -593,6 +594,7 @@ void test_os9_command_dsave_executable()
 	got = fread(output, 1, sizeof(output) - 1, fp);
 	fclose(fp);
 	output[got] = 0;
+	test_text_output(output);
 	ASSERT("it shows the given name", strncmp(output, "'no/such/os9' copy ", 18) == 0);
 
 	/* An empty search path shows it is not the shell finding it. */
@@ -1052,6 +1054,7 @@ static int real_os9_command(const char *arguments, char *output, size_t capacity
 	{
 		got = fread(output, 1, capacity - 1, fp);
 		output[got] = '\0';
+		test_text_output(output);
 		fclose(fp);
 	}
 	remove(REAL_OS9_OUTPUT);
