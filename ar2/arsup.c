@@ -187,10 +187,10 @@ void get_fstat(int pn, FILDES *fs)
 void set_fstat(char *pn, FILDES *fs)
 	{
 #if defined(SYSV)
-	char			*p = fs->fd_own;
-	short			s;
 	short			mode = o2uFmode(fs->fd_attr);
 #if !defined(WIN32)
+	char			*p = fs->fd_own;
+	short			s;
 	struct passwd	*pwdbuf;
 #endif
 /*
@@ -199,10 +199,10 @@ void set_fstat(char *pn, FILDES *fs)
 		} ubuf;
 */
 
+#if !defined(WIN32)
 	s = (*p++&0xff);
 	s <<= 8;
 	s |= (*p & 0xff);
-#if !defined(WIN32)
 	pwdbuf = getpwuid(s);
 #endif
 	chmod(pn, mode);
