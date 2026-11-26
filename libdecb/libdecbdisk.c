@@ -259,51 +259,20 @@ static int entry_is_valid(const decb_dir_entry *entry, const u_char *fat, u_int 
 }
 
 
-/*
- * _decb_identify()
- *
- * Determine if an image could be a Disk BASIC disk.  Nothing marks one, so it
- * must have a FAT and directory on track 17 with nothing wrong in them.  A
- * track of only $FF is an unused track rather than an empty directory.
- */
-error_code _decb_identify(const char *pathname, int *found)
+/* Whether track 17 holds a Disk BASIC FAT and directory for a disk of this
+   many granules, with nothing wrong in them. */
+static int track17_is_decb(diskimage_id disk, const u_char *fat, u_int granules)
 {
-	diskimage_geometry geometry;
-	diskimage_id disk;
-	u_char fat[256];
 	u_char sector[256];
-	u_int granules, i, number;
+	u_int i, number;
 	int used = 0;
 	int free_only = 1;
 	int skitzo = 1;
 	int all_ff = 1;
 	int valid = 1;
 	int ended = 0;
-	error_code ec;
 
-	*found = 0;
-
-	ec = _diskimage_open(&disk, pathname, FAM_READ);
-	if (ec != 0)
-	{
-		return ec;
-	}
-
-	ec = _diskimage_query_geometry(disk, &geometry);
-	if (ec != 0 || geometry.cylinders < 18 || !identify_sector(disk, 2, fat))
-	{
-		_diskimage_close(disk);
-		return ec;
-	}
-
-	/* Every track but the directory's has two granules. */
-	granules = (geometry.cylinders - 1) * 2;
-	if (granules > 156)
-	{
-		granules = 156;
-	}
-
-	for (i = 0; i < sizeof(fat); i++)
+	for (i = 0; i < 256; i++)
 	{
 		all_ff = all_ff && fat[i] == 0xFF;
 	}
@@ -349,7 +318,63 @@ error_code _decb_identify(const char *pathname, int *found)
 		valid = 0;
 	}
 
-	*found = valid;
+	return valid;
+}
+
+
+/*
+ * _decb_identify()
+ *
+ * Determine if an image could be a Disk BASIC disk.  Nothing marks one, so it
+ * must have a FAT and directory on track 17 with nothing wrong in them.  A
+ * track of only $FF is an unused track rather than an empty directory.
+ *
+ * A disk need not use every track of its image.  Disk BASIC formats 35
+ * tracks and keeps 68 granules in its FAT whatever the drive, and leaves
+ * whatever was in the rest of the FAT sector there.  So the FAT is checked
+ * for 35 tracks, 40, and every track of the image.
+ */
+error_code _decb_identify(const char *pathname, int *found)
+{
+	static const u_int track_counts[] = { 35, 40 };
+	diskimage_geometry geometry;
+	diskimage_id disk;
+	u_char fat[256];
+	u_int granules, i;
+	error_code ec;
+
+	*found = 0;
+
+	ec = _diskimage_open(&disk, pathname, FAM_READ);
+	if (ec != 0)
+	{
+		return ec;
+	}
+
+	ec = _diskimage_query_geometry(disk, &geometry);
+	if (ec != 0 || geometry.cylinders < 18 || !identify_sector(disk, 2, fat))
+	{
+		_diskimage_close(disk);
+		return ec;
+	}
+
+	/* Every track but the directory's has two granules. */
+	granules = (geometry.cylinders - 1) * 2;
+	if (granules > 156)
+	{
+		granules = 156;
+	}
+
+	*found = track17_is_decb(disk, fat, granules);
+	for (i = 0; i < sizeof(track_counts) / sizeof(track_counts[0]) && !*found; i++)
+	{
+		u_int fewer = (track_counts[i] - 1) * 2;
+
+		if (fewer < granules)
+		{
+			*found = track17_is_decb(disk, fat, fewer);
+		}
+	}
 	_diskimage_close(disk);
 
 	return 0;
