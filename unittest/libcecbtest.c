@@ -10,6 +10,7 @@
 #include <toolshed.h>
 #include <stdint.h>
 #include <sys/stat.h>
+#include <limits.h>
 
 static unsigned int int4le(const unsigned char *p)
 {
@@ -694,6 +695,166 @@ void test_cecb_token()
 	free(det_outbuf);
 }
 
+/* Write one file holding 'data' to the end of a cassette image. */
+static void append_cas_file(const char *pathlist, const char *data,
+			    unsigned int length)
+{
+	cecb_path_id path;
+	error_code ec;
+	unsigned int size = length;
+
+	ec = _cecb_create(&path, (char *) pathlist, FAM_WRITE, 1, 255, 0, 0, 0);
+	ASSERT_EQUALS(0, ec);
+	ec = _cecb_write(path, (void *) data, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(length, size);
+	ec = _cecb_close(path);
+	ASSERT_EQUALS(0, ec);
+}
+
+static long file_size(const char *name)
+{
+	struct stat info;
+
+	if (stat(name, &info) != 0)
+		return -1;
+
+	return (long) info.st_size;
+}
+
+/* A name has no extension, so none may be added, and a full
+   eight character name must fit the caller's buffer. */
+void test_cecb_ncpy_name()
+{
+	cecb_dir_entry entry;
+	u_char name[32];
+	error_code ec;
+
+	memset(&entry, 0, sizeof(entry));
+	memcpy(entry.filename, "FILE    ", 8);
+	memset(name, 'x', sizeof(name));
+	ec = _cecb_ncpy_name(entry, name, sizeof(name));
+	ASSERT_EQUALS(0, ec);
+	ASSERT_STRING_EQUALS("FILE", (char *) name);
+
+	memcpy(entry.filename, "ABCDEFGH", 8);
+	memset(name, 'x', sizeof(name));
+	ec = _cecb_ncpy_name(entry, name, sizeof(name));
+	ASSERT_EQUALS(0, ec);
+	ASSERT_STRING_EQUALS("ABCDEFGH", (char *) name);
+}
+
+/* Every byte written to a cassette image reaches the file: a file
+   written to an empty image ends with the whole of its trailing
+   silence (0.58 seconds, 11 bytes), not one byte short. */
+void test_cecb_cas_last_byte()
+{
+	/* 10 silence, 130 leader, 21 header block, 11 gap, 130 leader,
+	   7 data block, 6 end block, 11 silence. */
+	const long expected = 10 + 130 + 21 + 11 + 130 + 7 + 6 + 11;
+	error_code ec;
+
+	remove("lastbyte.cas");
+	ec = _cecb_bulkerase("lastbyte.cas", 0, 0, 0);
+	ASSERT_EQUALS(0, ec);
+	append_cas_file("lastbyte.cas,ONE", "X", 1);
+	ASSERT_EQUALS(expected, file_size("lastbyte.cas"));
+	remove("lastbyte.cas");
+}
+
+/* Writing that starts part way through a byte of the image keeps the
+   bits of that byte that come before it: appending to a tape that ends
+   in a $55 trailer byte must not wipe that byte's low seven bits. */
+void test_cecb_cas_append_keeps_bits()
+{
+	unsigned char byte = 0x55;
+	error_code ec;
+	FILE *file;
+	size_t count;
+	int c;
+
+	remove("keepbits.cas");
+	file = fopen("keepbits.cas", "wb");
+	ASSERT("create image", file != NULL);
+	count = fwrite(&byte, 1, 1, file);
+	fclose(file);
+	ASSERT_EQUALS(1, count);
+
+	/* Append, as cecb copy does. The first bit written is silence. */
+	cecb_start_sample = LONG_MAX;
+	append_cas_file("keepbits.cas,FILE", "X", 1);
+	cecb_start_sample = 0;
+
+	file = fopen("keepbits.cas", "rb");
+	ASSERT("open image", file != NULL);
+	c = fgetc(file);
+	fclose(file);
+	ASSERT_EQUALS(0x55, c);
+
+	/* And the file written after it can still be read. */
+	{
+		cecb_path_id path;
+		char buffer[8];
+		unsigned int size = sizeof(buffer);
+
+		ec = _cecb_open(&path, "keepbits.cas,FILE", FAM_READ);
+		ASSERT_EQUALS(0, ec);
+		ec = _cecb_read(path, buffer, &size);
+		ASSERT_EQUALS(0, ec);
+		ASSERT_EQUALS(1, size);
+		ASSERT_EQUALS('X', buffer[0]);
+		ec = _cecb_close(path);
+		ASSERT_EQUALS(0, ec);
+	}
+	remove("keepbits.cas");
+}
+
+/* The global start position (cecb -s) names a bit in a CAS image;
+   reading starts there, so a file before it is not seen. */
+void test_cecb_cas_start_bit()
+{
+	cecb_path_id path;
+	error_code ec;
+	char buffer[64];
+	unsigned int size;
+	long first_end;
+
+	remove("startbit.cas");
+	ec = _cecb_bulkerase("startbit.cas", 0, 0, 0);
+	ASSERT_EQUALS(0, ec);
+	cecb_start_sample = LONG_MAX;
+	append_cas_file("startbit.cas,SAME", "first", 5);
+	first_end = file_size("startbit.cas");
+	ASSERT("first file written", first_end > 0);
+	append_cas_file("startbit.cas,SAME", "second", 6);
+	cecb_start_sample = 0;
+
+	/* From the start, the first of the two files is found. */
+	ec = _cecb_open(&path, "startbit.cas,SAME", FAM_READ);
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(buffer);
+	ec = _cecb_read(path, buffer, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(5, size);
+	ASSERT_MEM_EQUALS("first", buffer, size);
+	ec = _cecb_close(path);
+	ASSERT_EQUALS(0, ec);
+
+	/* Starting past the first file finds the second. */
+	cecb_start_sample = first_end * 8;
+	ec = _cecb_open(&path, "startbit.cas,SAME", FAM_READ);
+	cecb_start_sample = 0;
+	ASSERT_EQUALS(0, ec);
+	size = sizeof(buffer);
+	ec = _cecb_read(path, buffer, &size);
+	ASSERT_EQUALS(0, ec);
+	ASSERT_EQUALS(6, size);
+	ASSERT_MEM_EQUALS("second", buffer, size);
+	ec = _cecb_close(path);
+	ASSERT_EQUALS(0, ec);
+	remove("startbit.cas");
+}
+
 int main()
 {
 	remove("test.c10");
@@ -716,6 +877,10 @@ int main()
 	RUN(test_cecb_bulkerase_header);
 	RUN(test_cecb_wav_chunk_before_data);
 	RUN(test_cecb_wav_float);
+	RUN(test_cecb_ncpy_name);
+	RUN(test_cecb_cas_last_byte);
+	RUN(test_cecb_cas_append_keeps_bits);
+	RUN(test_cecb_cas_start_bit);
 
 	return TEST_REPORT();
 }

@@ -286,6 +286,60 @@ void test_cecb_command_dir_cut_tapes()
 	check_cut_tape("cecb_dir32.wav", 32);
 }
 
+/* Copy writes new files at the end of a tape, but reads a source
+   tape from its start, for WAV as well as CAS. */
+void test_cecb_command_copy_out_of_tape()
+{
+	const char *tapes[] = {"cecb_out.cas", "cecb_out.wav"};
+	const int bits[] = {0, 16};
+	const char contents[] = "copy me\r";
+	char command[128], result[sizeof(contents)];
+	error_code ec;
+	FILE *file;
+	size_t count;
+	int i, length;
+
+	file = fopen("cecb_out_source", "wb");
+	ASSERT("create source", file != NULL);
+	count = fwrite(contents, 1, sizeof(contents) - 1, file);
+	fclose(file);
+	ASSERT_EQUALS(sizeof(contents) - 1, count);
+
+	for (i = 0; i < 2; i++)
+	{
+		remove(tapes[i]);
+		remove("cecb_out_result");
+		ec = _cecb_bulkerase((char *) tapes[i], 44100, bits[i], 0.25);
+		ASSERT_EQUALS(0, ec);
+
+		length = snprintf(command, sizeof(command),
+				  "../cecb/cecb copy -1ag cecb_out_source %s,OUT > /dev/null 2>&1",
+				  tapes[i]);
+		ASSERT("command fits", length > 0 && (size_t) length < sizeof(command));
+		ec = system(command);
+		ASSERT_EQUALS(0, ec);
+
+		length = snprintf(command, sizeof(command),
+				  "../cecb/cecb copy %s,OUT cecb_out_result > /dev/null 2>&1",
+				  tapes[i]);
+		ASSERT("command fits", length > 0 && (size_t) length < sizeof(command));
+		ec = system(command);
+		ASSERT_EQUALS(0, ec);
+
+		file = fopen("cecb_out_result", "rb");
+		ASSERT("copied file exists", file != NULL);
+		count = fread(result, 1, sizeof(result), file);
+		fclose(file);
+		ASSERT_EQUALS(sizeof(contents) - 1, count);
+		ASSERT_MEM_EQUALS(contents, result, count);
+
+		remove(tapes[i]);
+		remove("cecb_out_result");
+	}
+
+	remove("cecb_out_source");
+}
+
 int main()
 {
 	RUN(test_cecb_command_copy_basic_data);
@@ -294,6 +348,7 @@ int main()
 	RUN(test_cecb_command_copy_detokenize_metadata);
 	RUN(test_cecb_command_copy_detokenize_disk_basic);
 	RUN(test_cecb_command_dir_cut_tapes);
+	RUN(test_cecb_command_copy_out_of_tape);
 
 	return TEST_REPORT();
 }
