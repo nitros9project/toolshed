@@ -1392,6 +1392,69 @@ void test_real_rsdos_is_recognized()
 	ASSERT_EQUALS(0, filesystems);
 }
 
+/* Disk BASIC keeps 68 granules in its FAT on a larger image too, and leaves
+   whatever was in the rest of the FAT sector.  That isn't a broken FAT. */
+void test_decb_identify_ignores_fat_past_35_tracks()
+{
+	static const char image[] = "fat_junk.dsk";
+	u_char *disk;
+	u_char *fat, *directory;
+	size_t length = 80 * 18 * 256;
+	size_t written;
+	u_int filesystems;
+	FILE *fp;
+	int i;
+
+	disk = malloc(length);
+	ASSERT("memory for the image", disk != NULL);
+	memset(disk, 0xFF, length);
+	fat = disk + (17 * 18 + 1) * 256;
+	directory = fat + 256;
+
+	/* One file of one granule, granule 0, using 1 sector. */
+	fat[0] = 0xC1;
+	memcpy(directory, "FILE    BAS", 11);
+	directory[11] = 0;
+	directory[12] = 0;
+	directory[13] = 0;
+	directory[14] = 0;
+	directory[15] = 0x10;
+	memset(directory + 16, 0, 16);
+
+	/* What a real disk has past granule 68: an old directory entry. */
+	memset(fat + 68, 0, 256 - 68);
+	memcpy(fat + 68, "    DAT", 7);
+	fat[75] = 0x01;
+	fat[76] = 0xFF;
+	fat[77] = 0x03;
+	fat[78] = 0x00;
+	fat[79] = 0xA2;
+
+	fp = fopen(image, "wb");
+	ASSERT("create the image", fp != NULL);
+	written = fwrite(disk, 1, length, fp);
+	fclose(fp);
+	free(disk);
+	ASSERT_EQUALS(length, written);
+
+	ASSERT_EC(0, _coco_detect_filesystems(image, &filesystems));
+	ASSERT("Disk BASIC is found", (filesystems & COCO_FS_DECB) != 0);
+
+	/* A granule number past 68 in the first 68 is still wrong. */
+	fp = fopen(image, "r+b");
+	ASSERT("open the image", fp != NULL);
+	i = fseek(fp, (17 * 18 + 1) * 256 + 1, SEEK_SET);
+	ASSERT_EQUALS(0, i);
+	i = fputc(0xA2, fp);
+	ASSERT_EQUALS(0xA2, i);
+	fclose(fp);
+
+	ASSERT_EC(0, _coco_detect_filesystems(image, &filesystems));
+	ASSERT_EQUALS(0, filesystems & COCO_FS_DECB);
+
+	remove(image);
+}
+
 void test_real_rsdos_directory_matches_the_machine()
 {
 	decb_path_id p;
@@ -1708,6 +1771,7 @@ int main()
 	RUN(test_decb_write_protect_all_formats);
 	RUN(test_decb_wrong_sector_size);
 	RUN(test_real_rsdos_is_recognized);
+	RUN(test_decb_identify_ignores_fat_past_35_tracks);
 	RUN(test_real_rsdos_directory_matches_the_machine);
 	RUN(test_real_rsdos_files_match_their_patterns);
 	RUN(test_real_rsdos_reads_in_pieces);
