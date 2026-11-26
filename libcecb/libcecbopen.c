@@ -148,6 +148,18 @@ error_code _cecb_create(cecb_path_id * path, char *pathlist, int mode,
 		
 		(*path)->cas_start_byte = (*path)->cas_current_byte = (*path)->play_at / 8;
 		(*path)->cas_start_bit = (*path)->cas_current_bit = 0x01 << ((*path)->play_at % 8);
+
+		/* Writing that starts part way through a byte keeps the
+		   bits of it that come first. */
+		if ((*path)->cas_current_bit != 0x01)
+		{
+			unsigned char existing;
+
+			fseek((*path)->fd, (*path)->cas_start_byte, SEEK_SET);
+			if (fread(&existing, 1, 1, (*path)->fd) == 1)
+				(*path)->cas_byte = existing & ((*path)->cas_current_bit - 1);
+		}
+
 		fseek((*path)->fd, (*path)->cas_start_byte, SEEK_SET);
 	}
 	else
@@ -313,7 +325,10 @@ error_code _cecb_open(cecb_path_id * path, char *pathlist, int mode)
 
 	/* 6. Open and determine CAS or WAV and fill in data structors */
 
-	(*path)->play_at = cecb_start_sample;
+	/* LONG_MAX asks for the end of the tape, where new files are
+	   written. There is nothing there to read, so read from the start. */
+
+	(*path)->play_at = cecb_start_sample == LONG_MAX ? 0 : cecb_start_sample;
 	(*path)->wav_ratio_high = cecb_ratio + (cecb_ratio * cecb_threshold);
 	(*path)->wav_ratio_low = cecb_ratio - (cecb_ratio * cecb_threshold);
 
@@ -324,6 +339,28 @@ error_code _cecb_open(cecb_path_id * path, char *pathlist, int mode)
 		term_pd(*path);
 
 		return ec;
+	}
+
+	/* A CAS start position is a bit number: begin reading there. */
+
+	if (((*path)->tape_type == CAS) || ((*path)->tape_type == C10))
+	{
+		long byte = (*path)->play_at / 8;
+		int bit = (*path)->play_at % 8;
+
+		(*path)->cas_current_byte = byte;
+		(*path)->cas_current_bit = 0;
+		fseek((*path)->fd, byte, SEEK_SET);
+
+		if (bit != 0)
+		{
+			/* Load the byte, then read on from the bit asked for. */
+			if (fread(&((*path)->cas_byte), 1, 1, (*path)->fd) == 1)
+			{
+				(*path)->cas_current_byte = byte + 1;
+				(*path)->cas_current_bit = 0x01 << bit;
+			}
+		}
 	}
 
 	/* if raw, exit */
@@ -400,9 +437,18 @@ error_code _cecb_close(cecb_path_id path)
 
 		if (ec != 0)
 		{
+			fclose(path->fd);
 			term_pd(path);
 
 			return ec;
+		}
+
+		/* A CAS byte is written once the next bit needs room, so
+		   the last one, full or not, is still waiting. */
+		if (((path->tape_type == CAS) || (path->tape_type == C10))
+		    && path->cas_current_bit != 0x01)
+		{
+			fwrite(&path->cas_byte, 1, 1, path->fd);
 		}
 
 		if (path->tape_type == WAV)
