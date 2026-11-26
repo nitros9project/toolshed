@@ -147,6 +147,8 @@ if(DISKSHED_BUILD_GUI)
             set_source_files_properties(${DISKSHED_MAC_ICON} PROPERTIES
                 MACOSX_PACKAGE_LOCATION "Resources")
             target_sources(diskshed PRIVATE ${DISKSHED_MAC_ICON})
+            set_target_properties(diskshed PROPERTIES MACOSX_BUNDLE_INFO_PLIST
+                "${CMAKE_CURRENT_SOURCE_DIR}/packaging/Info.plist.in")
         elseif(WIN32)
             set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
             set(DISKSHED_WINDOWS_ICON
