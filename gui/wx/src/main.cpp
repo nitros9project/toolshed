@@ -115,6 +115,8 @@ public:
         std::filesystem::remove_all(drag_directory_, ignored);
     }
 
+    bool HasImage() const { return static_cast<bool>(image_); }
+
     bool OpenImage(const wxString& filename)
     {
         try {
@@ -770,17 +772,42 @@ public:
         SetAppName("DiskShed");
         auto* frame = new MainFrame;
         frame->Show();
-        if (argc > 1) {
-            frame->OpenImage(argv[1]);
-            for (int index = 2; index < argc; ++index) {
-                auto* additional_frame = new MainFrame;
-                additional_frame->Show();
-                if (!additional_frame->OpenImage(argv[index])) {
-                    additional_frame->Destroy();
-                }
-            }
+        for (int index = 1; index < argc; ++index) {
+            OpenImageWindow(argv[index]);
         }
         return true;
+    }
+
+#ifdef __WXOSX__
+    // Finder and the Dock send images dropped on the app icon (and Open With)
+    // here, both at launch and while the app is running.
+    void MacOpenFiles(const wxArrayString& files) override
+    {
+        for (const auto& file : files) {
+            OpenImageWindow(file);
+        }
+    }
+#endif
+
+private:
+    // Opens the image in the first window that has none, or else in a new
+    // window, matching File > Open.
+    static void OpenImageWindow(const wxString& filename)
+    {
+        for (auto* window : wxTopLevelWindows) {
+            auto* frame = dynamic_cast<MainFrame*>(window);
+            if (frame && !frame->HasImage() && !frame->IsBeingDeleted()) {
+                frame->OpenImage(filename);
+                frame->Raise();
+                return;
+            }
+        }
+
+        auto* frame = new MainFrame;
+        frame->Show();
+        if (!frame->OpenImage(filename)) {
+            frame->Destroy();
+        }
     }
 };
 

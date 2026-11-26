@@ -92,6 +92,12 @@ Drag and drop works in both directions:
   The GUI materializes them in a private temporary directory for the duration of
   the app session so the operating system receives an ordinary file URL.
 
+- On macOS, drop disk images (`.dsk`, `.dmk`, `.vdk`, `.sdf`, `.jvc`, `.os9`)
+  on DiskShed's icon in the Dock or Finder to open them, whether or not it is
+  running. DiskShed also appears under **Open With** for those files, without
+  becoming their default application. Each image opens in the empty window if
+  there is one, otherwise in a new window.
+
 Host directories are ignored when dropped. Disk BASIC images remain flat and
 therefore do not enable **New Folder**.
 
