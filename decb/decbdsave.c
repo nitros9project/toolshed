@@ -41,6 +41,9 @@ int decbdsave(int argc, char *argv[])
 	memset(&options, 0, sizeof(options));
 	options.program = "decb";
 
+	/* Disk BASIC has no directories, and so no makdir. */
+	options.no_directories = 1;
+
 	/* walk command line for options */
 	for (i = 1; i < argc; i++)
 	{

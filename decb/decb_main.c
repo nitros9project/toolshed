@@ -127,23 +127,19 @@ int main(int argc, char *argv[])
 
 static int do_command(int argc, char **argv)
 {
-	struct cmdtbl *x = table;
+	struct cmdtbl *x;
 
-	while (x->func != NULL)
+	for (x = table; x->func != NULL; x++)
 	{
 		if (strcmp(argv[0], x->keyword) == 0 || strcmp(argv[0], x->shortcode) == 0)
 		{
 			return (x->func(argc, argv));
 		}
-		x++;
 	}
 
-	if (x->func == NULL)
-	{
-		fprintf(stderr, "decb: unknown command '%s'\n", argv[0]);
-	}
+	fprintf(stderr, "decb: unknown command '%s'\n", argv[0]);
 
-	return (0);
+	return (1);
 }
 
 

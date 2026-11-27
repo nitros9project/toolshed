@@ -1174,9 +1174,11 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 
 #### Description
 
-The dsave command recursively copies files from a directory to another device.
+The dsave command copies each file from a disk or directory to another.
 
-dsave runs `decb copy` and `decb makdir` to do the copying, and by default the shell finds `decb` as it would any command. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
+dsave runs `decb copy` to do the copying, and by default the shell finds `decb` as it would any command. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
+
+Disk BASIC has no directories, so a source directory that holds one is refused when dsave reaches it.
 
 ---
 
