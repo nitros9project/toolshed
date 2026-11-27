@@ -1184,7 +1184,9 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 
 The dsave command copies each file from a disk or directory to another.
 
-dsave runs `decb copy` to do the copying, and by default the shell finds `decb` as it would any command. Disk BASIC has no directories and decb has no makdir, so use a source that holds only files. `-b=size` is accepted and ignored, since decb copy has no buffer size. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
+dsave runs `decb copy` to do the copying, and by default the shell finds `decb` as it would any command. `-b=size` is accepted and ignored, since decb copy has no buffer size. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
+
+Disk BASIC has no directories, so a source directory that holds one is refused when dsave reaches it.
 
 ---
 

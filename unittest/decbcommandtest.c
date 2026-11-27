@@ -496,6 +496,53 @@ void test_decb_command_dsave_executable()
 	ASSERT_EQUALS(0, status);
 }
 
+/* An unknown command fails, as it does in os9 and dgndos. */
+void test_decb_command_unknown()
+{
+	int status;
+
+	status = system("../decb/decb makdir test_unknown.dsk,sub > /dev/null 2>&1");
+	ASSERT_NEQUALS(0, status);
+	ASSERT_NEQUALS(0, WEXITSTATUS(status));
+}
+
+/* Disk BASIC has no directories, so dsave refuses a folder that holds one,
+   rather than copying its files under names run together with the folder's. */
+void test_decb_command_dsave_subdirectory()
+{
+	static char output[4096];
+	FILE *fp;
+	size_t got;
+	int status;
+
+	status = system("rm -rf test_sub_src && mkdir test_sub_src test_sub_src/sub"
+			" && echo one > test_sub_src/a.txt && echo two > test_sub_src/sub/b.txt");
+	ASSERT_EQUALS(0, status);
+	remove("test_nodirs.dsk");
+	status = system("../decb/decb dskini test_nodirs.dsk > /dev/null 2>&1");
+	ASSERT_EQUALS(0, status);
+
+	status = system("../decb/decb dsave -e -x=../decb/decb test_sub_src test_nodirs.dsk, > test_sub_out.txt 2>&1");
+	ASSERT_NEQUALS(0, status);
+	fp = fopen("test_sub_out.txt", "rb");
+	got = fread(output, 1, sizeof(output) - 1, fp);
+	fclose(fp);
+	output[got] = 0;
+	ASSERT("it says why", strstr(output, "has no directories") != NULL);
+	ASSERT("it runs no makdir", strstr(output, "makdir") == NULL);
+
+	status = system("../decb/decb dir test_nodirs.dsk > test_sub_out.txt 2>&1");
+	ASSERT_EQUALS(0, status);
+	fp = fopen("test_sub_out.txt", "rb");
+	got = fread(output, 1, sizeof(output) - 1, fp);
+	fclose(fp);
+	output[got] = 0;
+	ASSERT("no file was named after the folder", strstr(output, "SUB") == NULL && strstr(output, "sub") == NULL);
+
+	status = system("rm -rf test_sub_src test_nodirs.dsk test_sub_out.txt");
+	ASSERT_EQUALS(0, status);
+}
+
 /* hdbconv only takes a raw image, and leaves what looks like an image alone. */
 void test_decb_command_hdbconv()
 {
@@ -1124,6 +1171,8 @@ int main()
 	
 	RUN(test_decb_command_copy_refuses_disk_images);
 	RUN(test_decb_command_dsave_executable);
+	RUN(test_decb_command_dsave_subdirectory);
+	RUN(test_decb_command_unknown);
 	RUN(test_decb_command_hdbconv);
 	RUN(test_decb_command_dskini_formats);
 	RUN(test_decb_commands_on_images_with_tracks);
