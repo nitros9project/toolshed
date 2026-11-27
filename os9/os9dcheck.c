@@ -268,7 +268,7 @@ static int do_dcheck(char **argv, char *p)
 		printf("\n%d previously allocated cluster found\n", gPreAllo);
 		printf("%d clusters in file structure but not in allocation map\n", gFnotA);
 		printf("%d clusters in allocation map but not in file structure\n", gAnotF);
-		printf("%d bad file decriptor sector\n", gBadFD);
+		printf("%d bad file descriptor sector\n", gBadFD);
 
 		if (gPreAllo > 0 || gFnotA > 0 || gBadFD > 0)
 		{
