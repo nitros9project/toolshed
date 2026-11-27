@@ -1453,7 +1453,7 @@ void test_os9_48_segments_dcheck()
 	status = real_os9_command("dcheck " FULL_LIST_IMAGE, output, sizeof(output));
 	ASSERT_EQUALS(0, status);
 	ASSERT("as OS-9 said", strstr(output, "'FILES' file structure is intact\n") != NULL);
-	ASSERT("no bad descriptor", strstr(output, "0 bad file decriptor sector\n") != NULL);
+	ASSERT("no bad descriptor", strstr(output, "0 bad file descriptor sector\n") != NULL);
 	ASSERT("nothing lost", strstr(output, "0 clusters in allocation map but not in file structure\n") != NULL
 	       && strstr(output, "0 clusters in file structure but not in allocation map\n") != NULL);
 	remove(FULL_LIST_IMAGE);
@@ -1495,7 +1495,7 @@ void test_os9_48_segments_directory_dcheck()
 	status = real_os9_command("dcheck " FULL_LIST_IMAGE, output, sizeof(output));
 	ASSERT_EQUALS(0, status);
 	ASSERT("intact", strstr(output, "'FILES' file structure is intact\n") != NULL);
-	ASSERT("no bad descriptor", strstr(output, "0 bad file decriptor sector\n") != NULL);
+	ASSERT("no bad descriptor", strstr(output, "0 bad file descriptor sector\n") != NULL);
 	ASSERT("nothing lost", strstr(output, "0 clusters in allocation map but not in file structure\n") != NULL
 	       && strstr(output, "0 clusters in file structure but not in allocation map\n") != NULL);
 	remove(FULL_LIST_IMAGE);

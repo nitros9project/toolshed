@@ -57,13 +57,13 @@ ToolShed v2.7.0
   * [REVEAL](#reveal_decb) - Explain a disk image location
   * [RENAME](#rename_decb) - Give a file a new filename
 * [cecb](#cecb) - Manipulate Color BASIC and Micro Color BASIC cassette files
-  * [BULKERASE](#bulkerase) - Create a container for casette data
+  * [BULKERASE](#bulkerase) - Create a container for cassette data
   * [DIR](#dir_cecb) - Display the directory of a Cassette BASIC image
   * [FSTAT](#fstat_cecb) - Display the file descriptor for a file
   * [DUMP](#dump_cecb) - Display the contents of a binary file
   * [DUMPBLOCK](#dumpblock_cecb) - Scan and print a hex dump of CoCo Cassette blocks
   * [LIST](#list_cecb) - Display the contents of a file
-  * [COPY](#copy_cecb) - Copy one or more files to a casette container
+  * [COPY](#copy_cecb) - Copy one or more files to a cassette container
   * [LEADER](#leader_cecb) - Analyse leader in a WAV file
 * [ar2](#ar2)
 * [dis68](#dis68)
@@ -105,7 +105,7 @@ Some of the ToolShed Team: Tormod Volden, Tim Lindner, James Jones, Mark Marlett
 
 Say hello to ToolShed, a free software product which houses a set of utilities designed  to help you create programs and applications for several computing platforms for the Color Computer and Dragon systems running BASIC or NitrOS-9.
 
-ToolShed brings you the ease and speed of developing these programs to your modern personal computer running Windows, Mac OS X or Linux. The tools in the shed consist of a relocatable macro assembler/linker and intermediate code analyzer, a stand-alone assembler, an OS-9/Disk BASIC file manager and more.
+ToolShed brings you the ease and speed of developing these programs to your modern personal computer running Windows, Mac OS X or Linux. The tools in the shed consist of a stand-alone assembler, file managers for OS-9, Disk BASIC, Dragon DOS, FLEX and cassette images, and more.
 
 If you have performed assembly language programming on the CoCo before, you're probably familiar with either EDTASM under Disk BASIC, or the asm, rma and rlink tools under OS-9. ToolShed brings you similar tools that allow you to assemble 6809 and 6309 code efficiently.
 
@@ -115,7 +115,7 @@ ToolShed started out life in the mid-to-late 1990s as a 6809 cross-assembler und
 
 ### os9, decb & cecb
 
-The main task of the these tools is to allow the manipulation, inspection and copying of files from disk and cassette images to your PC's file system, and vice versa. The os9 tool recognizes disk images that contain data in the RBF file format created under OS-9 or NitrOS-9, while the decb tool recognizes disk images formatted under Disk BASIC for the Color Computer. The cecb tool recognizes cassette data in the wave, CAS, and C10 formats, for both Color BASIC and Micro Color BASIC.
+The main task of these tools is to allow the manipulation, inspection and copying of files from disk and cassette images to your PC's file system, and vice versa. The os9 tool recognizes disk images that contain data in the RBF file format created under OS-9 or NitrOS-9, while the decb tool recognizes disk images formatted under Disk BASIC for the Color Computer. The cecb tool recognizes cassette data in the wave, CAS, and C10 formats, for both Color BASIC and Micro Color BASIC.
 
 The `os9`, `decb`, `dgndos`, `cflex`, and `cecb` executives also accept two-letter
 subcommand codes. Run an executive without arguments (or with `-h`) to list
@@ -130,19 +130,19 @@ Managing a sizable assembly language source file for a complex program can be da
 
 The relocatable macro assembler and linker give you the ability to write complex assembly language programs in different source files, then link them together to form a single OS-9 or Disk BASIC object file that can be loaded and executed.
 
-These two command are no longer included in the ToolShed project.
+These two commands are no longer included in the ToolShed project.
 
 ### rdump
 
 The output of the rma macro assembler is a ROF (relocatable object file). rdump allows the inspection of this intermediate file, and can also act as a disassembler.
 
-This command is no longer included in the ToolShed project. It's functionality has been included into the os9 command.
+This command is no longer included in the ToolShed project.
 
 ### mamou
 
 If you are comfortable with using the asm assembler that was part of OS-9/6809, then you will feel at home with mamou. This tool is more suited for assembly language programs that contain their entire source code in one file.
 
-This assembler is included for historical purposes and should not be used for new development. For example, the NitrOS-9 project has switch to the LWASM assembler.
+This assembler is included for historical purposes and should not be used for new development. For example, the NitrOS-9 project has switched to the LWASM assembler.
 
 ### ar2
 
@@ -272,7 +272,7 @@ For the example below, we will assume that the 3.5" 720K floppy drive is `A:`, a
 
 The tool required to transfer DSK images to floppies under DOS/Windows is `DSKINI.EXE`.
 
-Once `DSKINI.EXE` has been downloaded and extracted, call up a Command Prompt window under Windows (if you're not using MS-DOS), and insert a blank 5.25" 360K diskette into drive B. Presuming the image being transfered is `nos96309l2v030200_ds40_1.dsk`, type:
+Once `DSKINI.EXE` has been downloaded and extracted, call up a Command Prompt window under Windows (if you're not using MS-DOS), and insert a blank 5.25" 360K diskette into drive B. Presuming the image being transferred is `nos96309l2v030200_ds40_1.dsk`, type:
 
     DSKINI /T40 /D B: NOS963~1.DSK
 
@@ -328,21 +328,21 @@ You can even copy files between disk images. Assume you had a disk image named n
 
 Note the comma is present in both arguments, indicating that both pathlists point to a file within an RBF disk image. In fact, every command in the ToolShed package recognizes this distinct meaning and use of the comma.
 
-This intelligence allows ToolShed to act differently depending upon whether it is acting on the file on a disk image or host file system. The result is that most commands built into ToolShed also work on the host file system too.
+This intelligence allows ToolShed to act differently depending upon whether it is acting on the file on a disk image or host file system. The result is that some commands built into ToolShed, such as copy, cmp, dump and ident, also work on the host file system. Others, such as dir, list, attr and fstat, work only inside a disk image.
 
 An example of this:
 
-    os9 dir os9.dsk, -e
+    os9 dump os9.dsk,startup
 
-will display the extended root directory on the specified disk image. Similarly:
+will display a hex dump of the file startup on the specified disk image. Similarly:
 
-    os9 dir . -e
+    os9 dump startup
 
-will display the extended directory on the current directory of the host file system (the -e option behaves similar to ls -l on Unix-based systems).
+will display a hex dump of the file startup in the current directory of the host file system.
 
 <h3 id="de_hdb_dos">Support for HDB-DOS</h3>
 
-Toolshed supports specialized path symbols for HDB-DOS hard disk images. A pathlist with a drive number or offset, and `decb dskini -h` with more than one drive, require a raw disk image; on any other image they fail.
+ToolShed supports specialized path symbols for HDB-DOS hard disk images. A pathlist with a drive number or offset, and `decb dskini -h` with more than one drive, require a raw disk image; on any other image they fail.
 
 The colon allows you to select which disk image is active:
 
@@ -363,7 +363,7 @@ The following pages document the commands built into the os9 tool. As the exampl
 
 Issuing the os9 command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using the subcommand.
 
-While many commands will work fine host file systems, some commands are designed to only be run on an RBF disk image or file within that image. The Scope section makes it clear in what context the command should be run.
+While many commands will work fine on host file systems, some commands are designed to only be run on an RBF disk image or file within that image. The Scope section makes it clear in what context the command should be run.
 
 ---
 
@@ -383,7 +383,7 @@ This command is intended for RBF disk image files only.
 <tr><td>-r</td><td>set read permission</td></tr>
 <tr><td>-s</td><td>set single user bit</td></tr>
 <tr><td>-p[ewr]</td><td>set public execute, write or read permission</td></tr>
-<tr><td>-n[ewr]</td><td>unset execute, write or read permission</td></tr>
+<tr><td>-n[ewrs]</td><td>unset execute, write, read or single user permission</td></tr>
 <tr><td>-np[ewr]</td><td>unset public execute, public write or public read permission</td></tr>
 </table>
 #### Description
@@ -459,7 +459,7 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 | `-l`          | Enable end-of-line translation (use for text files only) |
 | `-o=id`       | Set file owner ID in the destination file descriptor |
 | `-r`          | Overwrite the destination file if it already exists |
-| `-a=erpepr`   | Set OS-9 file attributes using ERPEPR permission mask |
+| `-a=attrs`    | Set OS-9 file attributes, using the same letters as attr (e.g. `-a=ewrpr`) |
 
 #### Description
 
@@ -467,7 +467,7 @@ The copy command will create an exact copy of a file on either an RBF disk image
 
 The -l option performs end of line translation when copying between the host file system and the RBF disk image. You should only use the -l option on text files, not binary files. When copying files to a disk image, the user id of the user on the host system is set in the file's ID sector. If you want to override this, you can use the -o option, specifying the ID of the file's owner as it resides on the RBF disk image.
 
-The `-a=erpepr` option allows explicit control of OS-9 file attribute bits (ERPEPR), which define the file’s access permissions as stored in the file descriptor sector.
+The `-a` option sets the OS-9 file attribute bits stored in the file descriptor sector. It takes the letters of the attr command's options: `e`, `w`, `r` and `s` set execute, write, read and single user; `pe`, `pw` and `pr` set public execute, write and read; and an `n` in front of any of these clears it instead.
 
 #### Examples
 
@@ -515,7 +515,7 @@ Using dcheck to verify an RBF disk image:
     0 previously allocated cluster found
     0 clusters in file structure but not in allocation map
     0 clusters in allocation map but not in file structure
-    0 bad file decriptor sector
+    0 bad file descriptor sector
     'Level II Tools' file structure is intact
     2 directories
     28 files
@@ -588,7 +588,7 @@ This command is intended for RBF disk images only.
 
 #### Description
 
-The dir command displays the contents of directories on an RBF disk image or the host file system.
+The dir command displays the contents of directories on an RBF disk image.
 
 #### Examples
 
@@ -643,8 +643,11 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 <tr><td>-a</td><td>dump output in assembler format (hex)</td></tr>
 <tr><td>-b</td><td>dump output in assembler format (binary)</td></tr>
 <tr><td>-c</td><td>don't display ASCII character data</td></tr>
-<tr><td>-h</td><td>don't display header</td></tr>
+<tr><td>-e</td><td>dump output in C format</td></tr>
+<tr><td>-t</td><td>don't display header</td></tr>
+<tr><td>-h</td><td>don't display header (deprecated, use -t)</td></tr>
 <tr><td>-l</td><td>don't display line label/count</td></tr>
+<tr><td>-z</td><td>decode DECB or Dragon DOS binary</td></tr>
 </table>
 #### Description
 
@@ -698,27 +701,30 @@ This command is intended to work on the host file system only.
 <table>
 <tr><td>-4</td><td>48 tpi (default)</td></tr>
 <tr><td>-9</td><td>96 tpi</td></tr>
-<tr><td>-sa</td><td>sector allocation size (SAS)</td></tr>
+<tr><td>-saX</td><td>sector allocation size (SAS, default = 8)</td></tr>
 <tr><td>-sd</td><td>single density</td></tr>
+<tr><td>-sd0</td><td>single density on track 0 only, the rest double (Dragon Beta)</td></tr>
 <tr><td>-dd</td><td>double density (default)</td></tr>
 <tr><td>-ss</td><td>single sided (default)</td></tr>
 <tr><td>-ds</td><td>double sided</td></tr>
 <tr><td>-tX</td><td>tracks (default = 35)</td></tr>
 <tr><td>-stX</td><td>sectors per track (default = 18)</td></tr>
+<tr><td>-szX</td><td>sectors for track 0 (default = 18)</td></tr>
 <tr><td>-iX</td><td>interleave (default = 3)</td></tr>
+<tr><td>-In[,m]</td><td>a track's first sector number, or one for each side of a double sided disk (default 1, or 0 for -k and a short track 0)</td></tr>
 <tr><td>-dr</td><td>format a Dragon disk</td></tr>
 </table>
 
 #### Hard Drive Options
 <table>
-<tr><td>-lX</td><td>number of logical sectors</td></tr>
+<tr><td>-lX</td><td>number of logical sectors (floppy options ignored)</td></tr>
 </table>
 
 #### Description
 
 Without -f, the format comes from the disk's extension, and otherwise it is raw. A raw image replaces a file that exists, and any other format does not. Those formats always hold the whole disk, with or without -e, and can't be made with every layout: see the limits of each format in diskimage.h.
 
-The format command creates a file on the host file system which itself is an empty RBF disk image. This image ca then be used to hold files and directories.
+The format command creates a file on the host file system which itself is an empty RBF disk image. This image can then be used to hold files and directories.
 
 Besides the normal options, there are two other groups of options: floppy options and hard drive options. Each set of options are mutually exclusive, and aren't meant to be mixed together.
 
@@ -778,8 +784,8 @@ fstat displays information about a file from the file descriptor sector.
       Owner              : 0.0
       Last modified date : 02/16/1987 00:09
       Link count         : 1
-      File size          : 43
-      Creation date      : 02/16/1987 00:01
+      File size          : 43 ($2B)
+      Creation date      : 02/16/1987
       Segment list:
          1. LSN1 ($10D)   1 sector
 
@@ -796,10 +802,11 @@ This command will work on RBF disk images only.
 #### Options
 <table>
 <tr><td>-b=bootfile</td><td>bootfile to copy and link to the image</td></tr>
-<tr><td>-c</td><td>CoCo disk</td></tr>
+<tr><td>-c</td><td>CoCo disk (default)</td></tr>
 <tr><td>-d</td><td>Dragon disk</td></tr>
 <tr><td>-e</td><td>Extended boot (fragmented)</td></tr>
 <tr><td>-t=trackfile</td><td>kernel trackfile to copy to the image</td></tr>
+<tr><td>-lX</td><td>special boot track/kernel track start LSN</td></tr>
 </table>
 
 #### Description
@@ -838,7 +845,7 @@ This command is intended for RBF disk images only.
 
 #### Description
 
-fstat displays information about an image from the identification sector (LSN 0).
+id displays information about an image from the identification sector (LSN 0).
 
 #### Examples
     os9 id l2tools
@@ -858,6 +865,7 @@ fstat displays information about an image from the identification sector (LSN 0)
       Creation date   :   05/05/1988 19:00
       Disk name       :   Level II Tools
       Bytes/Sector    :   256
+      Sectors Track 0 :   18
 
 ---
 
@@ -1028,7 +1036,7 @@ The following pages document the commands built into the decb tool. Its interfac
 
 Issuing the decb command without any parameters will provide a list of available subcommands. Issuing a subcommand without any parameters will display help on using the subcommand.
 
-Use decb to copy files to and from Disk BASIC formatted disk images to your host file system. While many commands will work fine host file systems, some commands are designed to only be run on a Disk BASIC disk image or file within that image. The Scope section makes it clear in what context the command should be run.
+Use decb to copy files to and from Disk BASIC formatted disk images to your host file system. While many commands will work fine on host file systems, some commands are designed to only be run on a Disk BASIC disk image or file within that image. The Scope section makes it clear in what context the command should be run.
 
 <h3 id="decb_exec_option">The DECB executive's option</h3>
 
@@ -1041,7 +1049,7 @@ The DECB executive has one option specified before the sub-command:
 <tr><td></td><td>156: 80 track disk</td></tr>
 </table>
 
-This allows you to specify the number of granules available when writing to a disk image.
+This allows you to specify the number of granules available when writing to a disk image. Any count from 1 to 192 is accepted.
 
 ---
 
@@ -1145,11 +1153,11 @@ This command is intended for Disk BASIC disk images only.
 
 #### Description
 
-The dir command displays the directory of a Disk BASIC disk image or the host file system.
+The dir command displays the directory of a Disk BASIC disk image.
 
 #### Examples
 
-Displaying an extended directory
+Displaying a directory
 
     decb dir decb.dsk,
 
@@ -1165,10 +1173,10 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 
 #### Options
 <table>
-<tr><td>-b=size</td><td>size of copy buffer in bytes or K-bytes</td></tr>
 <tr><td>-e</td><td>actually execute commands</td></tr>
 <tr><td>-l</td><td>perform end of line translation on copy</td></tr>
 <tr><td>-r</td><td>force rewrite on copy</td></tr>
+<tr><td>-t</td><td>perform BASIC token translation</td></tr>
 <tr><td>-x=path</td><td>decb executable to run the commands with, rather than the one the shell finds</td></tr>
 </table>
 
@@ -1176,7 +1184,7 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 
 The dsave command copies each file from a disk or directory to another.
 
-dsave runs `decb copy` to do the copying, and by default the shell finds `decb` as it would any command. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
+dsave runs `decb copy` to do the copying, and by default the shell finds `decb` as it would any command. `-b=size` is accepted and ignored, since decb copy has no buffer size. Use -x to name the one to use, such as the one you just built. Without -e it only shows the commands. If a command fails, dsave stops and exits with its status.
 
 Disk BASIC has no directories, so a source directory that holds one is refused when dsave reaches it.
 
@@ -1238,8 +1246,9 @@ This command will work on Disk BASIC and RBF disk image files as well as host fi
 <tr><td>-c</td><td>don't display ASCII character data</td></tr>
 <tr><td>-e</td><td>dump output in C format</td></tr>
 <tr><td>-t</td><td>don't display header</td></tr>
+<tr><td>-h</td><td>don't display header (deprecated, use -t)</td></tr>
 <tr><td>-l</td><td>don't display line label/count</td></tr>
-<tr><td>-z</td><td>decode DECB binary</td></tr>
+<tr><td>-z</td><td>decode DECB or Dragon DOS binary</td></tr>
 </table>
 #### Description
 
@@ -1298,7 +1307,7 @@ This command is intended for Disk BASIC disk image files only.
 
 #### Description
 
-fstat display detailed information about a file.
+fstat displays detailed information about a file.
 
 #### Example
 	decb fstat DISK.DSK,FILE.DOC
@@ -1428,16 +1437,16 @@ This command is intended for BASIC cassette and disk image files only.
 <tr><td>-r[real]</td><td>Set WAV file FSK aspect ratio for autodetection. Default: 1.85</td></tr>
 <tr><td>-t[%]</td><td>Set WAV file FSK aspect ratio threshold. Default: 0.3 (30%)</td></tr>
 <tr><td>-n[%]</td><td>Set near-zero threshold for WAV samples. Default: 0.01 (1%)</td></tr>
-<tr><td>-s [n]</td><td>Start at sample/bit [n] in the input file.</td></tr>
+<tr><td>-s[n]</td><td>Start at sample/bit [n] in the input file.</td></tr>
 <tr><td>-z</td><td>Suggest MC-10 mode. Use MC-10 WAV files and MicroColor BASIC tokens.</td></tr>
 </table>
-% is a decimal number between 0 and 1.
+% is a decimal number between 0 and 1. A value can also be the next argument, as in `-r 1.85`.
 
-The MC10 mode give the command hints on when to use MC10 characteristics. It uses different audio wave forms in WAV files. It also uses MC10 (and MCX128) BASIC tokens.
+The MC10 mode gives the command hints on when to use MC10 characteristics. It uses different audio wave forms in WAV files. It also uses MC10 (and MCX128) BASIC tokens.
 
 The C10 format defaults to MC10 formats. The WAV and CAS default to CoCo formats.
 
-The aspect ratio mention above is low frequency divided by the high frequency. People normally think the two FSK Color Computer tape format frequencies are 2400 Hz and 1200 Hz. This is an aspect ratio of 2.0. But the actual ratio coming from the Color Computer's circuitry is 1.85. The value is adjustable because aging tapes, and badly configured tape players, can cause the ratio to drift over time.
+The aspect ratio mentioned above is low frequency divided by the high frequency. People normally think the two FSK Color Computer tape format frequencies are 2400 Hz and 1200 Hz. This is an aspect ratio of 2.0. But the actual ratio coming from the Color Computer's circuitry is 1.85. The value is adjustable because aging tapes, and badly configured tape players, can cause the ratio to drift over time.
 
 ---
 <h3 id="bulkerase">BULKERASE - Create a cassette image of a given characteristics.</h3>
@@ -1484,11 +1493,12 @@ The dir command displays the directory of a BASIC cassette image.
 
 #### Examples
 
-Displaying an extended directory
+Displaying a directory
 
     cecb dir test.wav,
-    Directory of test.wav:
-      HELLO    0 B
+    Directory of: test.wav,
+
+      HELLO    0 ($00) B ($00)
 
 ---
 <h3 id="fstat_cecb">FSTAT - Display the file descriptor for a file</h3>
@@ -1497,21 +1507,20 @@ Displaying an extended directory
 
     fstat {[<opts>]} {<file> [<...>]} {[<opts>]}
 
-This command is intended for Cassette and Disk BASIC disk image files only.
+This command is intended for Cassette BASIC images only.
 
 #### Description
 
-fstat display detailed information about a file.
+fstat displays detailed information about a file.
 
 #### Example
 	cecb fstat test.wav,HELLO
 	File Information for test.wav,HELLO
-	  File type            : BASIC Program
-	  Data type            : Binary
-	  Gap type             : No
-	  ML Load Address      : 0 (0x0000)
-	  ML Execution Address : 22 (0x0016)
-				 File Size : 22 bytes (0x0016)
+	  File type            : BASIC Program ($00)
+	  Data type            : Binary ($00)
+	  Gap type             : No ($00)
+	  ML Load Address      : 0 ($0000)
+	  ML Execution Address : 0 ($0000)
 
 ---
 
@@ -1528,8 +1537,11 @@ This command will work on Disk BASIC, RBF disk image files and Cassette files as
 <tr><td>-a</td><td>dump output in assembler format (hex)</td></tr>
 <tr><td>-b</td><td>dump output in assembler format (binary)</td></tr>
 <tr><td>-c</td><td>don't display ASCII character data</td></tr>
-<tr><td>-h</td><td>don't display header</td></tr>
+<tr><td>-e</td><td>dump output in C format</td></tr>
+<tr><td>-t</td><td>don't display header</td></tr>
+<tr><td>-h</td><td>don't display header (deprecated, use -t)</td></tr>
 <tr><td>-l</td><td>don't display line label/count</td></tr>
+<tr><td>-z</td><td>decode DECB or Dragon DOS binary</td></tr>
 </table>
 #### Description
 
@@ -1573,7 +1585,7 @@ The `dumpblock` command scans a Color Computer cassette image file sequentially,
 
 #### Options
 
-* `-h`, `?` : Show the help message and exit.
+* `-h`, `-?` : Show the help message and exit.
 * `-a` : Dump output in assembler format (hex).
 * `-b` : Dump output in assembler format (binary).
 * `-e` : Dump output in C format.
@@ -1644,7 +1656,8 @@ This command will work on Disk BASIC, RBF disk image files and Cassette image as
 <tr><td></td><td>3 = text editor source file</td></tr>
 <tr><td>-[a|b]</td><td>data type (a = ASCII, b = binary)</td></tr>
 <tr><td>-[g|n]</td><td>gap mode (g = gaps, n = no gaps)</td></tr>
-<tr><td>e[n]</td><td>execution address</td></tr>
+<tr><td>-d&lt;n&gt;</td><td>load address</td></tr>
+<tr><td>-e&lt;n&gt;</td><td>execution address</td></tr>
 <tr><td>-l</td><td>translate line endings</td></tr>
 <tr><td>-t</td><td>entokenize BASIC ASCII text</td></tr>
 <tr><td>-k</td><td>detokenize BASIC program</td></tr>
@@ -1656,14 +1669,14 @@ This command will work on Disk BASIC, RBF disk image files and Cassette image as
 
 #### Description
 
-The copy command will create an exact copy of a file on either a Disk BASIC disk image or on the host file system. The -l option performs end of line translation when copying between the host file system and the Disk BASIC disk image. You should only use the -l option on text files, not binary files. If a file already exists on the destination disk image or file system, an error will be returned. If you want to force the copy, use the -r option.
+The copy command adds a file to the end of a cassette image, or copies a file from a cassette image to the host file system or a disk image. The -l option performs end of line translation when copying between the host file system and the cassette image. You should only use the -l option on text files, not binary files. There is no -r option: a file copied to a cassette image is always added after what is already there.
 
 #### Examples
 
-Copying a file from a Disk BASIC disk image to the host:
+Copying a file from a cassette image to the host:
 
     cecb copy cecb.wav,TEST test.bas
-    Copying a BASIC file from the host to a Disk BASIC disk image with tokenization:
+    Copying a BASIC file from the host to a cassette image with tokenization:
     cecb copy myprog.bas -t cecb.wav,MYPROG
     Copying a text file from the host to a cassette BASIC image:
     cecb copy -l3a file.txt cecb.wav,FILE
@@ -1676,13 +1689,13 @@ Copying a file from a Disk BASIC disk image to the host:
 
     leader <wavfile>
 
-This command looks for alternating frequencies with the aspect ratio specified in the cecb executavie options. Staticts are provided for each block found.
+This command looks for alternating frequencies with the aspect ratio specified in the cecb executive options. Statistics are provided for each block found.
 
 #### Options
 
 #### Description
 
-During preservation of CoCo cassette tapes, recovering data is essential. There are two known frequencies that are written. But due to a variety of factors the wave formas captured can be shifted in frequency. With this command, you can try different aspect ratios (and threasholds) to see if any leaders are found. You can then use the results to tune further data extraction attempts.
+During preservation of CoCo cassette tapes, recovering data is essential. There are two known frequencies that are written. But due to a variety of factors the wave forms captured can be shifted in frequency. With this command, you can try different aspect ratios (and thresholds) to see if any leaders are found. You can then use the results to tune further data extraction attempts.
 
 #### Examples
 
@@ -1703,7 +1716,7 @@ The numbers after block length are the start and end samples.
 
 <h2 id="ar2">ar2</h2>
 
-Ar is a utility modeled loosely after the archive utility in "Software Tools" the Kernigan & Plauger book. Its purpose is to gather together files into a common file to save disk space, keep related files together, ease the transmission of files by telephone, and other similar uses. It preserves file attributes such as last-modify date, creation date, owner, and permissions. Ar uses Lempel-Zev compression on text and binary files, so substantial space savings can result. Several versions of the same file can be kept in one archive without file name contention.
+Ar is a utility modeled loosely after the archive utility in "Software Tools" the Kernighan & Plauger book. Its purpose is to gather together files into a common file to save disk space, keep related files together, ease the transmission of files by telephone, and other similar uses. It preserves file attributes such as last-modify date, creation date, owner, and permissions. Ar uses Lempel-Zev compression on text and binary files, so substantial space savings can result. Several versions of the same file can be kept in one archive without file name contention.
 
 Carl Kreider, author of ar and ar2, at the 6th Annual Atlanta CoCo Fest, October 1995
 
@@ -1731,7 +1744,7 @@ The options modify the behavior of a command:
 <tr><td>ss</td><td>suppress compression of all files (affects u command)</td></tr>
 <tr><td>z</td><td>get names of files to process from standard input</td></tr>
 </table>
-Most of these commands and modifiers are obvious, but the detailed operation is not so obvious. A version number is kept as part of the header record associated with each file in the archive. The current file has a version number of '0'. Older versions of files with the same names have succeedingly greater numbers. Commands normally operate only on the current version of each file -- those with a version of '0'. The 'a' option will cause all versions to be selected. To avoid name conflicts on extraction, the version number for all but the current version will be appended to the name of the created file.
+Most of these commands and modifiers are obvious, but the detailed operation is not so obvious. A version number is kept as part of the header record associated with each file in the archive. The current file has a version number of '0'. Older versions of files with the same names have successively greater numbers. Commands normally operate only on the current version of each file -- those with a version of '0'. The 'a' option will cause all versions to be selected. To avoid name conflicts on extraction, the version number for all but the current version will be appended to the name of the created file.
 
 Ar will normally compress binary modules, but these may not compress well using Lempel-Zev compression. It is possible for files to actually grow, although this is less likely as the number of bits used increases.
 
@@ -1782,9 +1795,9 @@ This is a disassembler for OS-9/68K written by Carl Kreider and Dan Poole.
 
 It was written for OS-9/68K on OS-9/68K using the Microware compiler, which was more or less K&R at the time.  It has since been updated to compile with a modern compiler on Linux and on macOS.
 
-The dissassembler doesn't really know what to do without a parameter file to direct it.  It is not smart enough to figure out the contents of a binary by itself.  Normally one examines a hex dump of the binary to figure out what is text, what is code, and what is data.  It often takes a couple iterations to sort out. If you see garbage output instead of clean disassembly, it may be data or text instead of code. Fix the parameter file and try again.
+The disassembler doesn't really know what to do without a parameter file to direct it.  It is not smart enough to figure out the contents of a binary by itself.  Normally one examines a hex dump of the binary to figure out what is text, what is code, and what is data.  It often takes a couple iterations to sort out. If you see garbage output instead of clean disassembly, it may be data or text instead of code. Fix the parameter file and try again.
 
-The parameter file does not have to be specified on the command line if it's name is the name of the binary with ".prm" tacked on. That is what dis68 will look for unless a name is provided with the -p option.  The format of the parm file is a letter specifying what this block should be and a hex address of the last byte of the block. For example, the parm file for the included demonstration binary, bsrl, is this:
+The parameter file does not have to be specified on the command line if its name is the name of the binary with ".prm" tacked on. That is what dis68 will look for unless a name is provided with the -p option.  The format of the parm file is a letter specifying what this block should be and a hex address of the last byte of the block. For example, the parm file for the included demonstration binary, bsrl, is this:
 
     l 47
     t 4d
@@ -1814,16 +1827,16 @@ This is a tool used to convert lwasm listing files into MAME comment files. It w
 #### Description
 
 The lwasm assembler can produce a listing file. An assembler listing file will include line number, object code, source code, and comments all in one text file.
-The MAME emulator has the ability to display comments next to it's dissasembly view.
-This tool allows you to process lwasm's listing files to produce a file MAME can use to display comments next to the dissasembly.
+The MAME emulator has the ability to display comments next to its disassembly view.
+This tool allows you to process lwasm's listing files to produce a file MAME can use to display comments next to the disassembly.
 
 #### Notes
 
-1. Comments in between code lines will not be visible in MAME. Only comments placed after the menemonomic and operand.
+1. Comments in between code lines will not be visible in MAME. Only comments placed after the mnemonic and operand.
 2. Comments will only be displayed in MAME if the CRC of the object codes matches what is in the comment file.
 3. MAME comments are automatically loaded. By default, the comment file location is next to the MAME executable in a folder called 'comments'. The name of the comment file must be the MAME driver short name and dot 'cmt'. Inside the comment file, the name of the driver must match the driver you are running. Inside the comment file, the name of the cpu must also match the running driver.
 4. MAME does not have comments turned on by default. There is a menu item to turn them off.
-5. MAME display comments very far to the right in the disasembly. You may have to make the window very large to see them.
+5. MAME displays comments very far to the right in the disassembly. You may have to make the window very large to see them.
 
 ---
 
@@ -2020,7 +2033,7 @@ Dragon DOS has no directories, so a source directory that holds one is refused w
 
 #### Options
 
-    -t<num>  = tracks, 21 to 80 (default 40)
+    -t<num>  = tracks, 21 to 80 on two sides or 160 on one (default 40)
     -s<num>  = sides, 1 or 2 (default 1)
     -f<name> = image format: raw, jvc, vdk, dmk or sdf
 
